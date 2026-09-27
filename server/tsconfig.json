@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "lib": ["DOM", "ESNext"],
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ESNext",
+    "types": ["bun", "node"],
+    "verbatimModuleSyntax": true
+  },
+  "include": ["src", "../api", "../netlify/functions"]
+}

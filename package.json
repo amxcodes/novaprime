@@ -1,0 +1,31 @@
+{
+  "name": "nova",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "server"
+  ],
+  "scripts": {
+    "dev": "bun run --cwd server dev",
+    "dev:local": "bun run --cwd server dev:local",
+    "test:database": "bun --env-file=.env server/src/database-test.ts",
+    "migrate": "bun --env-file=.env server/src/migrate.ts",
+    "supabase:bootstrap": "bun --env-file=.env server/src/supabase-bootstrap.ts",
+    "supabase:scheduler": "bun --env-file=.env scripts/supabase-scheduler.ts",
+    "supabase:scheduler:disable": "bun --env-file=.env scripts/supabase-scheduler.ts --disable",
+    "supabase:audit": "bun --env-file=.env scripts/supabase-boundary-audit.ts",
+    "setup": "bun scripts/setup.ts",
+    "setup:supabase": "bun scripts/setup.ts --mode supabase",
+    "deployment:preflight": "bun --env-file=.env scripts/deployment-preflight.ts",
+    "qa:postgres": "bun scripts/qa-postgres.ts",
+    "notifications:worker": "bun --env-file=.env server/src/notification-worker.ts",
+    "maintenance": "bun --env-file=.env server/src/maintenance-worker.ts",
+    "test": "bun --no-env-file run --cwd server test",
+    "typecheck": "bun run --cwd server typecheck",
+    "typecheck:operator": "node server/node_modules/typescript/bin/tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --typeRoots server/node_modules/@types --types node,bun --skipLibCheck --allowImportingTsExtensions scripts/setup.ts scripts/supabase-scheduler.ts scripts/deployment-ui-smoke.ts vercel.ts web/vercel-config.ts",
+    "typecheck:cloudflare": "node server/node_modules/typescript/bin/tsc --noEmit -p cloudflare/tsconfig.json"
+  }
+}

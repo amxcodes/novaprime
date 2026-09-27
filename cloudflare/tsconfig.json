@@ -1,0 +1,10 @@
+{
+  "extends": "../server/tsconfig.json",
+  "compilerOptions": {
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "typeRoots": ["../server/node_modules/@types"]
+  },
+  "include": ["worker.ts"]
+}

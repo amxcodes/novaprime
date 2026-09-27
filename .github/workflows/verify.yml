@@ -1,0 +1,106 @@
+name: Verify NOVA
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun run test
+      - run: bun run typecheck
+      - run: bun run typecheck:operator
+      - run: bun run typecheck:cloudflare
+      - name: Smoke Cloudflare Worker Gmail delivery in workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          worker_log="$(mktemp)"
+          response=""
+          npx --yes wrangler@4.141.0 dev --local \
+            --config cloudflare/wrangler.email-smoke.toml \
+            --ip 127.0.0.1 --port 8799 >"$worker_log" 2>&1 &
+          worker_pid=$!
+          cleanup() {
+            kill "$worker_pid" 2>/dev/null || true
+            wait "$worker_pid" 2>/dev/null || true
+            cat "$worker_log"
+            rm -f "$worker_log"
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 60); do
+            if ! kill -0 "$worker_pid" 2>/dev/null; then break; fi
+            response="$(curl -fsS http://127.0.0.1:8799/ 2>/dev/null)" && break || true
+            sleep 0.25
+          done
+          if [[ -z "$response" ]]; then
+            echo "Cloudflare Worker did not become ready"
+            exit 1
+          fi
+          printf '%s' "$response" | node -e '
+            let input = "";
+            process.stdin.on("data", (chunk) => input += chunk);
+            process.stdin.on("end", () => {
+              const result = JSON.parse(input);
+              const checks = Object.values(result.checks || {});
+              if (result.ok !== true || checks.length !== 5 || checks.some((check) => check !== true)) {
+                throw new Error("CLOUDFLARE_EMAIL_RUNTIME_SMOKE_FAILED");
+              }
+              console.log("Cloudflare Worker Gmail HTTPS/MIME runtime smoke passed.");
+            });
+          '
+      - run: bun run --cwd server build
+      - run: node --check web/app.js
+      - name: Typecheck the PostgreSQL smoke harness
+        run: >-
+          node server/node_modules/typescript/bin/tsc --noEmit --strict
+          --target ESNext --module Preserve --moduleResolution Bundler
+          --skipLibCheck --allowImportingTsExtensions --types bun,node
+          --typeRoots server/node_modules/@types
+          scripts/runtime-lifecycle-smoke.ts scripts/runtime-specialized-smoke.ts
+
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COMPOSE_PROJECT_NAME: nova-ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Run clean PostgreSQL and authenticated lifecycle gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ci_migrator_password="$(openssl rand -hex 32)"
+          ci_app_password="$(openssl rand -hex 32)"
+          ci_auth_secret="$(openssl rand -hex 32)"
+          ci_bootstrap_token="$(openssl rand -hex 32)"
+          ci_encryption_key="$(openssl rand -base64 32 | tr '/+' '_-' | tr -d '=')"
+          ci_background_secret="$(openssl rand -hex 32)"
+          {
+            printf 'NOVA_MIGRATOR_PASSWORD=%s\n' "$ci_migrator_password"
+            printf 'NOVA_APP_PASSWORD=%s\n' "$ci_app_password"
+            printf 'BETTER_AUTH_SECRET=%s\n' "$ci_auth_secret"
+            printf 'BETTER_AUTH_URL=http://localhost:3001\n'
+            printf 'NOVA_BOOTSTRAP_TOKEN=%s\n' "$ci_bootstrap_token"
+            printf 'NOVA_SECRETS_ENCRYPTION_KEY=%s\n' "$ci_encryption_key"
+            printf 'NOVA_BACKGROUND_JOB_SECRET=%s\n' "$ci_background_secret"
+            printf 'NOVA_BACKGROUND_SCHEDULER=vps\n'
+          } > .env
+          trap 'rm -f .env' EXIT
+          bun run qa:postgres
+          NOVA_QA_REQUEST_SCOPED=true bun run qa:postgres

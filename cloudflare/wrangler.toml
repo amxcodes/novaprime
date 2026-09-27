@@ -1,0 +1,22 @@
+name = "nova"
+main = "worker.ts"
+compatibility_date = "2026-09-22"
+compatibility_flags = ["nodejs_compat"]
+keep_vars = true
+
+[vars]
+NOVA_BACKGROUND_SCHEDULER = "cloudflare"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[assets]
+directory = "../web"
+binding = "ASSETS"
+
+# Replace with the Hyperdrive configuration id for the Supabase/PostgreSQL
+# project. The connection string is supplied to the Worker at request time;
+# it is never committed to this repository.
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "replace-with-hyperdrive-config-id"

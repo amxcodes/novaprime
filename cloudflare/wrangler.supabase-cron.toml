@@ -1,0 +1,22 @@
+# Use this config only when Supabase pg_cron + pg_net is the selected tick
+# trigger. It updates the same `nova` Worker and explicitly removes its Cron
+# Trigger, preventing the Cloudflare and Supabase schedules from both running.
+name = "nova"
+main = "worker.ts"
+compatibility_date = "2026-09-22"
+compatibility_flags = ["nodejs_compat"]
+keep_vars = true
+
+[vars]
+NOVA_BACKGROUND_SCHEDULER = "supabase"
+
+[triggers]
+crons = []
+
+[assets]
+directory = "../web"
+binding = "ASSETS"
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "replace-with-hyperdrive-config-id"

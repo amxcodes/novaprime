@@ -1,0 +1,9 @@
+[build]
+  publish = "web"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[plugins]]
+  package = "./netlify/plugins/nova-functions"
