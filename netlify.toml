@@ -4,7 +4,7 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
-  external_node_modules = ["pg"]
+  external_node_modules = ["pg", "nodemailer"]
 
 [[plugins]]
   package = "./netlify/plugins/nova-functions"

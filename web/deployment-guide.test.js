@@ -217,12 +217,12 @@ describe("deployment guide provider handoff", () => {
     }
   });
 
-  test("Netlify packages the PostgreSQL driver for the API function runtime", () => {
+  test("hosted function runtimes have the API workspace dependencies at the repository root", () => {
     const rootPackage = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
     const apiPackage = JSON.parse(readFileSync(new URL("../server/package.json", import.meta.url), "utf8"));
     const netlifyConfig = readFileSync(new URL("../netlify.toml", import.meta.url), "utf8");
 
-    expect(rootPackage.dependencies?.pg).toBe(apiPackage.dependencies.pg);
-    expect(netlifyConfig).toContain('external_node_modules = ["pg"]');
+    expect(rootPackage.dependencies).toEqual(apiPackage.dependencies);
+    expect(netlifyConfig).toContain('external_node_modules = ["pg", "nodemailer"]');
   });
 });

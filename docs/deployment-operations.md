@@ -132,7 +132,7 @@ The operator does not paste every value into every product. Use this split:
 | Supabase Cron/pg_net alternative | Keep API runtime values on the selected API host and set `NOVA_BACKGROUND_SCHEDULER=supabase` there | Run `bun run supabase:scheduler` from the trusted operator checkout. It reads the project ref and tick secret from private `.env` and requires the exact project ref typed before any write. It prompts for the deployed HTTPS origin if not configured and requests the management token with hidden input if absent. To switch away, run `bun run supabase:scheduler:disable`; it requires the same project confirmation and removes only NOVA's named Cron job and two Vault secrets. The token is not saved. |
 | Direct VPS/Docker | `.env` on the VPS; set `NOVA_BACKGROUND_SCHEDULER=vps`; Compose passes values to the API/maintenance containers | Compose starts the maintenance service. A non-Compose install must supervise exactly one maintenance worker; no systemd unit is shipped. Do not also enable a cloud scheduler for this database. |
 
-For Netlify, the root manifest declares `pg` and `netlify.toml` marks it as an external function dependency so the PostgreSQL driver ships with the API function.
+The repository-root manifest mirrors the API workspace runtime dependencies so Netlify and Vercel can discover them from the project base; a test keeps both manifests synchronized. Netlify additionally lists `pg` and `nodemailer` as external function dependencies so both packages ship with its API function. Cloudflare Wrangler bundles npm dependencies from the root manifest.
 
 These are server-side values. `NOVA_BACKGROUND_SCHEDULER` is not a secret.
 Do not prefix any of these values as browser/build variables
