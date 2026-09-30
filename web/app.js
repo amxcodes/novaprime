@@ -603,9 +603,9 @@ function deploymentInstructions(stage) {
         ? "The local bootstrap creates a private `.env` and Docker Compose passes it to NOVA. Keep it on this computer; no hosted secret store is involved."
         : id === "vps-postgres"
           ? "Keep runtime values in the private `.env` on the VPS. Restrict access to the file and let Docker Compose pass the values to NOVA; no third-party secret store is involved."
-          : "The database setup wrote generated values to the operator's private `.env`. Copy only runtime values into the selected API host's server-side secret store; this browser never collects them.",
+          : "The database setup wrote generated values to the operator's private `.env`. Copy only the listed runtime values into the API host's server-side environment settings, marking only credentials as secrets. This browser never collects or transfers them.",
       items: [
-        guide?.host.secrets ?? "Choose a deployment path first.",
+        ...(guide?.host.runtimeSetup ?? ["Choose a deployment path first."]),
         id === "local-docker"
           ? "Docker Compose reads the private `.env` on this computer; no GitHub deployment is involved."
           : id === "vps-postgres"

@@ -1,6 +1,6 @@
 # NOVA visual deployment guide
 
-Status (2026-09-27): the secret-free `/?view=deploy` checklist opens with a
+Status (2026-09-30): the secret-free `/?view=deploy` checklist opens with a
 short source → runtime ↔ database map and a six-part “You do / Then / Confirm”
 detail panel. The detail panel is collapsed by default so the selected setup
 stage stays primary instead of repeating all service instructions above it.
@@ -15,6 +15,16 @@ command stays hidden until the API is healthy, ready, and reports the selected
 Supabase scheduler. It is still a guided handoff, not a control plane: NOVA does
 not sign in to or configure GitHub, Cloudflare, Netlify, Vercel, Supabase, or a
 VPS for the customer.
+
+The runtime stage now gives each deployment path a provider-specific variable
+template that separates actual credentials, ordinary configuration, build-time
+selectors, and operator/bootstrap-only values. For Netlify, only database and
+application credentials are marked as secret values (Functions scope);
+`NOVA_BACKGROUND_SCHEDULER` is explicitly a regular value for Builds and
+Functions. The guide explains that a previously secret-marked selector must be
+deleted and recreated as regular configuration, and keeps secret scanning on.
+The checklist still does not write provider settings or collect secret values;
+the operator applies this classified template in the chosen provider account.
 
 The scheduler choice now keeps its short “where / what activates / where to
 confirm” explanation visible and collapses the longer provider settings and

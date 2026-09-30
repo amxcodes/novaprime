@@ -19,7 +19,7 @@ describe("deployment guide provider handoff", () => {
       const guide = deploymentGuide(path);
       expect(guide?.host.connect).toBeTruthy();
       expect(guide?.host.publish).toBeTruthy();
-      expect(guide?.host.secrets).toBeTruthy();
+      expect(guide?.host.runtimeSetup?.length).toBeGreaterThan(0);
       expect(guide?.host.database).toBeTruthy();
       expect(guide?.host.domain).toBeTruthy();
       expect(guide?.host.postSetup).toContain("Better Auth");
@@ -30,17 +30,33 @@ describe("deployment guide provider handoff", () => {
   });
 
   test("shows runtime configuration in the correct host and keeps migration credentials off it", () => {
-    const cloudflare = deploymentGuide("cloudflare-supabase")?.host.secrets ?? "";
-    const netlify = deploymentGuide("netlify-supabase")?.host.secrets ?? "";
-    const vercel = deploymentGuide("vercel-supabase")?.host.secrets ?? "";
+    const cloudflare = deploymentGuide("cloudflare-supabase")?.host.runtimeSetup?.join(" ") ?? "";
+    const netlify = deploymentGuide("netlify-supabase")?.host.runtimeSetup?.join(" ") ?? "";
+    const vercel = deploymentGuide("vercel-supabase")?.host.runtimeSetup?.join(" ") ?? "";
 
     expect(cloudflare).toContain("HYPERDRIVE");
     expect(cloudflare).toContain("NOVA_SECRETS_ENCRYPTION_KEY");
-    expect(cloudflare).not.toContain("DATABASE_URL");
+    expect(cloudflare).toContain("HYPERDRIVE binding, not DATABASE_URL");
     expect(netlify).toContain("DATABASE_URL");
-    expect(netlify).toContain("NOVA_BACKGROUND_SCHEDULER=netlify");
-    expect(vercel).toContain("CRON_SECRET only for Vercel Cron");
+    expect(netlify).toContain("NOVA_BACKGROUND_SCHEDULER");
+    expect(netlify).toContain("regular, non-secret variable");
+    expect(netlify).toContain("Builds and Functions");
+    expect(netlify).toContain("delete it and recreate it as a regular variable");
+    expect(netlify).toContain("NOVA_APPLICATION_DATABASE_ROLE");
+    expect(netlify).toContain("MIGRATOR_DATABASE_URL");
+    expect(vercel).toContain("Only when Vercel Cron is selected");
     expect(vercel).toContain("Never add SUPABASE_ACCESS_TOKEN");
+  });
+
+  test("hosted runtime templates distinguish credentials from plain configuration", () => {
+    for (const path of ["cloudflare-supabase", "netlify-supabase", "vercel-supabase"]) {
+      const instructions = deploymentGuide(path)?.host.runtimeSetup?.join(" ") ?? "";
+      expect(instructions).toContain("BETTER_AUTH_SECRET");
+      expect(instructions).toContain("BETTER_AUTH_URL");
+      expect(instructions).toContain("non-secret");
+      expect(instructions).toContain("SUPABASE_ACCESS_TOKEN");
+      expect(instructions).toContain("MIGRATOR_DATABASE_URL");
+    }
   });
 
   test("separates Supabase database bootstrap from hosted API deployment", () => {
