@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "nova",
+      "dependencies": {
+        "pg": "^8.16.3",
+      },
     },
     "server": {
       "name": "@nova/api",

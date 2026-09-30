@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { deploymentGuide, deploymentSchedulerActions } from "./deployment-guide.js";
 import { createVercelConfig } from "./vercel-config.ts";
 import novaNetlifyPlugin from "../netlify/plugins/nova-functions/index.js";
@@ -215,5 +215,14 @@ describe("deployment guide provider handoff", () => {
       if (previousContext === undefined) delete process.env.CONTEXT;
       else process.env.CONTEXT = previousContext;
     }
+  });
+
+  test("Netlify packages the PostgreSQL driver for the API function runtime", () => {
+    const rootPackage = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    const apiPackage = JSON.parse(readFileSync(new URL("../server/package.json", import.meta.url), "utf8"));
+    const netlifyConfig = readFileSync(new URL("../netlify.toml", import.meta.url), "utf8");
+
+    expect(rootPackage.dependencies?.pg).toBe(apiPackage.dependencies.pg);
+    expect(netlifyConfig).toContain('external_node_modules = ["pg"]');
   });
 });
