@@ -102,6 +102,9 @@ describe("deployment guide provider handoff", () => {
     expect(supabase?.actions.map((action) => action.change).join(" ")).toContain("hidden input");
     expect(supabase?.actions.map((action) => action.change).join(" ")).toContain("requires you to type it exactly before any write");
     expect(supabase?.actions.map((action) => action.change).join(" ")).not.toContain("Remove the");
+    expect(supabase?.verify).toContain("net._http_response");
+    expect(supabase?.verify).toContain("timed_out=false");
+    expect(supabase?.verify).toContain("only means pg_net queued");
     expect(vercel?.actions.map((action) => action.change).join(" ")).toContain("CRON_SECRET");
     expect(vercel?.verify).toContain("Cron Jobs");
   });

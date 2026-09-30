@@ -3,6 +3,9 @@
 --   \set nova_public_origin 'https://nova.example.com'
 --   \set nova_background_job_secret 'the deployment-only secret'
 -- The values are stored in Supabase Vault, not in the cron command text.
+-- pg_net is asynchronous: pg_cron success only confirms that the request was
+-- queued. Keep this HTTP timeout explicit and below Netlify's 60-second
+-- synchronous-function limit; inspect net._http_response after each run.
 
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
@@ -33,7 +36,8 @@ select cron.schedule(
       'x-nova-background-scheduler', 'supabase',
       'content-type', 'application/json'
     ),
-    body := '{}'::jsonb
+    body := '{}'::jsonb,
+    timeout_milliseconds := 55000
   );
   $$
 );

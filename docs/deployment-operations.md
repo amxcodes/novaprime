@@ -57,7 +57,35 @@ endpoint. Supabase Cron/pg_net is available through
 only one production trigger enabled per database. The selector prevents a
 stale trigger from another built-in provider from running NOVA work, but it
 cannot discover or stop duplicate schedules configured with the same provider
-identity.
+identity. The Supabase SQL sets pg_net's HTTP timeout explicitly to 55 seconds.
+The canonical tick sends at most four outbox emails concurrently; remaining
+messages stay durable for later ticks instead of extending one serverless
+request with a long serial batch. pg_cron success means the request was queued,
+not that the API completed: verify both `cron.job_run_details` and
+`net._http_response` (`status_code`, `timed_out`, and `error_msg`), then check
+the selected API host's function logs. pg_net retains HTTP responses for six
+hours by default, so inspect them soon after the first run.
+Before rerunning the scheduler command, confirm the local
+`NOVA_BACKGROUND_JOB_SECRET` exactly matches the API host's value: setup
+replaces the Vault copy as well as rescheduling the job.
+
+For the first run, use the Supabase SQL editor:
+
+```sql
+select jobid, status, return_message, start_time, end_time
+from cron.job_run_details
+where jobid = (select jobid from cron.job where jobname = 'nova-background-tick')
+order by start_time desc
+limit 10;
+
+select id, status_code, timed_out, error_msg, content, created
+from net._http_response
+order by created desc
+limit 20;
+```
+
+The Cron row confirms that pg_cron ran its SQL. The HTTP row is the one that
+confirms whether the Netlify/API endpoint answered successfully.
 
 ### Where each deployment value goes
 

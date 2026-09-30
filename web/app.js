@@ -521,7 +521,7 @@ function deploymentSchedulerOutcome(scheduler) {
       action: "Set NOVA_BACKGROUND_SCHEDULER=supabase on the API host and deploy its no-native-Cron config. Once NOVA /api/ready passes, run bun run supabase:scheduler from the trusted repository checkout and confirm the displayed Supabase project ref.",
       automatic: "That guarded command creates NOVA’s named pg_cron + pg_net job and stores its request URL/secret in Supabase Vault. No host-native schedule should remain enabled.",
       activates: "After NOVA passes readiness, the trusted-operator command creates the job in Supabase; selecting the radio does not create it.",
-      check: "Supabase Cron run history shows one successful call, and NOVA /api/ready reports supabase.",
+      check: "Check cron.job_run_details, then net._http_response: require HTTP 2xx, timed_out=false, and no error_msg; inspect the tick body/API logs for notification errors. Cron success alone only means pg_net queued the call. NOVA /api/ready must report supabase.",
     },
     vps: {
       lives: "The VPS/local server running NOVA",
@@ -635,7 +635,7 @@ function deploymentInstructions(stage) {
       where: "The selected provider/repository actions shown below. Choosing the radio option only changes this checklist; it does not change a provider account.",
       body: selectedScheduler === "supabase"
         ? deploymentProbe?.health === true && deploymentProbe?.ready === true && deploymentProbe?.scheduler === "supabase"
-          ? "The API is live with the Supabase selector and native hosting schedules disabled. The command below now creates the Supabase Cron job; verify a successful request afterward."
+          ? "The API is live with the Supabase selector and native hosting schedules disabled. The command below now creates the Supabase Cron job; after its first run, verify the pg_net HTTP response as well as Cron history."
           : "First run the live API/database check. The Supabase Cron creation command appears only after health, readiness, and the selected scheduler all match."
         : "The host-native trigger is activated by the configured production deploy in the previous step. This stage verifies the provider has exactly one active trigger and that its invocation reached NOVA successfully.",
       items: [

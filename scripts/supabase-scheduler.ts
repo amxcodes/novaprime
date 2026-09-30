@@ -101,4 +101,4 @@ if (!response.ok) {
 }
 console.info(disabling
   ? "NOVA's Supabase Cron job and its Vault secrets were removed. The management token was used only for this operator action."
-  : "Supabase Cron/pg_net background tick configured. The management token was used only for this operator action.");
+  : "Supabase Cron/pg_net background tick configured. After its first run, verify net._http_response and the API function logs; Cron success alone only confirms the HTTP request was queued. The management token was used only for this operator action.");

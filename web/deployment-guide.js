@@ -130,7 +130,7 @@ const schedulerGuides = {
         result: "The command creates NOVA's named `pg_cron` + `pg_net` HTTP job and stores its URL/secret in Supabase Vault. It does not deploy the app or put the management token on the app host, and does not save the token to `.env`.",
       },
     ],
-    verify: "In Supabase → Cron, confirm one nova-background-tick job and inspect its run/request result. Confirm the app host’s /api/ready reports supabase and that the tick reaches the deployed public API.",
+    verify: "Confirm one nova-background-tick job and that cron.job_run_details shows it ran. Then inspect net._http_response: require a 2xx status_code, timed_out=false, and blank error_msg; check the response body/API logs for tick completion and notification errors. Cron success alone only means pg_net queued the request. Confirm the app host’s /api/ready reports supabase.",
     warning: "Keep the management token on the operator computer; never put it in GitHub or a runtime host. The same NOVA_BACKGROUND_JOB_SECRET must be in the API host and Supabase Vault.",
   },
   vps: {

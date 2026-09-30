@@ -223,6 +223,11 @@ for (const [path, scheduler, lives, activates] of combinationChecks) {
     (!markup.includes("NOVA_BACKGROUND_SCHEDULER=supabase") || !markup.includes("publishes no Vercel Cron"))) {
     throw new Error("VERCEL_SUPABASE_SELECTION_MUST_OMIT_NATIVE_CRON");
   }
+  if (path === "netlify-supabase" && scheduler === "supabase" &&
+    (!markup.includes("net._http_response") || !markup.includes("timed_out=false") ||
+      !markup.includes("only means pg_net queued"))) {
+    throw new Error("SUPABASE_CRON_MUST_VERIFY_ASYNC_HTTP_RESULT");
+  }
 }
 
 console.info("PASS: deployment action map covers every host/scheduler pairing and distinguishes customer actions from automatic provider effects; Supabase Cron creation remains readiness-gated.");

@@ -5,6 +5,12 @@ import { processNotificationOutbox } from "./notification-worker.js";
 export const backgroundSchedulers = ["cloudflare", "netlify", "vercel", "supabase", "vps"] as const;
 export type BackgroundScheduler = typeof backgroundSchedulers[number];
 
+// Keep serverless ticks comfortably below their request deadline. The outbox
+// is durable, so a tick intentionally sends a small concurrent slice; later
+// ticks continue the remaining work without holding a function open for a
+// serial chain of provider timeouts.
+export const backgroundNotificationBatchSize = 4;
+
 export function configuredBackgroundScheduler(): BackgroundScheduler | null {
   const configured = process.env.NOVA_BACKGROUND_SCHEDULER;
   return backgroundSchedulers.find((scheduler) => scheduler === configured) ?? null;
@@ -71,7 +77,10 @@ export async function runBackgroundTick(): Promise<BackgroundTickResult> {
   let notifications = 0;
   let notificationError: string | undefined;
   try {
-    notifications = await processNotificationOutbox(20);
+    notifications = await processNotificationOutbox(
+      backgroundNotificationBatchSize,
+      backgroundNotificationBatchSize,
+    );
   } catch (error) {
     // Delivery/provider faults must never prevent boundary closure. The
     // outbox lease/retry path will make the next tick safe and idempotent.

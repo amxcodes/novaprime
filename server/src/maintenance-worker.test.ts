@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import {
+  backgroundNotificationBatchSize,
   backgroundJobSecretMatches,
   backgroundSchedulerMatches,
   configuredBackgroundScheduler,
@@ -22,6 +23,10 @@ test("selects only a supported deployment scheduler", () => {
   expect(backgroundSchedulerMatches("cloudflare")).toBe(false);
   process.env.NOVA_BACKGROUND_SCHEDULER = "unknown";
   expect(configuredBackgroundScheduler()).toBeNull();
+});
+
+test("serverless background notification work is kept to a small bounded batch", () => {
+  expect(backgroundNotificationBatchSize).toBe(4);
 });
 
 test("background tick accepts only the exact deployment secret", () => {

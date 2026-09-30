@@ -24,25 +24,44 @@ export function buildNotificationMessage(payload: unknown, origin: string): { su
   return { subject: subject || "NOVA notification", text: `${body || "You have a new NOVA notification."}${deepLink}` };
 }
 
-export async function processNotificationOutbox(limit = 20): Promise<number> {
+export async function runBounded<T>(
+  items: readonly T[],
+  concurrency: number,
+  processItem: (item: T) => Promise<void>,
+): Promise<void> {
+  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 10) {
+    throw new Error("NOTIFICATION_WORKER_INPUT_INVALID");
+  }
+  let next = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      await processItem(items[index]!);
+    }
+  });
+  const results = await Promise.allSettled(workers);
+  const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (failure) throw failure.reason;
+}
+
+export async function processNotificationOutbox(limit = 20, concurrency = 1): Promise<number> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 ||
+    !Number.isInteger(concurrency) || concurrency < 1 || concurrency > Math.min(10, limit)) {
+    throw new Error("NOTIFICATION_WORKER_INPUT_INVALID");
+  }
   const connection = await activeEmailConnection();
   if (!connection) return 0;
   const pool = database();
-  const claimed = await pool.query<ClaimedRow>(
-    `SELECT id, organisation_id, recipient_email, event_key, payload, attempts, lease_token
-     FROM nova.claim_notification_outbox($1, 120)`,
-    [limit],
-  );
   let processed = 0;
-  for (const row of claimed.rows) {
+
+  const processRow = async (row: ClaimedRow): Promise<void> => {
     try {
       const lease = await pool.query<{ current: boolean }>(
         `SELECT nova.notification_outbox_lease_is_current($1, $2) AS current`,
         [row.id, row.lease_token],
       );
       if (lease.rows[0]?.current !== true) {
-        processed += 1;
-        continue;
+        return;
       }
       const origin = await configuredPublicOriginForOrganisation(row.organisation_id);
       if (!origin) throw new Error("PUBLIC_ORIGIN_NOT_CONFIGURED");
@@ -65,7 +84,20 @@ export async function processNotificationOutbox(limit = 20): Promise<number> {
         [row.id, row.lease_token, status, code],
       );
     }
-    processed += 1;
+  };
+
+  while (processed < limit) {
+    // Claim only work that starts immediately. A batch that is leased but
+    // never attempted would otherwise sit unavailable until its lease expires.
+    const claimLimit = Math.min(concurrency, limit - processed);
+    const claimed = await pool.query<ClaimedRow>(
+      `SELECT id, organisation_id, recipient_email, event_key, payload, attempts, lease_token
+       FROM nova.claim_notification_outbox($1, 120)`,
+      [claimLimit],
+    );
+    if (claimed.rows.length === 0) break;
+    await runBounded(claimed.rows, concurrency, processRow);
+    processed += claimed.rows.length;
   }
   return processed;
 }
