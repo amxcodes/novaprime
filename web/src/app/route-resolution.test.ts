@@ -43,5 +43,8 @@ describe("application route resolution", () => {
     expect(WORKSPACE_ROUTE_IDS).toEqual(WORKSPACE_DESTINATION_VIEW_IDS);
     expect(WORKSPACE_DESTINATIONS.map(({ view }) => view)).toEqual(WORKSPACE_ROUTE_IDS);
     expect(resolve("/", "?view=admin")).toEqual({ kind: "workspace", view: "admin" });
+    for (const view of ["admin-organisation", "admin-availability", "admin-access", "admin-work", "admin-requests", "admin-audit"]) {
+      expect(resolve("/", `?view=${view}`)).toEqual({ kind: "workspace", view });
+    }
   });
 });

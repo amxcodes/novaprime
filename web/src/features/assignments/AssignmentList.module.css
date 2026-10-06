@@ -108,6 +108,11 @@
   container-name: assignments;
 }
 
+.loadingState {
+  display: grid;
+  gap: var(--nova-space-3);
+}
+
 .skeletonRow {
   display: grid;
   min-height: 4.5rem;

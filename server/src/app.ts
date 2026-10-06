@@ -170,7 +170,32 @@ const json = (body: unknown, status = 200) =>
     headers: { "cache-control": "no-store" },
   });
 
+/** Add safe request timing to API responses so browser tools can separate server time from network time. */
 export async function handleRequest(request: Request): Promise<Response> {
+  const startedAt = performance.now();
+  let response: Response;
+  try {
+    response = await dispatchRequest(request);
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error && typeof error.code === "string"
+      ? error.code
+      : "UNKNOWN";
+    console.error(`NOVA_REQUEST_FAILED ${request.method} ${code}`);
+    response = json({ error: "INTERNAL_ERROR" }, 500);
+  }
+  const headers = new Headers(response.headers);
+  const existingTiming = headers.get("server-timing");
+  const appTiming = `nova-app;dur=${Math.max(0, performance.now() - startedAt).toFixed(1)}`;
+  headers.set("server-timing", existingTiming ? `${existingTiming}, ${appTiming}` : appTiming);
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+async function dispatchRequest(request: Request): Promise<Response> {
   const { pathname } = new URL(request.url);
   const commandPath = pathname.startsWith("/api/")
     ? pathname.slice("/api".length)

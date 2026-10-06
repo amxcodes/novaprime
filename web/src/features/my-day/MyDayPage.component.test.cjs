@@ -37,11 +37,6 @@ function render(overrides = {}) {
       { id: "leave", presentation: "island" },
       { id: "wfh", presentation: "island" },
     ],
-    destinations: [
-      { id: "work", label: "Work", summary: "Tasks in scope." },
-      { id: "people", label: "People", summary: "Directory in scope." },
-    ],
-    onNavigate: () => {},
     onCustomize: () => {},
     ...overrides,
   };
@@ -64,36 +59,23 @@ test("renders the host-supplied module order and stable empty child-island slots
   assert.doesNotMatch(markup, /data-my-day-slot="(?:attendance|assignments|timeline)"[^>]*aria-busy/);
 });
 
-test("renders only modules and shortcuts supplied by the route host", () => {
+test("renders only modules supplied by the route host and leaves workspace routing to navigation", () => {
   const markup = render({
     modules: [{ id: "attendance", presentation: "card", title: "Attendance", description: "Today's status." }],
-    destinations: [{ id: "work", label: "Work", summary: "Tasks in scope." }],
   });
 
   assert.match(markup, /Attendance/);
   assert.doesNotMatch(markup, /My work|Today’s timeline|Request leave|WFH/);
-  assert.match(markup, /Work/);
-  assert.doesNotMatch(markup, /People/);
-});
-
-test("renders quick access destinations as shared quiet buttons with their supplied summaries", () => {
-  const markup = render({
-    modules: [],
-    destinations: [{ id: "work", label: "Work", summary: "Tasks in scope." }],
-  });
-
-  assert.match(markup, /<button[^>]*data-variant="quiet"[^>]*>/);
-  assert.match(markup, /<span[^>]*>Work<\/span><span[^>]*>Tasks in scope\.<\/span>/);
-  assert.doesNotMatch(markup, /<strong[^>]*>Work<\/strong>/);
+  assert.doesNotMatch(markup, /Quick access|People|Work/);
 });
 
 test("empty modules preserve the Customize My Day action", () => {
-  const markup = render({ modules: [], destinations: [] });
+  const markup = render({ modules: [] });
 
   assert.match(markup, /Your My Day modules are hidden\./);
   assert.match(markup, /Choose the modules you want in Settings\./);
   assert.match(markup, /Customize My Day/);
-  assert.doesNotMatch(markup, /my-day-shortcuts-heading/);
+  assert.doesNotMatch(markup, /my-day-shortcuts-heading|Quick access/);
 });
 
 test("the route mounts each independent island in the feature-owned slot", () => {
@@ -117,7 +99,6 @@ test("feature styles stay locally scoped and adapt to available page width", () 
 
   assert.doesNotMatch(css, /:global\(/);
   assert.match(css, /container: my-day-page \/ inline-size/);
-  assert.match(css, /@container my-day-page \(max-width: 60rem\)/);
   assert.match(css, /@container my-day-page \(max-width: 40rem\)/);
   assert.doesNotMatch(legacyCss, /:global\(/);
 });

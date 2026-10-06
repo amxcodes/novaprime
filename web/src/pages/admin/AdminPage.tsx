@@ -35,6 +35,9 @@ export interface AdminPageProps {
   state: AdminPageState;
   /** Already-authorized sections in the order selected by the route host. */
   sections: ReadonlyArray<AuthorizedAdminPageSection>;
+  /** Selected permission-filtered Admin area, supplied by the route host. */
+  areaTitle?: string;
+  areaDescription?: string;
   /** Optional organization/count context projected by the route host. */
   summary?: string;
   /** Partial grant-read warning; feature sections remain independently planned. */
@@ -46,16 +49,14 @@ export interface AdminPageProps {
  * commands; it supplies only feature slots that it has already authorized.
  * Feature components retain their own headings, landmarks, styles and states.
  */
-export function AdminPage({ state, sections, summary, routeWarning }: AdminPageProps) {
+export function AdminPage({ state, sections, areaTitle, areaDescription, summary, routeWarning }: AdminPageProps) {
   return (
     <section className={styles.page} aria-labelledby="admin-page-title">
       <div className={styles.content}>
         <header className={styles.header}>
-          <p className={styles.eyebrow}>Organisation administration</p>
-          <h1 id="admin-page-title" tabIndex={-1}>Admin console</h1>
-          <p className={styles.lede}>
-            Manage the real NOVA organisation, role, people, onboarding, and audit records.
-          </p>
+          <p className={styles.eyebrow}>{areaTitle || "Organisation administration"}</p>
+          <h1 id="admin-page-title" tabIndex={-1}>{areaTitle || "Admin console"}</h1>
+          <p className={styles.lede}>{areaDescription || "Manage NOVA organisation controls available to your role."}</p>
           {state.status === "ready" && summary?.trim() ? (
             <p className={styles.summary}>{summary.trim()}</p>
           ) : null}

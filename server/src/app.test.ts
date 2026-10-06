@@ -21,6 +21,7 @@ test.each(["/health", "/api/health"])(
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ service: "nova-api", status: "ok" });
+    expect(response.headers.get("server-timing")).toMatch(/^nova-app;dur=\d+(?:\.\d+)?$/);
   },
 );
 

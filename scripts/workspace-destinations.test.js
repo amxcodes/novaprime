@@ -34,13 +34,19 @@ const destinationViews = (read) =>
 
 test("registry exposes only current signed-in routes with stable labels", () => {
   expect(WORKSPACE_DESTINATION_VIEW_IDS).toEqual([
-    "today", "work", "availability", "people", "notifications", "operations", "admin", "invite", "work-setup", "settings",
+    "today", "work", "availability", "people", "notifications", "operations", "admin",
+    "admin-organisation", "admin-availability", "admin-access", "admin-work", "admin-requests", "admin-audit",
+    "invite", "work-setup", "settings",
   ]);
   expect(WORKSPACE_DESTINATIONS.map(({ label }) => label)).toEqual([
-    "My Day", "Work", "Availability", "People", "Notifications", "Operations", "Admin console", "Invite a person", "Work setup", "Settings",
+    "My Day", "Work", "Availability", "People", "Notifications", "Operations", "Admin console",
+    "Organisation", "Availability", "People and access", "Work administration", "Requests and exceptions", "Audit and delivery",
+    "Invite a person", "Work setup", "Settings",
   ]);
   expect(WORKSPACE_DESTINATIONS.map(({ group }) => group)).toEqual([
-    "My workspace", "My workspace", "My workspace", "Team operations", "My workspace", "Team operations", "Team operations", "Team operations", "Configuration", "Configuration",
+    "My workspace", "My workspace", "My workspace", "Team operations", "My workspace", "Team operations", "Team operations",
+    "Administration", "Administration", "Administration", "Administration", "Administration", "Administration",
+    "Team operations", "Configuration", "Configuration",
   ]);
 });
 

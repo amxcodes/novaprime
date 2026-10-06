@@ -19,6 +19,7 @@ import { projectNotificationDeliveryReadState } from "../src/features/notificati
 import { projectAttendancePolicySettingsProps } from "./admin-attendance-policy-route.js";
 import { projectOfficeGeofenceSettingsProps } from "../src/features/admin/office-geofence-projection.ts";
 import { projectHistoricalExceptionsReadState } from "../src/features/admin/exceptions/projection.ts";
+import { ADMIN_AREAS, sectionBelongsToAdminArea } from "../src/pages/admin/admin-areas.ts";
 
 /**
  * Admin page composition stays separate from the application router. The host
@@ -67,7 +68,7 @@ const adminFeatureImporters = {
 };
 
 /** Start only the Admin chunks justified by this server-resolved grant set. */
-export function preloadAdminPageFeatureModules(data, importers = adminFeatureImporters) {
+export function preloadAdminPageFeatureModules(data, importers = adminFeatureImporters, areaId) {
   const adminWorkVisible = canShowAdminFeature(data.actorGrants, "work");
   const adminWorkReadPlan = planAdminReads(data.actorGrants);
   const adminContextCreationVisible = adminWorkVisible && hasAnyPermissionGrant(data.actorGrants,
@@ -77,38 +78,39 @@ export function preloadAdminPageFeatureModules(data, importers = adminFeatureImp
   const adminMembershipVisible = adminWorkVisible && hasAnyPermissionGrant(data.actorGrants,
     ["clients.members.manage"], ["organisation", "client"]);
   const load = (name, authorized = true) => loadAdminFeatureModule(authorized, importers[name]);
+  const inArea = (sectionId) => !areaId || sectionBelongsToAdminArea(areaId, sectionId);
 
   return Promise.all([
     load("adminPageSections"),
-    load("roleSectionModule", canShowAdminFeature(data.actorGrants, "roles")),
-    load("roleScopeTargetsRouteModule", canShowAdminFeature(data.actorGrants, "roles")),
-    load("organizationStructureModule", canShowAdminFeature(data.actorGrants, "organisationStructure")),
-    load("availabilityConfigurationModule", canShowAdminFeature(data.actorGrants, "availabilityConfiguration")),
-    load("availabilityPickerSearchModule", canShowAdminFeature(data.actorGrants, "availabilityConfiguration")),
-    load("officeGeofenceModule", canShowAdminFeature(data.actorGrants, "geofence")),
-    load("attendancePolicyModule", canShowAdminFeature(data.actorGrants, "attendancePolicy")),
-    load("wfhPolicyOverridesModule", canShowAdminFeature(data.actorGrants, "wfhOverrides")),
-    load("wfhPolicyOverridesRouteModule", canShowAdminFeature(data.actorGrants, "wfhOverrides")),
-    load("wfhPolicyTargetSearchModule", canShowAdminFeature(data.actorGrants, "wfhOverrides")),
-    load("peopleModule", canInviteAdminPeople(data.actorGrants) || canViewAdminPeople(data.actorGrants)),
-    load("peopleRouteModule", canInviteAdminPeople(data.actorGrants) || canViewAdminPeople(data.actorGrants)),
-    load("ownerTransferModule", canShowOwnerTransfer(data.actorGrants)),
-    load("ownerTransferRouteModule", canShowOwnerTransfer(data.actorGrants)),
-    load("leaveReviewModule", canShowAdminFeature(data.actorGrants, "leaveReview")),
-    load("wfhReviewModule", canShowAdminFeature(data.actorGrants, "wfhReview")),
-    load("adminWorkModule", adminWorkVisible),
-    load("adminWorkCompositionModule", adminWorkVisible),
-    load("historicalExceptionsModule", canShowAdminFeature(data.actorGrants, "historicalExceptions")),
-    load("auditModule", canShowAdminFeature(data.actorGrants, "audit")),
-    load("notificationDeliveryModule", canShowAdminFeature(data.actorGrants, "notificationDelivery")),
-    load("adminWorkContextCreationModule", adminContextCreationVisible),
-    load("adminWorkContextCreationRouteModule", adminContextCreationVisible),
-    load("adminTaskComposerModule", adminTaskCreationVisible),
-    load("adminTaskComposerRouteModule", adminTaskCreationVisible),
-    load("adminWorkOperationsModule", adminWorkReadPlan.tasks),
-    load("adminWorkOperationsRouteModule", adminWorkReadPlan.tasks),
-    load("adminMembershipTargetsModule", adminMembershipVisible),
-    load("adminClientMembershipsRouteModule", adminMembershipVisible),
+    load("roleSectionModule", inArea("roles") && canShowAdminFeature(data.actorGrants, "roles")),
+    load("roleScopeTargetsRouteModule", inArea("roles") && canShowAdminFeature(data.actorGrants, "roles")),
+    load("organizationStructureModule", inArea("organization-structure") && canShowAdminFeature(data.actorGrants, "organisationStructure")),
+    load("availabilityConfigurationModule", inArea("availability-configuration") && canShowAdminFeature(data.actorGrants, "availabilityConfiguration")),
+    load("availabilityPickerSearchModule", inArea("availability-configuration") && canShowAdminFeature(data.actorGrants, "availabilityConfiguration")),
+    load("officeGeofenceModule", inArea("geofence") && canShowAdminFeature(data.actorGrants, "geofence")),
+    load("attendancePolicyModule", inArea("attendance-policy") && canShowAdminFeature(data.actorGrants, "attendancePolicy")),
+    load("wfhPolicyOverridesModule", inArea("wfh-overrides") && canShowAdminFeature(data.actorGrants, "wfhOverrides")),
+    load("wfhPolicyOverridesRouteModule", inArea("wfh-overrides") && canShowAdminFeature(data.actorGrants, "wfhOverrides")),
+    load("wfhPolicyTargetSearchModule", inArea("wfh-overrides") && canShowAdminFeature(data.actorGrants, "wfhOverrides")),
+    load("peopleModule", inArea("people") && (canInviteAdminPeople(data.actorGrants) || canViewAdminPeople(data.actorGrants))),
+    load("peopleRouteModule", inArea("people") && (canInviteAdminPeople(data.actorGrants) || canViewAdminPeople(data.actorGrants))),
+    load("ownerTransferModule", inArea("owner-transfer") && canShowOwnerTransfer(data.actorGrants)),
+    load("ownerTransferRouteModule", inArea("owner-transfer") && canShowOwnerTransfer(data.actorGrants)),
+    load("leaveReviewModule", inArea("leave-review") && canShowAdminFeature(data.actorGrants, "leaveReview")),
+    load("wfhReviewModule", inArea("wfh-review") && canShowAdminFeature(data.actorGrants, "wfhReview")),
+    load("adminWorkModule", inArea("work") && adminWorkVisible),
+    load("adminWorkCompositionModule", inArea("work") && adminWorkVisible),
+    load("historicalExceptionsModule", inArea("historical-exceptions") && canShowAdminFeature(data.actorGrants, "historicalExceptions")),
+    load("auditModule", inArea("audit") && canShowAdminFeature(data.actorGrants, "audit")),
+    load("notificationDeliveryModule", inArea("notification-delivery") && canShowAdminFeature(data.actorGrants, "notificationDelivery")),
+    load("adminWorkContextCreationModule", inArea("work") && adminContextCreationVisible),
+    load("adminWorkContextCreationRouteModule", inArea("work") && adminContextCreationVisible),
+    load("adminTaskComposerModule", inArea("work") && adminTaskCreationVisible),
+    load("adminTaskComposerRouteModule", inArea("work") && adminTaskCreationVisible),
+    load("adminWorkOperationsModule", inArea("work") && adminWorkReadPlan.tasks),
+    load("adminWorkOperationsRouteModule", inArea("work") && adminWorkReadPlan.tasks),
+    load("adminMembershipTargetsModule", inArea("work") && adminMembershipVisible),
+    load("adminClientMembershipsRouteModule", inArea("work") && adminMembershipVisible),
   ]);
 }
 
@@ -159,7 +161,7 @@ export function createAdminPageRoute(host) {
 
   let adminWorkContentRevision = 0;
 
-  return async function renderAdminContent(data, lifetime, preloadedFeatureModules) {
+  return async function renderAdminContent(data, lifetime, preloadedFeatureModules, areaId) {
 
   const target = getTarget();
   if (!target || !isCurrentPageRequest(lifetime)) return;
@@ -188,7 +190,7 @@ export function createAdminPageRoute(host) {
     adminTaskComposerModule, adminTaskComposerRouteModule,
     adminWorkOperationsModule, adminWorkOperationsRouteModule,
     adminMembershipTargetsModule, adminClientMembershipsRouteModule] = await (
-    preloadedFeatureModules ?? preloadAdminPageFeatureModules(data)
+    preloadedFeatureModules ?? preloadAdminPageFeatureModules(data, adminFeatureImporters, areaId)
   );
   if (!target.isConnected || !isCurrentPageRequest(lifetime) || identityEpoch !== state.identityEpoch || state.adminData !== data) return;
   const {
@@ -789,8 +791,13 @@ export function createAdminPageRoute(host) {
         );
       },
     }) : featureLoadFailure("Notification delivery"),
-  });
+  }).filter((section) => !areaId || sectionBelongsToAdminArea(areaId, section.id));
 
-  await mountAdminPage(target, lifetime, { state: { status: "ready" }, sections, summary, routeWarning });
+  const activeArea = areaId ? ADMIN_AREAS.find(({ id }) => id === areaId) : undefined;
+  await mountAdminPage(target, lifetime, {
+    state: { status: "ready" }, sections, summary, routeWarning,
+    areaTitle: activeArea?.title,
+    areaDescription: activeArea?.description,
+  });
   };
 }

@@ -21,11 +21,13 @@ describe("responsive layout contracts", () => {
     expect(shellBreakpoints).toContain("`(min-width: ${EXPANDED_NAVIGATION_MIN_WIDTH_PX}px)`");
   });
 
-  it("stacks My Day and adapts its module grid to the available page width", () => {
+  it("stacks My Day modules at compact widths after removing duplicated shortcuts", () => {
     const page = read("../my-day/MyDayPage.module.css");
-    expect(page).toMatch(/@container my-day-page\s*\(max-width:\s*60rem\)/);
-    expect(page).toMatch(/@container my-day-page\s*\(max-width:\s*40rem\)/);
-    expect(page).toContain("grid-template-columns: minmax(0, 1fr); gap: var(--nova-space-6)");
+    const composition = read("../my-day/MyDayPage.tsx");
+    expect(page).toMatch(/\.moduleGrid\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s);
+    expect(page).toMatch(/@container my-day-page\s*\(max-width:\s*40rem\)[\s\S]*?\.moduleGrid\s*\{\s*grid-template-columns: minmax\(0, 1fr\); gap: var\(--nova-space-6\);\s*\}/);
+    expect(composition).not.toContain("Quick access");
+    expect(composition).not.toContain("destinations.map");
   });
 
   it("reflows Work filters in their own containers and provides touch-sized task links", () => {

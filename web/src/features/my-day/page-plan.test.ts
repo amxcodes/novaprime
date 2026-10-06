@@ -12,14 +12,12 @@ const allReads: MyDayReadPlan = {
 
 const allModules: MyDayWorkspacePlanPreferences = {
   myDayModules: ["attendance", "assignments", "timeline", "leave", "wfh"],
-  navigationOrder: ["today", "work", "people", "settings"],
 };
 
 test("preserves user module order and current module metadata", () => {
   const plan = planMyDayPage({
     workspace: { ...allModules, myDayModules: ["wfh", "timeline", "attendance", "leave", "assignments"] },
     readPlan: allReads,
-    authorizedDestinations: [],
   });
 
   expect(plan.modules.map(({ id }) => id)).toEqual(["wfh", "timeline", "attendance", "leave", "assignments"]);
@@ -58,7 +56,6 @@ test("keeps grant/read-plan gates and personal visibility in force for mounts an
       leaveRequest: false,
       wfhRequest: false,
     },
-    authorizedDestinations: [],
   });
 
   expect(plan.modules.map(({ id }) => id)).toEqual(["attendance"]);
@@ -76,7 +73,6 @@ test("keeps grant/read-plan gates and personal visibility in force for mounts an
       leaveRequest: false,
       wfhRequest: false,
     },
-    authorizedDestinations: [],
   });
   expect(denied.modules).toEqual([]);
   expect(denied.mounts).toEqual({ attendance: false, assignments: false, timeline: false, leave: false, wfh: false });
@@ -85,32 +81,13 @@ test("keeps grant/read-plan gates and personal visibility in force for mounts an
   const personalized = planMyDayPage({
     workspace: { ...allModules, myDayModules: ["attendance", "assignments", "timeline", "leave", "wfh"] },
     readPlan: { ...allReads, attendanceActionContext: false },
-    authorizedDestinations: [],
   });
   expect(personalized.mounts).toEqual({ attendance: true, assignments: true, timeline: true, leave: true, wfh: true });
   const hidden = planMyDayPage({
     workspace: { ...allModules, myDayModules: ["assignments"] },
     readPlan: allReads,
-    authorizedDestinations: [],
   });
   expect(hidden.modules.map(({ id }) => id)).toEqual(["assignments"]);
   expect(hidden.mounts).toEqual({ attendance: false, assignments: true, timeline: false, leave: false, wfh: false });
   expect(hidden.reads).toEqual({ attendance: false, assignments: true, timeline: false, leave: false, wfh: false });
-});
-
-test("uses authorized destinations only and preserves saved destination order", () => {
-  const plan = planMyDayPage({
-    workspace: { ...allModules, navigationOrder: ["today", "people", "work", "settings"] },
-    readPlan: allReads,
-    authorizedDestinations: [
-      { view: "work", label: "Work", summary: "Tasks in scope." },
-      { view: "today", label: "My Day", summary: "Current day." },
-      { view: "people", label: "People", summary: "People in scope." },
-    ],
-  });
-
-  expect(plan.destinations).toEqual([
-    { id: "people", label: "People", summary: "People in scope." },
-    { id: "work", label: "Work", summary: "Tasks in scope." },
-  ]);
 });

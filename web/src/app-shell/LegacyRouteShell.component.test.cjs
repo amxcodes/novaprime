@@ -60,7 +60,6 @@ test("keeps the existing route mount targets and status copy as fixed React elem
   const app = fs.readFileSync(path.join(__dirname, "../../app.js"), "utf8");
   for (const [id, view] of [
     ["settings-page-root", "settings"],
-    ["admin-console", "admin"],
     ["invite-page-root", "invite"],
     ["notifications-root", "notifications"],
     ["my-day-page-root", "today"],
@@ -70,6 +69,7 @@ test("keeps the existing route mount targets and status copy as fixed React elem
   ]) {
     assert.ok(app.includes(`renderShell(createElement("div", { id: "${id}" }), "${view}")`), `${view} mount target remains in its shell`);
   }
+  assert.match(app, /renderShell\(createElement\("div", \{ id: "admin-console" \}\), area\.view\)/);
 
   assert.match(app, /id: "availability-content"[\s\S]*?Loading Availability agenda…/);
   assert.match(app, /id: "operations-board"[\s\S]*?Loading Operations reports…/);

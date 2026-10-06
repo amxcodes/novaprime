@@ -12,9 +12,9 @@ test("the application host delegates Admin composition with its identity, API, c
   assert.match(appSource, /const adminPageRoute = createAdminPageRoute\(\{[\s\S]*?state,[\s\S]*?isCurrentPageRequest,[\s\S]*?api,[\s\S]*?runAdminProtectedCommand,/);
   assert.match(appSource, /const adminPageRoute = createAdminPageRoute\(\{[\s\S]*?mountAdminPage,/);
   assert.match(appSource, /const adminPageRoute = createAdminPageRoute\(\{[\s\S]*?showFeedback,\s*renderAdmin,/);
-  assert.match(appSource, /async function renderAdminContent\(data, lifetime, preloadedFeatureModules\) \{\s*return adminPageRoute\(data, lifetime, preloadedFeatureModules\);\s*\}/);
-  assert.match(appSource, /onEffectiveGrantsResolved: \(actorGrants\) => \{\s*preloadedFeatureModules = preloadAdminPageFeatureModules\(\{ actorGrants \}\);/);
-  assert.match(appSource, /await renderAdminContent\(state\.adminData, lifetime, preloadedFeatureModules\)/);
+  assert.match(appSource, /async function renderAdminContent\(data, lifetime, preloadedFeatureModules, areaId\) \{\s*return adminPageRoute\(data, lifetime, preloadedFeatureModules, areaId\);\s*\}/);
+  assert.match(appSource, /onEffectiveGrantsResolved: \(actorGrants\) => \{\s*preloadedFeatureModules = preloadAdminPageFeatureModules\(\{ actorGrants \}, undefined, areaId\);/);
+  assert.match(appSource, /await renderAdminContent\(state\.adminData, lifetime, preloadedFeatureModules, areaId\)/);
   assert.doesNotMatch(appSource, /async function renderAdminContent\(data, lifetime\)[\s\S]*?buildAuthorizedAdminPageSections/);
 });
 
@@ -43,11 +43,11 @@ test("Admin feature and route chunks are imported only when their corresponding 
       `${name}: \\(\\) => import\\("[^"]*${module}"\\)`,
     ), `${module} must stay behind ${capability}`);
     assert.match(routeSource, new RegExp(
-      `load\\("${name}", canShowAdminFeature\\(data\\.actorGrants, "${capability}"\\)\\)`,
+      `load\\("${name}", inArea\\("[^"]+"\\) && canShowAdminFeature\\(data\\.actorGrants, "${capability}"\\)\\)`,
     ), `${name} must start only for ${capability}`);
   }
   assert.match(routeSource, /peopleModule: \(\) => import\("\.\.\/src\/features\/admin\/PeopleAdministrationSection\.tsx"\)/);
-  assert.match(routeSource, /load\("peopleModule", canInviteAdminPeople\(data\.actorGrants\) \|\| canViewAdminPeople\(data\.actorGrants\)\)/);
+  assert.match(routeSource, /load\("peopleModule", inArea\("people"\) && \(canInviteAdminPeople\(data\.actorGrants\) \|\| canViewAdminPeople\(data\.actorGrants\)\)\)/);
   assert.match(routeSource, /if \(!authorized\) return Promise\.resolve\(null\)/);
   assert.match(routeSource, /featureLoadFailure\("Office geofencing"\)/);
   assert.match(routeSource, /featureLoadFailure\("Attendance policy"\)/);

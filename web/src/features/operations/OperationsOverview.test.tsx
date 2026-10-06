@@ -135,6 +135,12 @@ describe("OperationsOverview grant-scoped reports", () => {
     expect(markup).toContain("Download this task page CSV");
     expect(css).toMatch(/@container\s+operations-overview\s*\(max-width:\s*60rem\)/);
     expect(css).toContain("content: attr(data-label)");
+    const compactRowsStart = css.indexOf("@container operations-overview (max-width: 60rem)");
+    const desktopTableStyles = css.slice(0, compactRowsStart);
+    const compactTableStyles = extractBlock(css, compactRowsStart);
+    expect(desktopTableStyles).not.toContain(".table td::before");
+    expect(compactTableStyles).toMatch(/\.table thead\s*\{[^}]*position:\s*absolute/);
+    expect(compactTableStyles).toMatch(/\.table td::before\s*\{[^}]*content:\s*attr\(data-label\)/);
     expect(css).toContain("overflow-wrap: anywhere");
     expect(css).toContain(".taskRow { grid-template-columns: minmax(0, 1fr); }");
     expect(css).toMatch(/\.panel \.panelHeading\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) auto/);

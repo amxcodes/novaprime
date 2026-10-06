@@ -113,6 +113,17 @@ test("Figma highlight pebble, focus underline, disabled treatment, and high-cont
   assert.doesNotMatch(css, /\.button:disabled\s*\{[^}]*opacity:/s);
 });
 
+test("button motion stays restrained and stops for reduced-motion users", () => {
+  const css = fs.readFileSync(require.resolve("./Button.module.css"), "utf8");
+  const base = css.match(/\.button\s*\{([^}]+)\}/)?.[1] ?? "";
+  const reducedMotionCss = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"), css.indexOf("@media (forced-colors: active)"));
+
+  assert.match(base, /transform var\(--nova-motion-duration-fast\) var\(--nova-motion-ease-standard\)/);
+  assert.match(css, /\.button:hover:not\(:disabled\)\s*\{\s*transform:\s*translateY\(-1px\)/);
+  assert.match(css, /\.button:active:not\(:disabled\)\s*\{\s*transform:\s*scale\(0\.98\)/);
+  assert.match(reducedMotionCss, /\.button:hover:not\(:disabled\),\s*\.button:active:not\(:disabled\)\s*\{\s*transform:\s*none/);
+});
+
 test("coarse-pointer sizing keeps compact and icon buttons at the touch target token", () => {
   const css = fs.readFileSync(require.resolve("./Button.module.css"), "utf8");
   const coarsePointerCss = css.slice(css.indexOf("@media (any-pointer: coarse)"));

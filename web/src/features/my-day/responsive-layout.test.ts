@@ -6,38 +6,19 @@ const leaveStyles = readFileSync(new URL("./LeaveRequestPanel.module.css", impor
 const foundationTokens = readFileSync(new URL("../../design-system/foundations/tokens.css", import.meta.url), "utf8");
 
 describe("My Day page layout", () => {
-  it("owns its page, module, and shortcut presentation with CSS module selectors", () => {
+  it("owns its page and module presentation with CSS module selectors", () => {
     expect(styles).toContain(".page {");
     expect(styles).toContain(".moduleGrid {");
-    expect(styles).toContain(".shortcuts {");
-    expect(styles).toContain(".shortcutGrid {");
+    expect(styles).not.toContain(".shortcuts");
     expect(styles).not.toContain(":global(");
   });
 
-  it("leaves shortcut button visuals to the shared Button and controls only layout", () => {
-    const shortcut = styles.match(/\.shortcut\s*\{([^}]*)\}/)?.[1] ?? "";
-    const shortcutContent = styles.match(/\.shortcut > span:first-child\s*\{([^}]*)\}/)?.[1] ?? "";
+  it("does not render workspace-page quick links duplicated by the permission-filtered sidebar", () => {
+    const component = readFileSync(new URL("./MyDayPage.tsx", import.meta.url), "utf8");
 
-    expect(shortcut).toContain("width: 100%");
-    expect(shortcut).toContain("min-width: 0");
-    expect(shortcut).toContain("min-height: var(--nova-control-touch-target)");
-    expect(shortcut).toContain("white-space: normal");
-    expect(shortcutContent).toContain("display: grid");
-    expect(shortcutContent).toContain("white-space: normal");
-    const visualOverrides = /\b(?:appearance|border(?:-[\w-]+)?|background(?:-[\w-]+)?|color|font(?:-[\w-]+)?|box-shadow|outline(?:-[\w-]+)?|transform|transition)\s*:/;
-    expect(shortcut).not.toMatch(visualOverrides);
-    expect(shortcutContent).not.toMatch(visualOverrides);
-    expect(styles).not.toContain(".shortcut:hover");
-    expect(styles).not.toContain(".shortcut:active");
-    expect(styles).not.toContain(".shortcut:focus-visible");
-    expect(styles).toContain("overflow-wrap: anywhere");
-    expect(styles).toContain("var(--nova-control-touch-target)");
-    expect(styles).toContain("@media (forced-colors: active)");
-  });
-
-  it("reflows shortcut actions to two columns on tablet and one on phone", () => {
-    expect(styles).toMatch(/@container my-day-page\s*\(max-width:\s*60rem\)[\s\S]*?\.shortcutGrid \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/);
-    expect(styles).toMatch(/@container my-day-page\s*\(max-width:\s*40rem\)[\s\S]*?\.shortcutGrid \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+    expect(component).not.toContain("Quick access");
+    expect(component).not.toContain("destinations.map");
+    expect(styles).not.toContain(".shortcut");
     expect(styles).toMatch(/@container my-day-page\s*\(max-width:\s*40rem\)[\s\S]*?\.moduleGrid \{ grid-template-columns: minmax\(0, 1fr\);/);
   });
 

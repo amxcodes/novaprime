@@ -29,8 +29,7 @@ function ModuleSlot({ module }: { module: MyDayModule }) {
   );
 }
 
-export function MyDayPage({ modules, destinations, onNavigate, onCustomize }: MyDayPageProps) {
-  const hasShortcuts = destinations.length > 0;
+export function MyDayPage({ modules, onCustomize }: MyDayPageProps) {
   return (
     <section className={styles.page} aria-labelledby="my-day-page-title">
       <div className={styles.content}>
@@ -42,44 +41,20 @@ export function MyDayPage({ modules, destinations, onNavigate, onCustomize }: My
 
         <p id="feedback" className="notice" role="status" hidden />
 
-        <div className={[styles.layout, hasShortcuts ? "" : styles.layoutSingleColumn].filter(Boolean).join(" ")}>
-          <section className={styles.main} aria-label="My Day modules">
-            {modules.length ? (
-              <div className={styles.moduleGrid}>
-                {modules.map((module) => <ModuleSlot key={module.id} module={module} />)}
-              </div>
-            ) : (
-              <EmptyState
-                className={styles.emptyState}
-                title="Your My Day modules are hidden."
-                description="Choose the modules you want in Settings."
-                action={<Button variant="secondary" onClick={onCustomize}>Customize My Day</Button>}
-              />
-            )}
-          </section>
-
-          {hasShortcuts ? (
-            <aside className={styles.shortcuts} aria-labelledby="my-day-shortcuts-heading">
-              <header className={styles.shortcutsHeader}>
-                <h2 id="my-day-shortcuts-heading">Quick access</h2>
-                <p>Only workspace pages available to your account are listed.</p>
-              </header>
-              <div className={styles.shortcutGrid} role="group" aria-label="Available workspace pages">
-                {destinations.map((destination) => (
-                  <Button
-                    className={styles.shortcut}
-                    variant="quiet"
-                    key={destination.id}
-                    onClick={() => onNavigate(destination.id)}
-                  >
-                    <span className={styles.shortcutTitle}>{destination.label}</span>
-                    <span className={styles.shortcutSummary}>{destination.summary}</span>
-                  </Button>
-                ))}
-              </div>
-            </aside>
-          ) : null}
-        </div>
+        <section className={styles.main} aria-label="My Day modules">
+          {modules.length ? (
+            <div className={styles.moduleGrid}>
+              {modules.map((module) => <ModuleSlot key={module.id} module={module} />)}
+            </div>
+          ) : (
+            <EmptyState
+              className={styles.emptyState}
+              title="Your My Day modules are hidden."
+              description="Choose the modules you want in Settings."
+              action={<Button variant="secondary" onClick={onCustomize}>Customize My Day</Button>}
+            />
+          )}
+        </section>
       </div>
     </section>
   );

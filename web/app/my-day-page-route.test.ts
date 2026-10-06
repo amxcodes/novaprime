@@ -46,7 +46,7 @@ function harness(options: {
   const routePromise = mountMyDayPageRoute({
     actorGrants: { actorPersonId: "person-1", grants },
     getActorGrants: () => ({ actorPersonId: "person-1", grants }),
-    workspace: { myDayModules: modules, navigationOrder: ["work"] },
+    workspace: { myDayModules: modules },
     lifetime,
     pageRoot,
     findModuleTarget: (id) => targets[id] ?? null,

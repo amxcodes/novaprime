@@ -48,15 +48,6 @@
 .content > #feedback:empty { display: none; }
 .content > #feedback { margin: 0; }
 
-.layout {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.34fr);
-  align-items: start;
-  gap: var(--nova-space-8);
-}
-
-.layoutSingleColumn { grid-template-columns: minmax(0, 1fr); }
 .main { min-width: 0; }
 
 .moduleGrid {
@@ -129,85 +120,8 @@
   text-align: start;
 }
 
-.shortcuts {
-  display: grid;
-  min-width: 0;
-  align-content: start;
-  gap: var(--nova-space-3);
-  padding-inline-start: var(--nova-space-5);
-  border-inline-start: 1px solid var(--nova-color-border);
-}
-
-.shortcutsHeader { display: grid; min-width: 0; gap: var(--nova-space-1); }
-
-.shortcutsHeader h2 {
-  margin: 0;
-  color: var(--nova-color-text-primary);
-  font-size: var(--nova-type-size-md);
-}
-
-.shortcutsHeader p {
-  margin: 0;
-  color: var(--nova-color-text-secondary);
-  font-size: var(--nova-type-size-sm);
-  line-height: var(--nova-type-line-normal);
-}
-
-.shortcutGrid {
-  display: grid;
-  min-width: 0;
-  gap: var(--nova-space-2);
-}
-
-button.shortcut {
-  width: 100%;
-  min-width: 0;
-  min-height: var(--nova-control-touch-target);
-  text-align: start;
-  white-space: normal;
-}
-
-.shortcut > span:first-child {
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  align-content: center;
-  justify-items: start;
-  gap: var(--nova-space-1);
-  text-align: start;
-  white-space: normal;
-}
-
-.shortcutTitle {
-  min-width: 0;
-  color: var(--nova-color-text-primary);
-  font-size: var(--nova-type-size-control-label);
-  font-weight: var(--nova-type-weight-medium);
-  line-height: var(--nova-type-line-control);
-  overflow-wrap: anywhere;
-}
-
-.shortcutSummary {
-  min-width: 0;
-  color: var(--nova-color-text-secondary);
-  font-size: var(--nova-type-size-detail);
-  font-weight: var(--nova-type-weight-regular);
-  line-height: var(--nova-type-line-normal);
-  overflow-wrap: anywhere;
-}
-
 .emptyState { min-width: 0; }
 .islandSlot { display: contents; }
-
-@container my-day-page (max-width: 60rem) {
-  .layout { grid-template-columns: minmax(0, 1fr); }
-  .shortcuts {
-    padding: var(--nova-space-4) 0 0;
-    border-block-start: 1px solid var(--nova-color-border);
-    border-inline-start: 0;
-  }
-  .shortcutGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 
 @container my-day-page (max-width: 40rem) {
   .content { gap: var(--nova-space-6); }
@@ -217,11 +131,9 @@ button.shortcut {
   .module[data-my-day-module="assignments"] { grid-column: auto; }
   .moduleHeader { align-items: flex-start; flex-direction: column; }
   .moduleHeader p { margin-inline-start: 0; text-align: start; }
-  .shortcutGrid { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (forced-colors: active) {
   .header,
-  .moduleHeader,
-  .shortcuts { border-color: CanvasText; }
+  .moduleHeader { border-color: CanvasText; }
 }

@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { resolveApplicationRoute } from "./src/app/route-resolution.ts";
 import { createAdminPageRoute, preloadAdminPageFeatureModules } from "./app/admin-page-route.js";
+import { adminAreaForView } from "./src/pages/admin/admin-areas.ts";
 import { createMyDayRequestRoute } from "./app/my-day-request-route.js";
 import { mountMyDayPageRoute } from "./app/my-day-page-route.ts";
 import { createWorkSetupRoute } from "./app/work-setup-route.js";
@@ -1910,15 +1911,21 @@ function downloadCsv(filename, headers, rows) {
   setTimeout(() => URL.revokeObjectURL(link.href), 0);
 }
 
-function renderAdmin(lifetime) {
+function renderAdmin(lifetime, requestedView) {
   lifetime = lifetime || beginPageRequestLifetime();
-  renderShell(createElement("div", { id: "admin-console" }), "admin");
+  requestedView = requestedView || state.view || routeView() || "admin";
+  const area = adminAreaForView(requestedView, state.actorGrants);
+  if (!area) {
+    renderUnavailableView(requestedView);
+    return;
+  }
+  renderShell(createElement("div", { id: "admin-console" }), area.view);
   const target = app.querySelector("#admin-console");
   const pageReady = target
     ? mountAdminPage(target, lifetime, { state: { status: "loading" }, sections: [] })
     : Promise.resolve(false);
   showFeedback();
-  void loadAdmin(lifetime, pageReady);
+  void loadAdmin(lifetime, pageReady, area.id);
 }
 
 async function mountAdminPage(target, lifetime, props) {
@@ -1945,7 +1952,7 @@ async function mountAdminPage(target, lifetime, props) {
   return true;
 }
 
-async function loadAdmin(lifetime, pageReady) {
+async function loadAdmin(lifetime, pageReady, areaId) {
   let stage = "load-module";
   let preloadedFeatureModules;
   try {
@@ -1956,8 +1963,9 @@ async function loadAdmin(lifetime, pageReady) {
       readOrError,
       skippedAdminRead,
       isCurrentPageRequest,
+      areaId,
       onEffectiveGrantsResolved: (actorGrants) => {
-        preloadedFeatureModules = preloadAdminPageFeatureModules({ actorGrants });
+        preloadedFeatureModules = preloadAdminPageFeatureModules({ actorGrants }, undefined, areaId);
         // The route still awaits this same promise after the read batch. Attach
         // a handler now so an early chunk failure cannot become unhandled.
         void preloadedFeatureModules.catch(() => {});
@@ -1966,7 +1974,7 @@ async function loadAdmin(lifetime, pageReady) {
     if (!adminData || !isCurrentPageRequest(lifetime)) return;
     state.adminData = adminData;
     stage = "compose-page";
-    await renderAdminContent(state.adminData, lifetime, preloadedFeatureModules);
+    await renderAdminContent(state.adminData, lifetime, preloadedFeatureModules, areaId);
   } catch (error) {
     if (!isCurrentPageRequest(lifetime)) return;
     const diagnostic = {
@@ -1986,8 +1994,8 @@ async function loadAdmin(lifetime, pageReady) {
   }
 }
 
-async function renderAdminContent(data, lifetime, preloadedFeatureModules) {
-  return adminPageRoute(data, lifetime, preloadedFeatureModules);
+async function renderAdminContent(data, lifetime, preloadedFeatureModules, areaId) {
+  return adminPageRoute(data, lifetime, preloadedFeatureModules, areaId);
 }
 function adminFeatureReadError(result, resource) {
   if (!result?.readError) return null;
@@ -3569,7 +3577,7 @@ function render() {
   if (view === "people") return renderPeople(lifetime);
   if (view === "notifications") return renderNotifications(lifetime);
   if (view === "invite") return renderInvite(lifetime);
-  if (view === "admin") return renderAdmin(lifetime);
+  if (view === "admin" || adminAreaForView(view, state.actorGrants)) return renderAdmin(lifetime, view);
   return renderSettings(lifetime);
 }
 

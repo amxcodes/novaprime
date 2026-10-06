@@ -11,11 +11,12 @@ function createImporters(calls: string[]) {
   }) as Record<string, () => Promise<{ module: string }>>;
 }
 
-function createServices(actorGrants: Record<string, unknown>, options: { current?: () => boolean } = {}) {
+function createServices(actorGrants: Record<string, unknown>, options: { current?: () => boolean; areaId?: "organisation" | "availability" | "access" | "work" | "requests" | "audit" } = {}) {
   const requests: string[] = [];
   return {
     requests,
     services: {
+      areaId: options.areaId,
       pageApi: async (path: string) => {
         requests.push(path);
         if (path === "/api/me/permission-grants") return actorGrants;
@@ -136,6 +137,58 @@ describe("Admin page route data", () => {
     expect(data?.offices.requiredPermission).toBe("organisation.settings.manage");
     expect(data?.departments.requiredPermission).toBe("organisation.settings.manage");
     expect(data?.people.requiredPermission).toBe("people.view");
+  });
+
+  it("loads only the selected availability area's endpoints", async () => {
+    const { requests, services } = createServices({ grants: [
+      { permissionKey: "availability.calendar.view", scope: "organisation" },
+      { permissionKey: "availability.shift.view", scope: "organisation" },
+    ] });
+    services.areaId = "availability";
+
+    const data = await loadAdminPageData("page-1", Promise.resolve(true), services);
+
+    expect(requests).toEqual(["/api/me/permission-grants", "/api/availability/config"]);
+    expect(data?.offices.readError).toBe("PREREQUISITE_PERMISSION_REQUIRED");
+    expect(data?.roles.readState).toBe("not-requested");
+    expect(data?.leavePending.readState).toBe("not-requested");
+  });
+
+  it("loads only the selected access area's grant-justified role dependencies", async () => {
+    const { requests, services } = createServices({ grants: [
+      { permissionKey: "roles.view", scope: "organisation" },
+    ] });
+    services.areaId = "access";
+
+    await loadAdminPageData("page-1", Promise.resolve(true), services);
+
+    expect(requests).toEqual([
+      "/api/me/permission-grants", "/api/permissions", "/api/roles",
+    ]);
+  });
+
+  it("does not fetch the People directory when people.view is used only for the Audit area", async () => {
+    const { requests, services } = createServices({ grants: [
+      { permissionKey: "people.view", scope: "organisation" },
+    ] });
+    services.areaId = "audit";
+
+    await loadAdminPageData("page-1", Promise.resolve(true), services);
+
+    expect(requests).toEqual(["/api/me/permission-grants", "/api/audit-events?limit=50"]);
+  });
+
+  it("preloads only the selected area's authorized feature chunks", async () => {
+    const imports: string[] = [];
+    await preloadAdminPageFeatureModules({ actorGrants: { grants: [
+      { permissionKey: "availability.calendar.view", scope: "organisation" },
+      { permissionKey: "roles.view", scope: "organisation" },
+    ] } }, createImporters(imports), "availability");
+
+    expect(imports).toContain("availabilityConfigurationModule");
+    expect(imports).not.toContain("roleSectionModule");
+    expect(imports).not.toContain("peopleModule");
+    expect(imports).not.toContain("adminWorkModule");
   });
 
   it("does not read after the page lifetime becomes stale", async () => {

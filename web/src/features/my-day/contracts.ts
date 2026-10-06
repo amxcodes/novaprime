@@ -16,18 +16,8 @@ export interface MyDayIslandModule {
 
 export type MyDayModule = MyDayCardModule | MyDayIslandModule;
 
-/** Only destinations already filtered by the host's current grant plan belong here. */
-export interface MyDayDestination {
-  id: string;
-  label: string;
-  summary: string;
-}
-
 export interface MyDayPageProps {
   /** Ordered, authorized modules. The component does not infer grants or preferences. */
   modules: readonly MyDayModule[];
-  /** Ordered, authorized workspace destinations, excluding My Day itself. */
-  destinations: readonly MyDayDestination[];
-  onNavigate: (destinationId: string) => void;
   onCustomize: () => void;
 }

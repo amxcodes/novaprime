@@ -69,7 +69,8 @@ describe("capability composition across routes, Admin sections, and feature read
       isSuperAdmin: true,
       grants: [{ permissionKey: "people.view", scope: "organisation" }],
     };
-    expect(visibleViews(read)).toContain("admin");
+    expect(visibleViews(read)).toContain("admin-access");
+    expect(visibleViews(read)).not.toContain("admin");
     expect(canAccessWorkspaceDestination("admin", read)).toBe(true);
     expect(visibleAdminSections(read)).toContain("owner-transfer");
     expect(enabledKeys(planAdminReads(read))).toContain("people");
@@ -102,7 +103,7 @@ describe("capability composition across routes, Admin sections, and feature read
         grants: [{ permissionKey, scope: "organisation" }],
       };
       expect(resolveWorkspaceHome(read), `${name} should land on ${home}`).toBe(home);
-      expect(visibleViews(read)).toContain(home);
+      expect(visibleViews(read)).toContain(home === "admin" ? "admin-access" : home);
       expect(canAccessWorkspaceDestination(home, read)).toBe(true);
     }
   });
@@ -120,9 +121,9 @@ describe("capability composition across routes, Admin sections, and feature read
     };
 
     expect(visibleViews(read)).toEqual([
-      "work", "availability", "people", "notifications", "operations", "admin", "settings",
+      "work", "availability", "people", "notifications", "operations", "admin-requests", "settings",
     ]);
-    expectDirectRoutes(read, ["work", "availability", "people", "operations", "admin"], ["today", "invite", "work-setup"]);
+    expectDirectRoutes(read, ["work", "availability", "people", "operations", "admin-requests"], ["today", "invite", "work-setup", "admin-access"]);
     expect(visibleAdminSections(read)).toEqual(["leave-review", "wfh-review"]);
 
     expect(enabledKeys(planAdminReads(read))).toEqual(["leavePending", "wfhPending"]);

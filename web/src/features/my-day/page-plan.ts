@@ -1,8 +1,7 @@
-import type { MyDayModule, MyDayModuleId, MyDayDestination } from "./contracts";
+import type { MyDayModule, MyDayModuleId } from "./contracts";
 
 export interface MyDayWorkspacePlanPreferences {
   myDayModules: readonly MyDayModuleId[];
-  navigationOrder: readonly string[];
 }
 
 /** Read eligibility already derived from the server's effective-grant read. */
@@ -15,13 +14,6 @@ export interface MyDayReadPlan {
   wfhRequest: boolean;
 }
 
-/** Destinations must be filtered by the host's current authorized destination resolver. */
-export interface AuthorizedMyDayDestination {
-  view: string;
-  label: string;
-  summary: string;
-}
-
 export interface MyDayPagePlan {
   /** Metadata lookup for route-owned child islands. */
   moduleById: Readonly<Record<MyDayModuleId, MyDayModule | null>>;
@@ -30,23 +22,18 @@ export interface MyDayPagePlan {
   /** These flags are the only modules the host may mount or read for this page. */
   mounts: Readonly<Record<MyDayModuleId, boolean>>;
   reads: Readonly<Record<MyDayModuleId, boolean>>;
-  /** Authorized destinations, excluding My Day and in saved navigation order. */
-  destinations: readonly MyDayDestination[];
 }
 
 /**
  * Plan the My Day composition from normalized user preferences and the current
- * grant/read hints. It contains no transport or authorization logic; callers
- * provide destinations only after the shared host resolver has authorized them.
+ * grant/read hints. It contains no transport or authorization logic.
  */
 export function planMyDayPage({
   workspace,
   readPlan,
-  authorizedDestinations,
 }: {
   workspace: MyDayWorkspacePlanPreferences;
   readPlan: MyDayReadPlan;
-  authorizedDestinations: readonly AuthorizedMyDayDestination[];
 }): MyDayPagePlan {
   const enabledModules = new Set(workspace.myDayModules);
   const attendanceVisible = enabledModules.has("attendance") &&
@@ -88,11 +75,5 @@ export function planMyDayPage({
   // My Day's current child features read as part of mounting. Keeping this
   // explicit makes it harder for hidden modules to acquire route read work.
   const reads = { ...mounts };
-  const destinations = authorizedDestinations
-    .filter(({ view }) => view !== "today")
-    .slice()
-    .sort((left, right) => workspace.navigationOrder.indexOf(left.view) - workspace.navigationOrder.indexOf(right.view))
-    .map(({ view, label, summary }) => ({ id: view, label, summary }));
-
-  return { moduleById, modules, mounts, reads, destinations };
+  return { moduleById, modules, mounts, reads };
 }

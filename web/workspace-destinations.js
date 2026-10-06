@@ -8,6 +8,7 @@ import {
   canShowWorkNavigation,
   canShowWorkSetupNavigation,
 } from "./admin-read-state.js";
+import { canShowAdminArea } from "./src/pages/admin/admin-areas.ts";
 import { isCollaborationRequestId, readFocusedCollaborationRequest } from "./app/work-route.js";
 import { WORKSPACE_ROUTE_IDS } from "./src/app/route-resolution.ts";
 
@@ -47,8 +48,33 @@ export const WORKSPACE_DESTINATIONS = Object.freeze([
   }),
   Object.freeze({
     view: "admin", label: "Admin console", summary: "Organization controls available under your access.", group: "Team operations", requiresResolvedGrants: true,
+    navigation: false,
     homePriority: 6,
     canAccess: canShowAdminNavigation,
+  }),
+  Object.freeze({
+    view: "admin-organisation", label: "Organisation", summary: "Organisation structure and attendance policy.", group: "Administration", requiresResolvedGrants: true,
+    canAccess: (read) => canShowAdminArea(read, "organisation"),
+  }),
+  Object.freeze({
+    view: "admin-availability", label: "Availability", summary: "Working calendars, shifts, holidays, and WFH policy.", group: "Administration", requiresResolvedGrants: true,
+    canAccess: (read) => canShowAdminArea(read, "availability"),
+  }),
+  Object.freeze({
+    view: "admin-access", label: "People and access", summary: "People administration, roles, and ownership controls.", group: "Administration", requiresResolvedGrants: true,
+    canAccess: (read) => canShowAdminArea(read, "access"),
+  }),
+  Object.freeze({
+    view: "admin-work", label: "Work administration", summary: "Client work and task controls.", group: "Administration", requiresResolvedGrants: true,
+    canAccess: (read) => canShowAdminArea(read, "work"),
+  }),
+  Object.freeze({
+    view: "admin-requests", label: "Requests and exceptions", summary: "Leave, WFH, and exception review.", group: "Administration", requiresResolvedGrants: true,
+    canAccess: (read) => canShowAdminArea(read, "requests"),
+  }),
+  Object.freeze({
+    view: "admin-audit", label: "Audit and delivery", summary: "Audit events and notification delivery.", group: "Administration", requiresResolvedGrants: true,
+    canAccess: (read) => canShowAdminArea(read, "audit"),
   }),
   Object.freeze({
     view: "invite", label: "Invite a person", summary: "Invite someone to NOVA with an assigned role.", group: "Team operations", requiresResolvedGrants: true,
@@ -114,8 +140,8 @@ export function canAccessWorkspaceDestination(view, read, routeParams) {
 }
 
 export function getVisibleWorkspaceDestinations(read) {
-  return WORKSPACE_DESTINATIONS.filter(({ view }) =>
-    canAccessWorkspaceDestination(view, read),
+  return WORKSPACE_DESTINATIONS.filter(({ view, navigation }) =>
+    navigation !== false && canAccessWorkspaceDestination(view, read),
   );
 }
 

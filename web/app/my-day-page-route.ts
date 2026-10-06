@@ -1,7 +1,7 @@
 import type { ComponentType } from "react";
 import { createMyDayAttendanceActionRoute } from "./my-day-attendance-actions-route.ts";
 import { adminReadIssue, planMyDayReads, planTodayFeatures, readOrError } from "../admin-read-state.js";
-import { canAccessWorkspaceDestination, getVisibleWorkspaceDestinations } from "../workspace-destinations.js";
+import { canAccessWorkspaceDestination } from "../workspace-destinations.js";
 import { planMyDayPage } from "../src/features/my-day/page-plan.ts";
 import type { MyDayPageProps } from "../src/features/my-day/contracts.ts";
 import type {
@@ -82,14 +82,11 @@ export async function mountMyDayPageRoute(services: HostServices): Promise<void>
   const myDayPlan = planMyDayPage({
     workspace,
     readPlan,
-    authorizedDestinations: getVisibleWorkspaceDestinations(actorGrants),
   });
 
   if (!isCurrentPageRequest(lifetime) || !pageRoot) return;
   mountReactIsland(pageRoot, MyDayPage, {
     modules: myDayPlan.modules,
-    destinations: myDayPlan.destinations,
-    onNavigate: (destinationId) => go(destinationId),
     onCustomize: () => go("settings"),
   });
   showFeedback();

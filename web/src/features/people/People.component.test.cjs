@@ -273,10 +273,11 @@ test("people layouts adapt to feature width rather than the browser viewport", (
   assert.match(desktop, /\.personName\s*\{[^}]*font-size:\s*var\(--nova-type-size-body\)[^}]*font-weight:\s*var\(--nova-type-weight-medium\)/s);
   assert.match(desktop, /\.personMeta\s*\{[^}]*font-size:\s*var\(--nova-type-size-xs\)[^}]*font-weight:\s*var\(--nova-type-weight-regular\)/s);
   assert.match(desktop, /\.personRole\s*\{[^}]*font-weight:\s*var\(--nova-type-weight-regular\)/s);
-  assert.match(desktop, /\.workDetailPrimary\s*\{[^}]*font-size:\s*var\(--nova-type-size-sm\)[^}]*font-weight:\s*var\(--nova-type-weight-regular\)/s);
+  assert.match(desktop, /\.workDetailPrimary\s*\{[^}]*font-size:\s*var\(--nova-type-size-body\)[^}]*font-weight:\s*var\(--nova-type-weight-regular\)/s);
   assert.match(desktop, /\.openPersonAction\s*\{[^}]*inline-size:\s*8\.25rem/s);
   assert.doesNotMatch(desktop.match(/\.openPersonAction\s*\{[^}]*\}/s)?.[0] || "", /font-size:/);
   assert.match(desktop, /\.personIdentity\s*\{[^}]*display:\s*flex/);
+  assert.match(desktop, /\.cellLabel\s*\{[^}]*display:\s*none/);
   assert.doesNotMatch(desktop, /\.peopleGrid\s*\{[^}]*display:/s);
   assert.doesNotMatch(desktop, /\.personRow(?:Header)?\s*\{[^}]*display:/s);
   assert.match(css, /\.personRow \+ \.personRow > \*\s*\{[^}]*border-block-start:\s*1px solid var\(--nova-color-border\)/);
@@ -294,9 +295,9 @@ test("compact directory and history retain readable one-column actions and fact 
 
   assert.match(compact, /\.toolbar\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   const tablet = css.match(/@container\s*\(max-width:\s*58rem\)\s*\{([\s\S]*?)(?=\n@container|\n@media)/)?.[1] || "";
-  assert.match(tablet, /\.peopleHeader\s*\{[^}]*position:\s*absolute/);
   assert.doesNotMatch(tablet, /\.peopleHeader\s*\{[^}]*display:\s*none/);
   assert.match(tablet, /\.peopleGrid tbody\s*\{[^}]*display:\s*grid/);
+  assert.match(tablet, /\.peopleHeader\s*\{[^}]*position:\s*absolute/);
   assert.match(tablet, /\.personRow\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   assert.match(tablet, /\.personRow\s*\{[^}]*border-radius:\s*var\(--nova-radius-surface\)/);
   assert.match(tablet, /\.personRow > td\s*\{[^}]*grid-template-columns:\s*minmax\(6rem,\s*0\.38fr\) minmax\(0,\s*1fr\)/);

@@ -33,7 +33,7 @@ function WorkButton({ onOpenWork }: Pick<AssignmentListProps, "onOpenWork">) {
 export function AssignmentList({ read, onOpenWork }: AssignmentListProps) {
   if (read.status === "loading") {
     return (
-      <div className={styles.state} aria-busy="true">
+      <div className={`${styles.state} ${styles.loadingState}`} aria-busy="true">
         <StateMessage kind="loading">Loading assignments</StateMessage>
         <ul className={styles.skeletonList} aria-hidden="true">
           <li className={styles.skeletonRow}>

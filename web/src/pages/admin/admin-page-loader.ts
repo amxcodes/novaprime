@@ -1,6 +1,7 @@
 import type { EffectivePermissionRead } from "../../app-shell/permission-grants.ts";
 import { hasPermissionGrant } from "../../app-shell/permission-grants.ts";
 import { planAdminReads } from "../../features/admin/capabilities";
+import { planAdminAreaReads, type AdminAreaId, type AdminPageReadKey, ADMIN_AREAS } from "./admin-areas";
 
 type AdminRead = {
   readError?: string;
@@ -45,6 +46,8 @@ export interface AdminPageLoaderServices<TLifetime = unknown> {
   isCurrentPageRequest: (lifetime: TLifetime) => boolean;
   /** Start grant-authorized view modules before the independent Admin read batch. */
   onEffectiveGrantsResolved?: (actorGrants: AdminActorRead) => unknown;
+  /** Only reads needed by the active, permission-checked Admin area are started. */
+  areaId?: AdminAreaId;
 }
 
 /**
@@ -78,10 +81,16 @@ export async function loadAdminPageData<TLifetime>(
   // still-current page request.
   services.onEffectiveGrantsResolved?.(actorGrants);
 
-  const plan = planAdminReads(actorGrants);
-  const read = (condition: boolean, path: string, fallback: AdminRead, permission: string) => condition
-    ? services.readOrError(services.pageApi(path, lifetime), fallback)
-    : Promise.resolve(services.skippedAdminRead(fallback, permission));
+  const plan = services.areaId
+    ? planAdminAreaReads(actorGrants, services.areaId)
+    : planAdminReads(actorGrants);
+  const area = services.areaId ? ADMIN_AREAS.find(({ id }) => id === services.areaId) : undefined;
+  const read = (condition: boolean, path: string, fallback: AdminRead, permission: string, key?: AdminPageReadKey) => {
+    if (area && key && !area.reads.some((readKey) => readKey === key)) return Promise.resolve({ ...fallback, readState: "not-requested" });
+    return condition
+      ? services.readOrError(services.pageApi(path, lifetime), fallback)
+      : Promise.resolve(services.skippedAdminRead(fallback, permission));
+  };
 
   const organisationSettings = hasPermissionGrant(actorGrants, "organisation.settings.manage");
   const canManageWfhPolicies = hasPermissionGrant(actorGrants, "availability.wfh_policy.manage");
@@ -94,21 +103,21 @@ export async function loadAdminPageData<TLifetime>(
 
   const [organisation, offices, departments, permissions, roles, people, peopleDirectory, audit, availability, wfhPolicies,
     leavePending, wfhPending, exceptions, workContext, tasks, taskCatalog, geofenceOptions, notificationDelivery] = await Promise.all([
-    read(plan.organisation, "/api/organisation", { organisation: null }, "organisation.settings.manage"),
-    read(plan.offices, "/api/offices", { offices: [] }, "organisation.settings.manage"),
-    read(plan.departments, "/api/organisation-departments", { departments: [] }, "organisation.settings.manage"),
-    read(plan.permissions, "/api/permissions", { permissions: [] }, "roles.view"),
-    read(plan.roles, "/api/roles", { roles: [] }, "roles.view"),
+    read(plan.organisation, "/api/organisation", { organisation: null }, "organisation.settings.manage", "organisation"),
+    read(plan.offices, "/api/offices", { offices: [] }, "organisation.settings.manage", "offices"),
+    read(plan.departments, "/api/organisation-departments", { departments: [] }, "organisation.settings.manage", "departments"),
+    read(plan.permissions, "/api/permissions", { permissions: [] }, "roles.view", "permissions"),
+    read(plan.roles, "/api/roles", { roles: [] }, "roles.view", "roles"),
     Promise.resolve<AdminRead>({ people: [], readState: "not-requested" }),
     read(plan.people, "/api/people/directory?q=&limit=25", {
       people: [], limit: 25, hasMore: false, nextCursor: null,
-    }, peoplePrerequisite || "people.view"),
-    read(plan.audit, "/api/audit-events?limit=50", { events: [] }, "people.view at organisation scope"),
-    read(plan.availability, "/api/availability/config", { shifts: [], calendars: [], holidays: [] }, "availability.calendar.view at organisation scope"),
-    read(plan.wfhPolicies, "/api/availability/wfh-policies", { policies: [] }, "availability.wfh_policy.view at organisation scope"),
-    read(plan.leavePending, "/api/leave/pending", { requests: [] }, "leave.review for another person's scope"),
-    read(plan.wfhPending, "/api/availability/wfh/pending", { requests: [] }, "availability.wfh.review for another person's scope"),
-    read(plan.exceptions, "/api/historical-exceptions", { exceptions: [] }, "availability.exception.view at organisation scope"),
+    }, peoplePrerequisite || "people.view", "peopleDirectory"),
+    read(plan.audit, "/api/audit-events?limit=50", { events: [] }, "people.view at organisation scope", "audit"),
+    read(plan.availability, "/api/availability/config", { shifts: [], calendars: [], holidays: [] }, "availability.calendar.view at organisation scope", "availability"),
+    read(plan.wfhPolicies, "/api/availability/wfh-policies", { policies: [] }, "availability.wfh_policy.view at organisation scope", "wfhPolicies"),
+    read(plan.leavePending, "/api/leave/pending", { requests: [] }, "leave.review for another person's scope", "leavePending"),
+    read(plan.wfhPending, "/api/availability/wfh/pending", { requests: [] }, "availability.wfh.review for another person's scope", "wfhPending"),
+    read(plan.exceptions, "/api/historical-exceptions", { exceptions: [] }, "availability.exception.view at organisation scope", "exceptions"),
     plan.workContext
       ? services.readOrError(services.pageApi("/api/work-context", lifetime), {
         clients: [], clientWorkstreams: [], organisationWorkstreams: [], taskCreationTargets: [], groups: [],
@@ -116,12 +125,12 @@ export async function loadAdminPageData<TLifetime>(
       : Promise.resolve<AdminRead>({
         clients: [], clientWorkstreams: [], organisationWorkstreams: [], taskCreationTargets: [], groups: [],
       }),
-    read(plan.tasks, "/api/tasks", { tasks: [] }, "tasks.view in this work scope"),
+    read(plan.tasks, "/api/tasks", { tasks: [] }, "tasks.view in this work scope", "tasks"),
     read(plan.taskCatalog, "/api/task-catalog", {
       entries: [], proposals: [], permissions: { view: false, propose: false, manage: false, review: false },
-    }, "tasks.catalog.view, propose, manage, or review"),
-    read(plan.geofenceOptions, "/api/offices/geofence-options", { offices: [] }, "availability.office_geofence.manage at organisation scope"),
-    read(plan.notificationDelivery, "/api/notifications/delivery?limit=50", { deliveries: [] }, "notifications.delivery.view at organisation scope"),
+    }, "tasks.catalog.view, propose, manage, or review", "taskCatalog"),
+    read(plan.geofenceOptions, "/api/offices/geofence-options", { offices: [] }, "availability.office_geofence.manage at organisation scope", "geofenceOptions"),
+    read(plan.notificationDelivery, "/api/notifications/delivery?limit=50", { deliveries: [] }, "notifications.delivery.view at organisation scope", "notificationDelivery"),
   ]);
 
   if (!services.isCurrentPageRequest(lifetime)) return undefined;

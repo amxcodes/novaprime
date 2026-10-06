@@ -80,7 +80,7 @@ test("each runtime publishes the generated Vite graph and preserves the shared A
     expect(html).toMatch(/<html\b[^>]*\blang="en"/);
     expect(html).toContain('name="referrer" content="no-referrer"');
   }
-  expect(appModule).toContain('import { createAdminPageRoute } from "./app/admin-page-route.js"');
+  expect(appModule).toMatch(/import \{ createAdminPageRoute(?:, preloadAdminPageFeatureModules)? \} from "\.\/app\/admin-page-route\.js"/);
   expect(adminPageRouteModule).toContain('import("../src/features/admin/roles/RolePermissionsSection.tsx")');
   expect(roleEditorModule).toContain('from "../../../../role-grants.js"');
   expect(appModule).toContain('from "./admin-read-state.js"');

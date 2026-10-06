@@ -9,6 +9,9 @@ describe("assignment list responsive contract", () => {
     const component = readFileSync(new URL("./assignment-list.tsx", import.meta.url), "utf8");
 
     expect(css).toMatch(/\.state\s*\{[^}]*container-type:\s*inline-size;[^}]*container-name:\s*assignments;/s);
+    expect(css).toMatch(/\.loadingState\s*\{[^}]*display:\s*grid;[^}]*gap:\s*var\(--nova-space-3\);/s);
+    expect(component).toMatch(/className=\{`\$\{styles\.state\} \$\{styles\.loadingState\}`\} aria-busy="true"/);
+    expect(component).toMatch(/<StateMessage kind="loading">Loading assignments<\/StateMessage>[\s\S]*?<ul className=\{styles\.skeletonList\}/);
     expect(css).toMatch(/\.list,[\s\S]*?border:\s*1px solid var\(--nova-color-border\);[\s\S]*?border-radius:\s*var\(--nova-radius-surface\);/);
     expect(css).toMatch(/\.item \+ \.item,[\s\S]*?border-block-start:\s*1px solid var\(--nova-color-border\);/);
     expect(component).toMatch(/import \{ Badge, Button, StateMessage \} from "\.\.\/\.\.\/design-system";/);
