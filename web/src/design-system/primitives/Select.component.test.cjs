@@ -99,6 +99,7 @@ test("styles custom popup states with NOVA theme, touch, focus, reduced-motion a
   assert.match(css, /padding:\s*0\.25rem 1\.25rem 0\.25rem 0\.25rem/);
   assert.match(css, /\.selectedDetail\s*\{[^}]*width:\s*4\.375rem[^}]*text-align:\s*end/s);
   assert.match(source, /className=\{styles\.selectedDetail\}[^>]*aria-hidden="true">Selected/);
+  assert.match(source, /<Popover className=\{styles\.popover\} placement="bottom start" offset=\{12\}>/);
   assert.match(css, /var\(--nova-select-option-hover\)/);
   assert.match(css, /var\(--nova-select-option-selected\)/);
   assert.match(css, /var\(--nova-control-touch-target\)/);

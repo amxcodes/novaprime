@@ -87,6 +87,17 @@ describe("MyAssignments task-detail visibility", () => {
     expect(markup).not.toMatch(/<select(?! tabindex="-1")/);
   });
 
+  it("uses the compact tokenized desktop table rhythm and preserves the labeled mobile cards", () => {
+    const css = readFileSync(new URL("./MyAssignments.module.css", import.meta.url), "utf8");
+    expect(css).toMatch(/\.collectionHeader,\s*\.item\s*\{[^}]*grid-template-columns:\s*minmax\(8rem, 1\.9fr\) minmax\(5\.5rem, 0\.7fr\) minmax\(6rem, 0\.8fr\) minmax\(9\.5rem, 1\.45fr\)/s);
+    expect(css).toMatch(/\.collectionHeader\s*\{[^}]*min-height:\s*var\(--nova-control-height\);[^}]*text-transform:\s*uppercase;/s);
+    expect(css).toMatch(/\.item\s*\{[^}]*min-height:\s*calc\(var\(--nova-control-height\) \+ var\(--nova-control-height\)\);[^}]*align-items:\s*center;/s);
+    expect(css).toMatch(/@container assignments \(max-width: 34rem\)[\s\S]*?\.collectionHeader \{ display: none; \}[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)[\s\S]*?\.fieldLabel \{[\s\S]*?position: static/);
+    const referenced = [...new Set([...css.matchAll(/var\((--nova-[\w-]+)/g)].map((match) => match[1]))];
+    expect(referenced).toContain("--nova-type-size-detail");
+    expect(referenced).toContain("--nova-type-size-body");
+  });
+
   it("accepts candidate values only from the current authorized options", () => {
     const candidates = [{ id: "person-1", displayName: "Aman Verma" }];
     expect(isEligibleAssignmentCandidate("person-1", candidates)).toBe(true);

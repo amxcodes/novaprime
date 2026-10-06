@@ -159,50 +159,39 @@
   gap: var(--nova-space-2);
 }
 
-.shortcut {
-  display: grid;
+button.shortcut {
+  width: 100%;
   min-width: 0;
   min-height: var(--nova-control-touch-target);
-  align-content: center;
-  gap: var(--nova-space-1);
-  padding: var(--nova-space-3);
-  border: 1px solid var(--nova-color-border);
-  border-radius: var(--nova-radius-control);
-  color: var(--nova-color-text-primary);
-  background: var(--nova-color-surface);
-  font: var(--nova-type-body);
   text-align: start;
-  cursor: pointer;
-  transition:
-    background-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
-    border-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
-    transform var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+  white-space: normal;
 }
 
-.shortcut:hover {
-  border-color: var(--nova-color-action-text);
-  background: var(--nova-color-surface-subtle);
-}
-
-.shortcut:active { transform: translateY(1px); }
-
-.shortcut:focus-visible {
-  outline: 3px solid var(--nova-color-focus);
-  outline-offset: 2px;
+.shortcut > span:first-child {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  align-content: center;
+  justify-items: start;
+  gap: var(--nova-space-1);
+  text-align: start;
+  white-space: normal;
 }
 
 .shortcutTitle {
   min-width: 0;
-  font-size: var(--nova-type-size-sm);
-  font-weight: var(--nova-type-weight-semibold);
-  line-height: var(--nova-type-line-tight);
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-control-label);
+  font-weight: var(--nova-type-weight-medium);
+  line-height: var(--nova-type-line-control);
   overflow-wrap: anywhere;
 }
 
 .shortcutSummary {
   min-width: 0;
   color: var(--nova-color-text-secondary);
-  font-size: var(--nova-type-size-xs);
+  font-size: var(--nova-type-size-detail);
+  font-weight: var(--nova-type-weight-regular);
   line-height: var(--nova-type-line-normal);
   overflow-wrap: anywhere;
 }
@@ -231,14 +220,8 @@
   .shortcutGrid { grid-template-columns: minmax(0, 1fr); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .shortcut { transition: none; }
-}
-
 @media (forced-colors: active) {
   .header,
   .moduleHeader,
-  .shortcuts,
-  .shortcut { border-color: CanvasText; }
-  .shortcut:focus-visible { outline-color: Highlight; }
+  .shortcuts { border-color: CanvasText; }
 }

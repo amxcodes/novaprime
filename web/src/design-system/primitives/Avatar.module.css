@@ -5,21 +5,40 @@
   flex: 0 0 auto;
   place-items: center;
   overflow: hidden;
-  border: 1px solid var(--nova-color-border);
+  border: 1px solid var(--nova-color-avatar-edge);
   border-radius: var(--nova-radius-pill);
-  color: var(--nova-color-action-text);
-  background: var(--nova-color-action-subtle);
+  color: var(--nova-color-avatar-glyph-32);
+  background: linear-gradient(180deg, var(--nova-color-avatar-surface-32) 0%, var(--nova-color-avatar-surface-end-32) 100%);
+  box-shadow: var(--nova-elevation-avatar);
 }
 
-.avatar[data-size="24"] { width: 1.5rem; height: 1.5rem; }
-.avatar[data-size="32"] { width: 2rem; height: 2rem; }
-.avatar[data-size="40"] { width: 2.5rem; height: 2.5rem; }
-.avatar[data-size="48"] { width: 3rem; height: 3rem; }
+.avatar[data-size="24"] {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--nova-color-avatar-glyph-24);
+  background: linear-gradient(180deg, var(--nova-color-avatar-surface-24) 0%, var(--nova-color-avatar-surface-end-24) 100%);
+}
+.avatar[data-size="32"] {
+  width: 2rem;
+  height: 2rem;
+}
+.avatar[data-size="40"] {
+  width: 2.5rem;
+  height: 2.5rem;
+  color: var(--nova-color-avatar-glyph-40);
+  background: linear-gradient(180deg, var(--nova-color-avatar-surface-40) 0%, var(--nova-color-avatar-surface-end-40) 100%);
+}
+.avatar[data-size="48"] {
+  width: 3rem;
+  height: 3rem;
+  color: var(--nova-color-avatar-glyph-48);
+  background: linear-gradient(180deg, var(--nova-color-avatar-surface-48) 0%, var(--nova-color-avatar-surface-end-48) 100%);
+}
 
 .avatar svg {
   display: block;
-  width: 72%;
-  height: 72%;
+  width: 100%;
+  height: 100%;
   fill: currentColor;
 }
 
@@ -28,5 +47,6 @@
     border-color: CanvasText;
     color: CanvasText;
     background: Canvas;
+    box-shadow: none;
   }
 }

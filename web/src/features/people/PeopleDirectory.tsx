@@ -4,7 +4,6 @@ import styles from "./People.module.css";
 import type { PeopleDirectoryReadState, PersonDirectoryRecord } from "./contracts";
 import {
   availablePeopleCursor,
-  formatEffectiveDate,
   peopleDirectoryFocusRecoveryTarget,
   personStatusLabel,
   personStatusTone,
@@ -35,28 +34,6 @@ function DirectorySkeleton() {
   );
 }
 
-function PersonFacts({ person }: { person: PersonDirectoryRecord }) {
-  const facts = [
-    person.designation ? ["Designation", person.designation] : null,
-    person.office?.name ? ["Office", person.office.name] : null,
-    person.department?.name ? ["Department", person.department.name] : null,
-    person.role?.name ? ["Role", person.role.name] : null,
-    person.managerName ? ["Manager", person.managerName] : null,
-    person.employmentStartsOn ? ["Employment start", formatEffectiveDate(person.employmentStartsOn)] : null,
-  ].filter((fact): fact is [string, string] => fact !== null);
-
-  return facts.length ? (
-    <dl className={styles.facts}>
-      {facts.map(([label, value]) => (
-        <div className={styles.fact} key={label}>
-          <dt>{label}</dt>
-          <dd>{value}</dd>
-        </div>
-      ))}
-    </dl>
-  ) : null;
-}
-
 function PersonRow({
   person,
   selected,
@@ -67,37 +44,52 @@ function PersonRow({
   onSelect: PeopleDirectoryProps["onSelectPerson"];
 }) {
   const name = person.displayName || "Unnamed person";
+  const organisationalDetails = [person.department?.name, person.office?.name].filter(Boolean);
   return (
-    <li className={styles.personRow} data-selected={selected || undefined}>
-      <div className={styles.personIdentity}>
-        <Avatar size={32} />
-        <div className={styles.personMain}>
-          <h3 className={styles.personName}>{name}</h3>
-          <p className={styles.email}>{person.email}</p>
+    <tr className={styles.personRow} data-selected={selected || undefined} role="row">
+      <th className={styles.personRowHeader} scope="row" role="rowheader">
+        <div className={styles.personIdentity}>
+          <Avatar size={32} />
+          <div className={styles.personMain}>
+            <h3 className={styles.personName}>{name}</h3>
+            <p className={styles.personMeta}>
+              <span className={styles.personRole}>{person.role?.name || "No role assigned"}</span>
+              <span className={styles.metaSeparator} aria-hidden="true">·</span>
+              <span className={styles.personEmail}>{person.email}</span>
+            </p>
+          </div>
         </div>
-      </div>
-      <div className={styles.workDetails}>
-        <PersonFacts person={person} />
-      </div>
-      <div className={styles.accessRole}>
-        <span className={styles.cellLabel}>Access role</span>
-        <span>{person.role?.name || "No role assigned"}</span>
-      </div>
-      <div className={styles.accountStatus}>
-        <span className={styles.cellLabel}>Status</span>
+      </th>
+      <td className={styles.workDetailsCell} role="cell">
+        <span className={styles.cellLabel} aria-hidden="true">Work details</span>
+        <span className={styles.workDetailsValue}>
+          <span className={styles.workDetailPrimary}>{person.designation || "No designation recorded"}</span>
+          <span className={styles.secondaryFact}>
+            {organisationalDetails.length
+              ? organisationalDetails.join(" · ")
+              : "No department or office recorded"}
+          </span>
+        </span>
+      </td>
+      <td className={styles.accountStatus} role="cell">
+        <span className={styles.cellLabel} aria-hidden="true">Person status</span>
         <Badge tone={personStatusTone(person.status)}>{personStatusLabel(person.status)}</Badge>
-      </div>
-      <Button
-        className={styles.historyAction}
-        variant="secondary"
-        data-person-history-action={person.id}
-        aria-current={selected ? "page" : undefined}
-        onClick={() => onSelect(person.id)}
-        aria-label={`View effective-dated history for ${name}`}
-      >
-        View history
-      </Button>
-    </li>
+      </td>
+      <td className={styles.actionCell} role="cell">
+        <span className={styles.cellLabel} aria-hidden="true">Actions</span>
+        <Button
+          className={styles.openPersonAction}
+          variant="secondary"
+          size="compact"
+          data-person-history-action={person.id}
+          aria-current={selected ? "page" : undefined}
+          onClick={() => onSelect(person.id)}
+          aria-label={`Open person record for ${name}`}
+        >
+          Open person
+        </Button>
+      </td>
+    </tr>
   );
 }
 
@@ -277,23 +269,27 @@ export function PeopleDirectory({ read, selectedPersonId = null, onSearch, onLoa
 
           {read.status === "ready" && !queryPending && read.people.length > 0 ? (
             <div className={styles.peopleTable}>
-              <div className={styles.peopleHeader} aria-hidden="true">
-                <span>Person</span>
-                <span>Work details</span>
-                <span>Access role</span>
-                <span>Status</span>
-                <span className={styles.actionHeading}>Actions</span>
-              </div>
-              <ul className={styles.peopleList} aria-label="People in the current access scope">
-                {read.people.map((person) => (
-                  <PersonRow
-                    key={person.id}
-                    person={person}
-                    selected={person.id === selectedPersonId}
-                    onSelect={onSelectPerson}
-                  />
-                ))}
-              </ul>
+              {/* Explicit table roles preserve header/cell relationships when compact CSS reflows rows as cards. */}
+              <table className={styles.peopleGrid} role="table" aria-label="People in the current access scope">
+                <thead className={styles.peopleHeader} role="rowgroup">
+                  <tr role="row">
+                    <th scope="col" role="columnheader">Person</th>
+                    <th scope="col" role="columnheader">Work details</th>
+                    <th scope="col" role="columnheader">Person status</th>
+                    <th scope="col" role="columnheader" className={styles.actionHeading} aria-label="Actions" />
+                  </tr>
+                </thead>
+                <tbody role="rowgroup">
+                  {read.people.map((person) => (
+                    <PersonRow
+                      key={person.id}
+                      person={person}
+                      selected={person.id === selectedPersonId}
+                      onSelect={onSelectPerson}
+                    />
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : null}
 

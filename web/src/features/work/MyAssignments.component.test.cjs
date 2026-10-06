@@ -112,7 +112,7 @@ test("assignments without server-authorized actions do not leave an empty action
   assert.match(html, /<span(?: class="[^"]+")?>No actions available<\/span>/);
 });
 
-test("My Assignments keeps one semantic list with aligned populated comparison fields", () => {
+test("My Assignments keeps a compact, aligned desktop list using only projected comparison fields", () => {
   const html = render(undefined, true, {
     status: "in_progress",
     dueDate: "2026-10-12",
@@ -122,7 +122,8 @@ test("My Assignments keeps one semantic list with aligned populated comparison f
     canRequestHandover: true,
   });
 
-  assert.match(html, /aria-hidden="true"><span>Assignment<\/span><span>Status<\/span><span>Due date<\/span><span>Available actions<\/span>/);
+  assert.match(html, /aria-hidden="true"><span>Task \/ assignment<\/span><span>Status<\/span><span>Due<\/span><span>Action<\/span>/);
+  assert.doesNotMatch(html, /CLIENT \/ CAMPAIGN|ASSIGNEE|TIME LOGGED|ASSIGNED BY/);
   assert.match(html, /<ul aria-label="Your assignments">[\s\S]*<li>[\s\S]*<h3><a href="\/\?view=work&amp;task=task-1">/);
   assert.match(html, /<span>Status<\/span>[\s\S]*In progress/);
   assert.match(html, /<span>Due date<\/span>[\s\S]*<time dateTime="2026-10-12">/);

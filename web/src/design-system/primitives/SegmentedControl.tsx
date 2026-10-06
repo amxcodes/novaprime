@@ -9,6 +9,7 @@ export interface SegmentedControlOption {
 
 export interface SegmentedControlProps extends Omit<HTMLAttributes<HTMLDivElement>, "onChange" | "role" | "aria-label"> {
   "aria-label": string;
+  appearance?: "action" | "quiet";
   options: ReadonlyArray<SegmentedControlOption>;
   value: string;
   onValueChange: (value: string) => void;
@@ -16,6 +17,7 @@ export interface SegmentedControlProps extends Omit<HTMLAttributes<HTMLDivElemen
 
 /** A compact, theme-aware choice group matching Orbit's selected-segment control. */
 export function SegmentedControl({
+  appearance = "action",
   options,
   value,
   onValueChange,
@@ -28,6 +30,7 @@ export function SegmentedControl({
       {...groupProps}
       role="group"
       aria-label={accessibleName}
+      data-appearance={appearance}
       className={[styles.group, className].filter(Boolean).join(" ")}
     >
       {options.map((option) => {

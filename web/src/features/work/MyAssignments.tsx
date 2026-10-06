@@ -450,10 +450,10 @@ export function MyAssignments({
       {assignments.length ? (
         <div className={styles.collection}>
           <div className={styles.collectionHeader} aria-hidden="true">
-            <span>Assignment</span>
+            <span>Task / assignment</span>
             <span>Status</span>
-            <span>Due date</span>
-            <span>Available actions</span>
+            <span>Due</span>
+            <span>Action</span>
           </div>
           <ul className={styles.list} aria-label="Your assignments">
             {assignments.map((assignment) => {

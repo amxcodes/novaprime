@@ -102,7 +102,7 @@
 .item {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(8rem, 1.5fr) minmax(6rem, 0.75fr) minmax(6rem, 0.75fr) minmax(9.5rem, 1.25fr);
+  grid-template-columns: minmax(8rem, 1.9fr) minmax(5.5rem, 0.7fr) minmax(6rem, 0.8fr) minmax(9.5rem, 1.45fr);
   gap: var(--nova-space-3);
 }
 
@@ -112,8 +112,10 @@
   padding-inline: var(--nova-space-4);
   border-block-end: 1px solid var(--nova-color-border);
   color: var(--nova-color-text-muted);
-  font-size: var(--nova-type-size-xs);
-  font-weight: var(--nova-type-weight-semibold);
+  font-size: var(--nova-type-size-detail);
+  font-weight: var(--nova-type-weight-medium);
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
   background: var(--nova-color-surface-subtle);
 }
 
@@ -127,7 +129,8 @@
 }
 
 .item {
-  align-items: start;
+  min-height: calc(var(--nova-control-height) + var(--nova-control-height));
+  align-items: center;
   padding: var(--nova-space-3) var(--nova-space-4);
   background: var(--nova-color-surface);
 }
@@ -144,8 +147,18 @@
 .actions {
   display: grid;
   min-width: 0;
-  align-content: start;
+  align-content: center;
   gap: var(--nova-space-2);
+}
+
+.title {
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-body);
+  font-weight: var(--nova-type-weight-medium);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
 }
 
 .status,
@@ -352,6 +365,7 @@
   .list { gap: var(--nova-space-2); }
 
   .item {
+    min-height: 0;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--nova-space-3) var(--nova-space-4);
     border: 1px solid var(--nova-color-border);

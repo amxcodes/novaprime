@@ -92,7 +92,7 @@ test("load-more progress has one live announcement and keeps the focused control
   assert.doesNotMatch(html, /aria-label="Loading more people"|disabled=""/);
 });
 
-test("directory ready page presents supplied rows, cursor status, and accessible history action without claiming a total", () => {
+test("directory ready page presents supported work details, lifecycle status, and open-person actions", () => {
   const html = render(PeopleDirectory, {
     read: directoryRead(),
     onSearch() {},
@@ -106,11 +106,41 @@ test("directory ready page presents supplied rows, cursor status, and accessible
   assert.match(html, /Morgan Lee/);
   assert.match(html, /morgan@example\.test/);
   assert.match(html, /<span[^>]*data-size="32" aria-hidden="true"><svg/);
-  assert.match(html, /<div[^>]*aria-hidden="true"><span>Person<\/span><span>Work details<\/span><span>Access role<\/span><span>Status<\/span><span>Actions<\/span><\/div>/);
-  assert.match(html, /Access role/);
+  assert.match(html, /<table[^>]*aria-label="People in the current access scope"/);
+  assert.match(html, /<th scope="col" role="columnheader">Person<\/th>/);
+  assert.match(html, /<th scope="col" role="columnheader">Work details<\/th>/);
+  assert.match(html, /<th scope="col" role="columnheader">Person status<\/th>/);
+  assert.match(html, /<th[^>]*scope="col"[^>]*aria-label="Actions"[^>]*><\/th>/);
+  assert.match(html, /<th[^>]*scope="row"[^>]*role="rowheader"[^>]*>.*Morgan Lee.*Contributor.*morgan@example\.test/s);
+  assert.match(html, /<td[^>]*>.*Designer.*Product.*Central/s);
+  assert.doesNotMatch(html, /<th scope="col" role="columnheader">Access role<\/th>/);
   assert.match(html, /Contributor/);
-  assert.match(html, /aria-label="View effective-dated history for Morgan Lee"/);
+  assert.match(html, /aria-label="Open person record for Morgan Lee"/);
+  assert.match(html, /data-variant="secondary" data-size="compact"/);
+  assert.match(html, /Open person/);
+  assert.match(html, /data-person-history-action="person-1"/);
   assert.match(html, /Load more people/);
+  assert.doesNotMatch(html, /online|last seen|presence/i);
+});
+
+test("directory keeps accessible missing-value copy and marks the open person without implying live presence", () => {
+  const html = render(PeopleDirectory, {
+    read: directoryRead({
+      people: [{ ...person, designation: null, office: null, department: null, role: null }],
+    }),
+    selectedPersonId: person.id,
+    onSearch() {},
+    onLoadMore() {},
+    onSelectPerson() {},
+    onRetry() {},
+  });
+
+  assert.match(html, /data-selected="true"/);
+  assert.match(html, /No designation recorded/);
+  assert.match(html, /No department or office recorded/);
+  assert.match(html, /No role assigned/);
+  assert.match(html, /aria-current="page"/);
+  assert.doesNotMatch(html, /online|last seen|presence/i);
 });
 
 test("directory distinguishes an empty scope, no search matches, and a failed read", () => {
@@ -236,8 +266,22 @@ test("people layouts adapt to feature width rather than the browser viewport", (
   const css = fs.readFileSync(require.resolve("./People.module.css"), "utf8");
 
   assert.match(css, /container-type:\s*inline-size/);
+  assert.match(css, /\.peopleGrid\s*\{[^}]*table-layout:\s*fixed/s);
+  const desktop = css.split("@container")[0];
+  assert.match(desktop, /\.peopleHeader th\s*\{[^}]*font-size:\s*var\(--nova-type-size-xs\)[^}]*font-weight:\s*var\(--nova-type-weight-medium\)/s);
+  assert.match(desktop, /\.peopleHeader th:last-child\s*\{[^}]*width:\s*9\.25rem/);
+  assert.match(desktop, /\.personName\s*\{[^}]*font-size:\s*var\(--nova-type-size-body\)[^}]*font-weight:\s*var\(--nova-type-weight-medium\)/s);
+  assert.match(desktop, /\.personMeta\s*\{[^}]*font-size:\s*var\(--nova-type-size-xs\)[^}]*font-weight:\s*var\(--nova-type-weight-regular\)/s);
+  assert.match(desktop, /\.personRole\s*\{[^}]*font-weight:\s*var\(--nova-type-weight-regular\)/s);
+  assert.match(desktop, /\.workDetailPrimary\s*\{[^}]*font-size:\s*var\(--nova-type-size-sm\)[^}]*font-weight:\s*var\(--nova-type-weight-regular\)/s);
+  assert.match(desktop, /\.openPersonAction\s*\{[^}]*inline-size:\s*8\.25rem/s);
+  assert.doesNotMatch(desktop.match(/\.openPersonAction\s*\{[^}]*\}/s)?.[0] || "", /font-size:/);
+  assert.match(desktop, /\.personIdentity\s*\{[^}]*display:\s*flex/);
+  assert.doesNotMatch(desktop, /\.peopleGrid\s*\{[^}]*display:/s);
+  assert.doesNotMatch(desktop, /\.personRow(?:Header)?\s*\{[^}]*display:/s);
+  assert.match(css, /\.personRow \+ \.personRow > \*\s*\{[^}]*border-block-start:\s*1px solid var\(--nova-color-border\)/);
   assert.match(css, /\.personRow\s*\{\s*min-height:\s*var\(--nova-table-row-height\)/);
-  assert.match(css, /@container\s*\(max-width:\s*56rem\)/);
+  assert.match(css, /@container\s*\(max-width:\s*58rem\)/);
   assert.match(css, /@container\s*\(max-width:\s*40rem\)/);
   assert.match(css, /@container\s*\(max-width:\s*22\.5rem\)/);
   assert.doesNotMatch(css, /@media\s*\(max-width:/);
@@ -249,12 +293,16 @@ test("compact directory and history retain readable one-column actions and fact 
   const narrow = css.match(/@container\s*\(max-width:\s*22\.5rem\)\s*\{([\s\S]*?)(?=\n@media)/)?.[1] || "";
 
   assert.match(compact, /\.toolbar\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
-  const tablet = css.match(/@container\s*\(max-width:\s*56rem\)\s*\{([\s\S]*?)(?=\n@container|\n@media)/)?.[1] || "";
-  assert.match(tablet, /\.peopleHeader\s*\{[^}]*display:\s*none/);
+  const tablet = css.match(/@container\s*\(max-width:\s*58rem\)\s*\{([\s\S]*?)(?=\n@container|\n@media)/)?.[1] || "";
+  assert.match(tablet, /\.peopleHeader\s*\{[^}]*position:\s*absolute/);
+  assert.doesNotMatch(tablet, /\.peopleHeader\s*\{[^}]*display:\s*none/);
+  assert.match(tablet, /\.peopleGrid tbody\s*\{[^}]*display:\s*grid/);
   assert.match(tablet, /\.personRow\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   assert.match(tablet, /\.personRow\s*\{[^}]*border-radius:\s*var\(--nova-radius-surface\)/);
-  assert.match(tablet, /\.historyAction\s*\{[^}]*width:\s*100%/);
-  // The <=56rem tablet rule also applies below 40rem; avoid duplicating it in the narrower rule.
+  assert.match(tablet, /\.personRow > td\s*\{[^}]*grid-template-columns:\s*minmax\(6rem,\s*0\.38fr\) minmax\(0,\s*1fr\)/);
+  assert.match(tablet, /\.cellLabel\s*\{\s*display:\s*block/);
+  assert.match(tablet, /\.openPersonAction\s*\{[^}]*inline-size:\s*100%/);
+  // The <=58rem tablet rule also applies below 40rem; avoid duplicating it in the narrower rule.
   assert.match(compact, /\.facts,[\s\S]*?\.summaryFacts\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(compact, /\.entryHeading\s*\{[^}]*display:\s*grid/);
   assert.match(compact, /\.loadMoreGroup,[\s\S]*?\.loadMoreGroup button\s*\{[^}]*width:\s*100%/);

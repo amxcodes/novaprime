@@ -14,12 +14,24 @@ describe("My Day page layout", () => {
     expect(styles).not.toContain(":global(");
   });
 
-  it("keeps shortcut actions readable, keyboard visible, and theme-token driven", () => {
-    expect(styles).toContain(".shortcut:focus-visible");
-    expect(styles).toContain("var(--nova-color-focus)");
+  it("leaves shortcut button visuals to the shared Button and controls only layout", () => {
+    const shortcut = styles.match(/\.shortcut\s*\{([^}]*)\}/)?.[1] ?? "";
+    const shortcutContent = styles.match(/\.shortcut > span:first-child\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(shortcut).toContain("width: 100%");
+    expect(shortcut).toContain("min-width: 0");
+    expect(shortcut).toContain("min-height: var(--nova-control-touch-target)");
+    expect(shortcut).toContain("white-space: normal");
+    expect(shortcutContent).toContain("display: grid");
+    expect(shortcutContent).toContain("white-space: normal");
+    const visualOverrides = /\b(?:appearance|border(?:-[\w-]+)?|background(?:-[\w-]+)?|color|font(?:-[\w-]+)?|box-shadow|outline(?:-[\w-]+)?|transform|transition)\s*:/;
+    expect(shortcut).not.toMatch(visualOverrides);
+    expect(shortcutContent).not.toMatch(visualOverrides);
+    expect(styles).not.toContain(".shortcut:hover");
+    expect(styles).not.toContain(".shortcut:active");
+    expect(styles).not.toContain(".shortcut:focus-visible");
     expect(styles).toContain("overflow-wrap: anywhere");
     expect(styles).toContain("var(--nova-control-touch-target)");
-    expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
     expect(styles).toContain("@media (forced-colors: active)");
   });
 

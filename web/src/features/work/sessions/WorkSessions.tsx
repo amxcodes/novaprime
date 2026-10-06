@@ -36,7 +36,14 @@ function formatTimestamp(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "Start time unavailable"
-    : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    : new Intl.DateTimeFormat(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(date);
 }
 
 function elapsedAccessibleLabel(milliseconds: number) {
@@ -45,6 +52,92 @@ function elapsedAccessibleLabel(milliseconds: number) {
   const minutes = Math.floor((seconds % 3600) / 60);
   const remainingSeconds = seconds % 60;
   return `Elapsed ${hours} hours, ${minutes} minutes, ${remainingSeconds} seconds`;
+}
+
+const SESSION_WINDOW_MILLISECONDS = 2 * 60 * 60 * 1000;
+const SESSION_TICK_MILLISECONDS = 15 * 60 * 1000;
+
+function formatClockTime(timestamp: number) {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(timestamp));
+}
+
+export function projectSessionTimeline(session: WorkSessionSummary, elapsedMilliseconds: number) {
+  const startedAt = Date.parse(session.startedAt);
+  if (!Number.isFinite(startedAt)) return null;
+
+  const currentAt = startedAt + Math.max(0, elapsedMilliseconds);
+  const windowStart = Math.floor(currentAt / SESSION_WINDOW_MILLISECONDS) * SESSION_WINDOW_MILLISECONDS;
+  const currentPosition = Math.min(100, Math.max(0, ((currentAt - windowStart) / SESSION_WINDOW_MILLISECONDS) * 100));
+  const startedInWindow = startedAt >= windowStart;
+  const startPosition = startedInWindow
+    ? Math.min(currentPosition, ((startedAt - windowStart) / SESSION_WINDOW_MILLISECONDS) * 100)
+    : 0;
+  const ticks = Array.from({ length: 9 }, (_, index) => ({
+    label: index % 2 === 0 ? formatClockTime(windowStart + index * SESSION_TICK_MILLISECONDS) : null,
+    major: index % 2 === 0,
+  }));
+
+  return {
+    currentAt,
+    currentPosition,
+    startPosition,
+    startedInWindow,
+    ticks,
+    intervalWidth: Math.max(0, currentPosition - startPosition),
+  };
+}
+
+function ActiveSessionTimeline({ session, elapsedMilliseconds }: {
+  session: WorkSessionSummary;
+  elapsedMilliseconds: number;
+}) {
+  const timeline = projectSessionTimeline(session, elapsedMilliseconds);
+  if (!timeline) return null;
+
+  const accessibleStart = formatTimestamp(session.startedAt);
+  const accessibleCurrent = formatClockTime(timeline.currentAt);
+
+  return (
+    <figure
+      className={styles.timeline}
+      role="img"
+      aria-label={`Two-hour session window. This session started ${accessibleStart} and is active at ${accessibleCurrent}.`}
+    >
+      <figcaption className={styles.timelineTitle}>SESSION WINDOW</figcaption>
+      <div className={styles.timelineLabels} aria-hidden="true">
+        {timeline.ticks.map((tick, index) => tick.label ? (
+          <time key={`${tick.label}-${index}`} style={{ left: `${index * 12.5}%` }}>{tick.label}</time>
+        ) : null)}
+      </div>
+      <div className={styles.timelinePlot} aria-hidden="true">
+        {timeline.ticks.map((tick, index) => (
+          <span
+            className={tick.major ? styles.majorTick : styles.minorTick}
+            key={index}
+            style={{ left: `${index * 12.5}%` }}
+          />
+        ))}
+        <span
+          className={styles.liveInterval}
+          style={{ left: `${timeline.startPosition}%`, width: `${timeline.intervalWidth}%` }}
+        >
+          {timeline.intervalWidth >= 16 ? <span>●&nbsp; LIVE SESSION</span> : null}
+        </span>
+        {timeline.startedInWindow ? (
+          <span className={styles.startMarker} style={{ left: `${timeline.startPosition}%` }} />
+        ) : null}
+        <span className={styles.currentMarker} style={{ left: `${timeline.currentPosition}%` }} />
+      </div>
+      <div className={styles.timelineCaptions} aria-hidden="true">
+        <time>{formatClockTime(Date.parse(session.startedAt))} START</time>
+        <time>NOW&nbsp; {formatClockTime(timeline.currentAt)}</time>
+      </div>
+    </figure>
+  );
 }
 
 export function WorkSessions({ canRead, eligibility, read, onPause, onStop }: WorkSessionsProps) {
@@ -123,35 +216,46 @@ export function WorkSessions({ canRead, eligibility, read, onPause, onStop }: Wo
           const canAct = active && (eligibility.canPause || eligibility.canStop);
           const busy = busySessionId === session.id;
           const error = actionError?.sessionId === session.id ? actionError.message : null;
+          const sessionCardClass = active
+            ? `${styles.session} ${styles.activeSession}`
+            : styles.session;
           return (
-            <li className={styles.session} key={session.id}>
+            <li className={sessionCardClass} data-active={active || undefined} key={session.id}>
+              {active ? (
+                <p className={styles.eyebrow}>ACTIVE TASK&nbsp; / &nbsp;FOCUSED SESSION</p>
+              ) : null}
+              {active ? (
+                <Badge className={styles.activeStatus} tone={status.tone}>●  RUNNING</Badge>
+              ) : null}
               <div className={styles.summary}>
                 <div className={styles.heading}>
                   <h3 className={styles.title} id={titleId}>{session.title || "Untitled assignment"}</h3>
-                  <Badge tone={status.tone}>{status.label}</Badge>
+                  {!active ? <Badge tone={status.tone}>{status.label}</Badge> : null}
                 </div>
                 <div className={styles.metadata}>
                   <span>Started <time dateTime={session.startedAt}>{startedAt}</time></span>
                   {session.endedAt ? <span>Ended <time dateTime={session.endedAt}>{formatTimestamp(session.endedAt)}</time></span> : null}
                 </div>
-                <p className={styles.elapsed}>
-                  <span className={styles.elapsedLabel}>Elapsed</span>
-                  <time className={styles.timer} aria-label={elapsedAccessibleLabel(elapsed)}>
-                    {formatElapsed(elapsed)}
-                  </time>
-                  {active ? <Badge className={styles.liveIndicator} tone="success">Live</Badge> : null}
-                </p>
               </div>
+              <p className={`${styles.elapsed} ${active ? styles.activeElapsed : ""}`}>
+                <time className={styles.timer} aria-label={elapsedAccessibleLabel(elapsed)}>
+                  {formatElapsed(elapsed)}
+                </time>
+                <span className={styles.elapsedLabel}>{active ? "ELAPSED THIS TASK" : "Elapsed"}</span>
+              </p>
+              {active ? <ActiveSessionTimeline session={session} elapsedMilliseconds={elapsed} /> : null}
+              {active ? <div className={styles.divider} aria-hidden="true" /> : null}
+              {active ? <p className={styles.saveNote}>Finish closes and records this session.</p> : null}
               {canAct ? (
                 <div className={styles.actions} role="group" aria-labelledby={titleId}>
                   {eligibility.canPause ? (
                     <Button variant="secondary" loading={busy} loadingLabel="Pausing session" disabled={Boolean(busySessionId)} onClick={() => void runAction(session.id, "pause")}>
-                      Pause
+                      Pause timer
                     </Button>
                   ) : null}
                   {eligibility.canStop ? (
-                    <Button variant="danger" loading={busy} loadingLabel="Stopping session" disabled={Boolean(busySessionId)} onClick={() => void runAction(session.id, "stop")}>
-                      Stop
+                    <Button variant="primary" loading={busy} loadingLabel="Finishing session" disabled={Boolean(busySessionId)} onClick={() => void runAction(session.id, "stop")}>
+                      Finish &amp; save
                     </Button>
                   ) : null}
                 </div>

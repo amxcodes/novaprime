@@ -1,5 +1,5 @@
-import { useId } from "react";
-import { Badge, Button } from "../../design-system";
+import { useId, useState } from "react";
+import { Badge, Button, SegmentedControl } from "../../design-system";
 import { getAttendanceActions, isAttendanceActionDisabled } from "./attendance-actions";
 import styles from "./attendance-pulse.module.css";
 import type {
@@ -37,15 +37,13 @@ export function AttendancePulse({
   pendingAction = null,
 }: AttendancePulseProps) {
   const titleId = useId();
+  const [preferredMode, setPreferredMode] = useState<"office" | "wfh">("office");
   if (read.status === "loading") {
     return (
       <div className={styles.frame}>
         <section className={styles.pulse} aria-labelledby={titleId} aria-busy="true">
           <header className={styles.header}>
-            <div>
-              <p className={styles.eyebrow}>Today</p>
-              <h2 id={titleId} className={styles.title}>Attendance</h2>
-            </div>
+            <h2 id={titleId} className={styles.eyebrow}>Today’s attendance</h2>
           </header>
           <p className={styles.stateMessage} role="status">Loading attendance…</p>
         </section>
@@ -69,17 +67,20 @@ export function AttendancePulse({
   const availability = projection.availability;
   const isPartial = read.status === "partial";
   const summary = "attendanceSummary" in projection ? projection.attendanceSummary : undefined;
-  const workingDay = availability.isWorkingDay && !availability.isHoliday;
-  const checkInPrerequisites = workingDay && Boolean(availability.calendarId) &&
-    (availability.attendanceMode !== "scheduled" || Boolean(availability.shiftId)) &&
-    !projection.onApprovedLeave;
   const record = projection.attendance;
   const provisional = projection.provisionalAttendance;
   const anyPending = pendingAction !== null;
   const provisionalOpen = !record && provisional?.status === "pending" && !provisional.checkedOutAt;
   const actions = getAttendanceActions(projection, capabilities);
+  const checkInActions = actions.filter((action) => action === "check-in-office" || action === "check-in-wfh");
+  const canChooseCheckInMode = checkInActions.includes("check-in-office") && checkInActions.includes("check-in-wfh");
+  const selectedCheckIn = checkInActions.find((action) => action === (preferredMode === "office" ? "check-in-office" : "check-in-wfh"))
+    ?? checkInActions[0];
+  const selectedMode = selectedCheckIn === "check-in-wfh" ? "wfh" : "office";
+  const displayedActions: AttendanceAction[] = canChooseCheckInMode
+    ? [...actions.filter((action) => action !== "check-in-office" && action !== "check-in-wfh"), ...(selectedCheckIn ? [selectedCheckIn] : [])]
+    : actions;
 
-  const status = attendanceStatus(projection);
   const checkInBlockedMessage = !record && !provisionalOpen
     ? attendanceBlockMessage(projection)
     : undefined;
@@ -88,29 +89,31 @@ export function AttendancePulse({
     <div className={styles.frame}>
       <section className={styles.pulse} aria-labelledby={titleId} aria-busy={anyPending}>
         <header className={styles.header}>
-          <div>
-            <p className={styles.eyebrow}>Attendance pulse</p>
-            <h2 id={titleId} className={styles.title}>{status}</h2>
-          </div>
-          <Badge tone={provisional ? "warning" : record ? "info" : "neutral"}>
-            {record ? modeLabel(record.mode) : provisional ? "Provisional WFH" : "Not started"}
-          </Badge>
+          <h2 id={titleId} className={styles.eyebrow}>Today’s attendance</h2>
+          <span className={styles.date}>{formatBusinessDate(availability.businessDate)}</span>
         </header>
 
-      <dl className={styles.facts}>
-        <div className={styles.fact}>
-          <dt>Business date</dt>
-          <dd>{availability.businessDate}</dd>
-        </div>
-        <div className={styles.fact}>
-          <dt>Office</dt>
-          <dd>{availability.officeName}</dd>
-        </div>
-        <div className={styles.fact}>
-          <dt>Local time zone</dt>
-          <dd>{availability.timezone}</dd>
-        </div>
-      </dl>
+      {canChooseCheckInMode ? (
+        <SegmentedControl
+          className={styles.modeSelector}
+          appearance="quiet"
+          aria-label="Choose check-in mode"
+          options={[{ value: "office", label: "Office" }, { value: "wfh", label: "Work from home" }]}
+          value={selectedMode}
+          onValueChange={(value) => setPreferredMode(value as "office" | "wfh")}
+        />
+      ) : null}
+
+      <div className={styles.location}>
+        <Badge className={styles.readiness} tone="success">Office assigned</Badge>
+        <p className={styles.locationName}>{availability.officeName}</p>
+        <p className={styles.locationDetail}>Local time zone · {availability.timezone}</p>
+        {record || provisional ? (
+          <Badge className={styles.attendanceState} tone={provisional ? "warning" : "info"}>
+            {record ? `${modeLabel(record.mode)} · ${record.checkedOutAt ? "Closed" : "In progress"}` : "Provisional WFH"}
+          </Badge>
+        ) : null}
+      </div>
 
       {projection.onApprovedLeave ? (
         <p className={styles.notice} role="status">Approved leave applies for this business date. New check-ins and mode changes are unavailable.</p>
@@ -118,6 +121,28 @@ export function AttendancePulse({
         <p className={styles.notice} role="status">This date is an office holiday. A new attendance check-in is unavailable.</p>
       ) : !availability.isWorkingDay ? (
         <p className={styles.notice} role="status">This is a non-working date in the office calendar.</p>
+      ) : null}
+
+      {displayedActions.length > 0 ? (
+        <div className={styles.actions} role="group" aria-label="Attendance actions">
+          {displayedActions.map((action) => (
+            <Button
+              className={styles.action}
+              variant={action === "check-in-office" || action === "check-in-wfh" || action === "check-out" ? "primary" : "secondary"}
+              type="button"
+              key={action}
+              disabled={isAttendanceActionDisabled(action, projection, anyPending)}
+              loading={pendingAction === action}
+              loadingLabel={`${getActionLabel(action, projection)} in progress`}
+              onClick={(event) => onAction(action, event.currentTarget)}
+            >
+              {action === "check-in-office" ? `Check in at ${availability.officeName}` : getActionLabel(action, projection)}
+            </Button>
+          ))}
+          {projection.wfhPending && !projection.wfhApproved && actions.includes("check-in-office") ? (
+            <p className={styles.secondaryLine}>Cancel the pending WFH request before checking in at the office.</p>
+          ) : null}
+        </div>
       ) : null}
 
       {record ? (
@@ -168,6 +193,24 @@ export function AttendancePulse({
         </div>
       )}
 
+      {canChooseCheckInMode && selectedMode === "office" ? (
+        <div className={styles.wfhOption}>
+          <span className={styles.wfhMark} aria-hidden="true">WFH</span>
+          <div className={styles.wfhCopy}>
+            <p className={styles.wfhTitle}>Working from home today?</p>
+            <p className={styles.wfhDetail}>{projection.wfhPending ? "WFH request pending · this check-in will remain provisional." : "WFH request approved."}</p>
+          </div>
+          <Button
+            className={styles.wfhSelect}
+            variant="secondary"
+            size="compact"
+            type="button"
+            aria-pressed="false"
+            onClick={() => setPreferredMode("wfh")}
+          >Use WFH</Button>
+        </div>
+      ) : null}
+
       {isPartial ? (
         <div className={styles.partialState}>
           <p className={styles.partial} role="status">{read.message}</p>
@@ -175,36 +218,29 @@ export function AttendancePulse({
         </div>
       ) : null}
 
-      {actions.length > 0 ? (
-        <div className={styles.actions} role="group" aria-label="Attendance actions">
-          {actions.map((action) => (
-            <Button
-              variant={action === "check-in-office" || action === "check-out" ? "primary" : "secondary"}
-              type="button"
-              key={action}
-              disabled={isAttendanceActionDisabled(action, projection, anyPending)}
-              loading={pendingAction === action}
-              loadingLabel={`${getActionLabel(action, projection)} in progress`}
-              onClick={(event) => onAction(action, event.currentTarget)}
-            >
-              {getActionLabel(action, projection)}
-            </Button>
-          ))}
-          {projection.wfhPending && !projection.wfhApproved && actions.includes("check-in-office") ? (
-            <p className={styles.secondaryLine}>Cancel the pending WFH request before checking in at the office.</p>
-          ) : null}
-        </div>
-      ) : null}
       </section>
     </div>
   );
+}
+
+function formatBusinessDate(value: string): string {
+  const date = new Date(`${value}T00:00:00Z`);
+  if (!Number.isFinite(date.getTime())) return value;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "2-digit",
+    timeZone: "UTC",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("weekday")} · ${part("month")} ${part("day")}`.toLocaleUpperCase();
 }
 
 function MessageState({ titleId, title, message, onRetry }: { titleId: string; title: string; message: string; onRetry?: () => void }) {
   return (
     <div className={styles.frame}>
       <section className={styles.pulse} aria-labelledby={titleId}>
-        <p className={styles.eyebrow}>Attendance pulse</p>
+        <p className={styles.eyebrow}>Today’s attendance</p>
         <h2 id={titleId} className={styles.title}>{title}</h2>
         <p className={styles.stateMessage} role={onRetry ? "alert" : "status"}>{message}</p>
         {onRetry ? <Button variant="secondary" onClick={onRetry}>Retry attendance</Button> : null}

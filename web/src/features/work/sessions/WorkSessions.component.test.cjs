@@ -21,12 +21,15 @@ for (const extension of [".ts", ".tsx"]) {
 }
 
 require.extensions[".css"] = (module) => {
-  module.exports = new Proxy({}, { get: (_target, key) => String(key) });
+  module.exports = {
+    __esModule: true,
+    default: new Proxy({}, { get: (_target, key) => String(key) }),
+  };
 };
 
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
-const { formatElapsed, getElapsedMilliseconds, getWorkSessionStatus, WorkSessions } = require("./WorkSessions.tsx");
+const { formatElapsed, getElapsedMilliseconds, getWorkSessionStatus, projectSessionTimeline, WorkSessions } = require("./WorkSessions.tsx");
 
 const timestamp = "2026-10-02T10:00:00.000Z";
 const running = {
@@ -57,23 +60,26 @@ test("read capability is independent and suppresses all session content when abs
 test("renders an active session, elapsed duration, and separately eligible actions", () => {
   const html = render();
   assert.match(html, /Prepare the delivery brief/);
-  assert.match(html, /Running/);
+  assert.match(html, /RUNNING/);
   assert.match(html, /01:01:01/);
   assert.match(html, /aria-label="Elapsed 1 hours, 1 minutes, 1 seconds"/);
-  assert.match(html, />Pause</);
-  assert.match(html, />Stop</);
+  assert.match(html, /ELAPSED THIS TASK/);
+  assert.match(html, /SESSION WINDOW/);
+  assert.match(html, />Pause timer</);
+  assert.match(html, />Finish &amp; save</);
+  assert.doesNotMatch(html, /Cedar|client|campaign/i, "the UI does not invent client data absent from the response");
   const titleId = html.match(/<h3\b[^>]*\bid="([^"]+)"[^>]*>Prepare the delivery brief<\/h3>/)?.[1];
   assert.ok(titleId, "session heading has an id for the action-group name");
   assert.ok(html.includes(`role="group" aria-labelledby="${titleId}"`));
 
   const pauseOnly = render({ eligibility: { canPause: true, canStop: false } });
-  assert.match(pauseOnly, />Pause</);
-  assert.doesNotMatch(pauseOnly, />Stop</);
+  assert.match(pauseOnly, />Pause timer</);
+  assert.doesNotMatch(pauseOnly, />Finish &amp; save</);
 
   const noActions = render({ eligibility: { canPause: false, canStop: false } });
   assert.match(noActions, /active timer remains visible/i);
-  assert.doesNotMatch(noActions, />Pause</);
-  assert.doesNotMatch(noActions, />Stop</);
+  assert.doesNotMatch(noActions, />Pause timer</);
+  assert.doesNotMatch(noActions, />Finish &amp; save</);
 });
 
 test("closed sessions retain the server duration and never show running controls", () => {
@@ -101,4 +107,17 @@ test("running duration advances from the host read timestamp while a closed dura
   const paused = { ...running, endedAt: "2026-10-02T11:01:01.000Z", state: "completed", closureReason: "PAUSED" };
   assert.equal(getElapsedMilliseconds(paused, readAt + 3_600_000, readAt), 3_661_000);
   assert.equal(formatElapsed(100 * 60 * 60 * 1000 + 62_000), "100:01:02");
+});
+
+test("active session timeline is derived from the authoritative start and elapsed duration", () => {
+  const elapsed = 3_661_000;
+  const timeline = projectSessionTimeline(running, elapsed);
+  assert.ok(timeline);
+  assert.equal(timeline.ticks.length, 9);
+  assert.equal(timeline.ticks.filter((tick) => tick.label).length, 5);
+  assert.equal(timeline.startedInWindow, true);
+  assert.equal(timeline.startPosition, 0);
+  assert.ok(timeline.currentPosition > 50 && timeline.currentPosition < 51);
+  assert.equal(timeline.intervalWidth, timeline.currentPosition);
+  assert.equal(projectSessionTimeline({ ...running, startedAt: "invalid" }, elapsed), null);
 });

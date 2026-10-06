@@ -89,6 +89,16 @@ test("segmented choices expose their label, selected state, and disabled state",
   assert.match(html, /<div[^>]*role="group" aria-label="Task layout"/);
   assert.match(html, /<button[^>]*aria-pressed="true"[^>]*><span>List<\/span><\/button>/);
   assert.match(html, /<button[^>]*aria-pressed="false"[^>]*disabled=""><span>Board<\/span><\/button>/);
+
+  const quiet = renderToStaticMarkup(React.createElement(SegmentedControl, {
+    appearance: "quiet",
+    "aria-label": "Choose check-in mode",
+    value: "office",
+    options: [{ value: "office", label: "Office" }, { value: "wfh", label: "Work from home" }],
+    onValueChange() {},
+  }));
+  assert.match(quiet, /data-appearance="quiet"/);
+  assert.match(quiet, /aria-label="Choose check-in mode"/);
 });
 
 test("avatars have an accessible identity only when the containing context needs one", () => {
@@ -97,7 +107,8 @@ test("avatars have an accessible identity only when the containing context needs
 
   assert.match(decorative, /data-size="32" aria-hidden="true"><svg/);
   assert.match(named, /data-size="48" role="img" aria-label="Morgan Lee"><svg/);
-  assert.match(named, /<circle/);
+  assert.match(named, /<circle cx="24" cy="16\.8" r="7\.2"/);
+  assert.match(named, /<ellipse cx="24" cy="35\.04" rx="13\.92" ry="8\.16"/);
 });
 
 test("error messages are alerts while loading messages announce a busy status", () => {
@@ -119,6 +130,7 @@ test("shared primitive styles consume semantic appearance tokens and support res
   const badge = readCss("Badge");
   const segmentedControl = readCss("SegmentedControl");
   const avatar = readCss("Avatar");
+  const tokens = fs.readFileSync(require.resolve("../foundations/tokens.css"), "utf8");
   const emptyState = readCss("EmptyState");
   const pageHeader = readCss("PageHeader");
   const stateMessage = readCss("StateMessage");
@@ -143,6 +155,31 @@ test("shared primitive styles consume semantic appearance tokens and support res
   assert.match(badge, /border-radius:\s*var\(--nova-radius-status\)/);
   assert.match(badge, /font-size:\s*var\(--nova-type-size-detail\)/);
   assert.doesNotMatch(badge, /\.dot|::before/);
+  assert.match(avatar, /border:\s*1px solid var\(--nova-color-avatar-edge\)/);
+  assert.match(avatar, /color:\s*var\(--nova-color-avatar-glyph-32\)/);
+  assert.match(avatar, /linear-gradient\(180deg, var\(--nova-color-avatar-surface-32\) 0%, var\(--nova-color-avatar-surface-end-32\) 100%\)/);
+  assert.match(avatar, /box-shadow:\s*var\(--nova-elevation-avatar\)/);
+  assert.match(avatar, /\.avatar\[data-size="24"\][\s\S]*color:\s*var\(--nova-color-avatar-glyph-24\)[\s\S]*avatar-surface-end-24/);
+  assert.match(avatar, /\.avatar\[data-size="40"\][\s\S]*color:\s*var\(--nova-color-avatar-glyph-40\)[\s\S]*avatar-surface-end-40/);
+  assert.match(avatar, /\.avatar\[data-size="48"\][\s\S]*color:\s*var\(--nova-color-avatar-glyph-48\)[\s\S]*avatar-surface-end-48/);
+  assert.match(avatar, /width:\s*100%;\s*height:\s*100%/);
+  for (const [token, color] of Object.entries({
+    "surface-24": "#e9e4f3", "glyph-24": "#7b7297",
+    "surface-32": "#ddeae8", "glyph-32": "#517f79",
+    "surface-40": "#e7edf3", "glyph-40": "#647f95",
+    "surface-48": "#f0e5da", "glyph-48": "#9a7964",
+  })) {
+    assert.match(tokens, new RegExp(`--nova-palette-avatar-${token}:\\s*${color}`));
+  }
+  assert.match(tokens, /--nova-palette-avatar-edge-light:\s*#ffffff/);
+  assert.match(tokens, /--nova-palette-avatar-edge-dark:\s*#4b5667/);
+  assert.match(tokens, /--nova-palette-avatar-shadow-light:\s*0 1px 2px rgb\(40 57 82 \/ 3\.5%\)/);
+  assert.match(tokens, /--nova-palette-avatar-shadow-dark:\s*0 1px 2px rgb\(5 9 17 \/ 7%\)/);
+  assert.match(tokens, /--nova-palette-avatar-gradient-end-dark:\s*#657186/);
+  assert.match(tokens, /--nova-color-avatar-edge:\s*var\(--nova-palette-avatar-edge-light\)/);
+  assert.match(tokens, /--nova-elevation-avatar:\s*var\(--nova-palette-avatar-shadow-light\)/);
+  assert.match(tokens, /:root\[data-theme="dark"\][\s\S]*?--nova-color-avatar-edge:\s*var\(--nova-palette-avatar-edge-dark\)[\s\S]*?--nova-elevation-avatar:\s*var\(--nova-palette-avatar-shadow-dark\)/);
+  assert.match(tokens, /@media\s*\(prefers-color-scheme:\s*dark\)[\s\S]*?--nova-color-avatar-edge:\s*var\(--nova-palette-avatar-edge-dark\)[\s\S]*?--nova-elevation-avatar:\s*var\(--nova-palette-avatar-shadow-dark\)/);
   assert.match(segmentedControl, /container-type:\s*inline-size/);
   assert.match(segmentedControl, /min-height:\s*2rem/);
   assert.match(segmentedControl, /border-radius:\s*var\(--nova-radius-control\)/);
@@ -151,7 +188,12 @@ test("shared primitive styles consume semantic appearance tokens and support res
   assert.match(segmentedControl, /\.option\s*\{[^}]*min-width:\s*10rem[^}]*min-height:\s*2rem[^}]*border-radius:\s*var\(--nova-radius-status\)/s);
   assert.match(segmentedControl, /\.option\[data-selected="true"\]::before\s*\{[^}]*inset-block-start:\s*1px[^}]*inset-inline:\s*8%[^}]*height:\s*1px[^}]*opacity:\s*var\(--nova-control-highlight-opacity\)/s);
   assert.match(segmentedControl, /\.option\s*\{[^}]*font-size:\s*var\(--nova-type-size-control-label\)[^}]*font-weight:\s*var\(--nova-type-weight-regular\)[^}]*line-height:\s*var\(--nova-type-line-control\)/s);
+  assert.match(segmentedControl, /\.option\[data-selected="true"\]\s*\{[^}]*font-weight:\s*var\(--nova-type-weight-medium\)/s);
   assert.match(segmentedControl, /\.option\[data-selected="true"\]\s*\{[^}]*border-color:\s*var\(--nova-color-action-edge\)[^}]*color:\s*var\(--nova-color-action-contrast\)[^}]*background:\s*var\(--nova-color-action\)/s);
+  assert.match(segmentedControl, /\.group\[data-appearance="quiet"\]\s*\{[^}]*background:\s*var\(--nova-color-surface-subtle\)/s);
+  assert.match(segmentedControl, /\.group\[data-appearance="quiet"\] \.option\[data-selected="true"\]\s*\{[^}]*var\(--nova-color-control-selected-surface\)/s);
+  assert.match(tokens, /--nova-palette-control-selected-surface-light:\s*#ffffff/);
+  assert.match(tokens, /--nova-palette-control-selected-surface-dark:\s*#364251/);
   assert.doesNotMatch(segmentedControl, /linear-gradient|\.group::before/);
   assert.match(segmentedControl, /\.option:focus-visible\s*\{\s*outline:\s*none;[^}]*box-shadow:\s*inset 0 -2px 0 var\(--nova-color-action\)/s);
   assert.match(segmentedControl, /@media\s*\(forced-colors:\s*active\)[\s\S]*?\.option:focus-visible\s*\{[^}]*outline:\s*1px solid Highlight/);

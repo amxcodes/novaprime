@@ -60,7 +60,6 @@
 }
 
 .peopleTable {
-  display: grid;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--nova-color-border);
@@ -68,41 +67,47 @@
   background: var(--nova-color-surface);
 }
 
-.peopleHeader,
-.personRow {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(15rem, 1.5fr) minmax(12rem, 1.4fr) minmax(8rem, 0.8fr) minmax(7rem, 0.7fr) auto;
-  align-items: center;
-  gap: var(--nova-space-4);
-  padding-inline: var(--nova-space-4);
+.peopleGrid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font: inherit;
+  color: var(--nova-color-text-primary);
+  text-align: start;
 }
 
-.peopleHeader {
-  min-height: var(--nova-control-height);
+.peopleGrid th,
+.peopleGrid td {
+  min-width: 0;
+  padding: var(--nova-space-3);
+  text-align: start;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.peopleHeader th {
   border-block-end: 1px solid var(--nova-color-border);
   color: var(--nova-color-text-muted);
   background: var(--nova-color-surface-subtle);
   font-size: var(--nova-type-size-xs);
-  font-weight: var(--nova-type-weight-semibold);
+  font-weight: var(--nova-type-weight-medium);
+  line-height: var(--nova-type-line-normal);
 }
 
-.actionHeading { text-align: end; }
-
-.peopleList {
-  display: grid;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.peopleHeader th:first-child { width: 35%; }
+.peopleHeader th:nth-child(2) { width: 38%; }
+.peopleHeader th:nth-child(3) { width: 11%; }
+.peopleHeader th:last-child {
+  width: 9.25rem;
+  padding-inline: var(--nova-space-2);
 }
 
 .personRow {
   min-height: var(--nova-table-row-height);
-  padding-block: var(--nova-space-3);
+  background: var(--nova-color-surface);
 }
 
-.personRow + .personRow {
+.personRow + .personRow > * {
   border-block-start: 1px solid var(--nova-color-border);
 }
 
@@ -111,15 +116,25 @@
 }
 
 .personRow[data-selected="true"] {
-  border-inline-start: 3px solid var(--nova-color-action);
   background: var(--nova-color-action-subtle);
 }
+
+.personRow[data-selected="true"] > th:first-child {
+  box-shadow: inset 3px 0 var(--nova-color-action);
+}
+
+.peopleGrid .actionHeading { text-align: end; }
 
 .personIdentity {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: var(--nova-space-3);
+}
+
+.personRowHeader {
+  min-width: 0;
+  font-weight: var(--nova-type-weight-regular);
 }
 
 .personMain {
@@ -150,6 +165,11 @@
   overflow-wrap: anywhere;
 }
 
+.personName {
+  font-size: var(--nova-type-size-body);
+  font-weight: var(--nova-type-weight-medium);
+}
+
 .email {
   min-width: 0;
   margin: 0;
@@ -159,13 +179,27 @@
   overflow-wrap: anywhere;
 }
 
-.workDetails { min-width: 0; }
-
-.workDetails .facts {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--nova-space-2) var(--nova-space-4);
+.personMeta {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--nova-space-1);
   margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-regular);
+  line-height: var(--nova-type-line-tight);
 }
+
+.personRole,
+.personEmail { overflow-wrap: anywhere; }
+
+.personRole { color: var(--nova-color-text-secondary); font-weight: var(--nova-type-weight-regular); }
+
+.personEmail { color: var(--nova-color-text-secondary); }
+
+.metaSeparator { color: var(--nova-color-text-muted); }
 
 .facts,
 .summaryFacts {
@@ -200,27 +234,48 @@
   overflow-wrap: anywhere;
 }
 
-.accessRole,
+.workDetailsCell,
 .accountStatus {
-  display: grid;
-  min-width: 0;
-  align-content: center;
-  justify-items: start;
-  gap: var(--nova-space-1);
   color: var(--nova-color-text-primary);
   font-size: var(--nova-type-size-sm);
   line-height: var(--nova-type-line-normal);
   overflow-wrap: anywhere;
 }
 
+.workDetailsValue {
+  display: grid;
+  min-width: 0;
+  justify-items: start;
+  gap: var(--nova-space-1);
+}
+
+.workDetailPrimary {
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-body);
+  font-weight: var(--nova-type-weight-regular);
+  line-height: var(--nova-type-line-normal);
+}
+
 .cellLabel {
+  display: none;
   color: var(--nova-color-text-muted);
-  font-size: var(--nova-type-size-xs);
+  font-size: var(--nova-type-size-control-label);
   font-weight: var(--nova-type-weight-medium);
 }
 
-.historyAction {
-  min-height: var(--nova-control-touch-target);
+.secondaryFact {
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+}
+
+.peopleGrid .actionCell {
+  padding-inline: var(--nova-space-2);
+  text-align: end;
+}
+
+.openPersonAction {
+  inline-size: 8.25rem;
   white-space: nowrap;
 }
 
@@ -550,37 +605,64 @@
 
 .lifecycleOutcomeFocus { min-width: 0; border-radius: var(--nova-radius-control); }
 
-@container (max-width: 56rem) {
-  .peopleHeader { display: none; }
+@container (max-width: 58rem) {
+  .peopleGrid { display: block; }
+
+  .peopleHeader {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
 
   .peopleTable { overflow: visible; border: 0; border-radius: 0; background: transparent; }
 
-  .peopleList { gap: var(--nova-space-3); }
+  .peopleGrid tbody {
+    display: grid;
+    min-width: 0;
+    gap: var(--nova-space-3);
+  }
 
   .personRow {
+    display: grid;
+    min-width: 0;
     grid-template-columns: minmax(0, 1fr);
     gap: var(--nova-space-3);
-    padding-inline: var(--nova-space-3);
+    padding: var(--nova-space-3);
     border: 1px solid var(--nova-color-border);
     border-radius: var(--nova-radius-surface);
     background: var(--nova-color-surface);
   }
 
-  .personRow + .personRow { border-block-start: 1px solid var(--nova-color-border); }
+  .personRow + .personRow > * { border-block-start: 0; }
 
-  .personIdentity { align-items: flex-start; }
-
-  .workDetails,
-  .accessRole,
-  .accountStatus { padding-inline-start: calc(2rem + var(--nova-space-3)); }
-
-  .accessRole,
-  .accountStatus {
-    grid-template-columns: minmax(5rem, auto) minmax(0, 1fr);
-    align-items: center;
+  .personRow > td {
+    display: grid;
+    grid-template-columns: minmax(6rem, 0.38fr) minmax(0, 1fr);
+    align-items: start;
+    gap: var(--nova-space-3);
+    padding: 0;
   }
 
-  .historyAction { width: 100%; }
+  .personRow > .personRowHeader {
+    display: block;
+    grid-column: 1 / -1;
+    padding: 0 0 var(--nova-space-2);
+    border-block-end: 1px solid var(--nova-color-border);
+  }
+
+  .personIdentity { align-items: center; }
+
+  .cellLabel { display: block; }
+
+  .peopleGrid .actionCell { text-align: start; }
+
+  .openPersonAction { inline-size: 100%; }
 }
 
 @container (max-width: 40rem) {
@@ -655,10 +737,9 @@
 }
 
 @media (forced-colors: active) {
-  .personRow + .personRow,
   .peopleTable,
-  .peopleList,
-  .peopleHeader,
+  .peopleHeader th,
+  .personRow + .personRow > *,
   .entryContent,
   .summaryFacts {
     border-color: CanvasText;
@@ -670,7 +751,13 @@
     background: Canvas;
   }
 
-  .personRow { border-color: CanvasText; background: Canvas; }
+  .personRow,
+  .personRow > * { border-color: CanvasText; background: Canvas; }
+
+  .personRow[data-selected="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
 
   .skeletonLine {
     background: CanvasText;

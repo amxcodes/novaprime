@@ -66,15 +66,15 @@ export function MyDayPage({ modules, destinations, onNavigate, onCustomize }: My
               </header>
               <div className={styles.shortcutGrid} role="group" aria-label="Available workspace pages">
                 {destinations.map((destination) => (
-                  <button
+                  <Button
                     className={styles.shortcut}
+                    variant="quiet"
                     key={destination.id}
-                    type="button"
                     onClick={() => onNavigate(destination.id)}
                   >
-                    <strong className={styles.shortcutTitle}>{destination.label}</strong>
+                    <span className={styles.shortcutTitle}>{destination.label}</span>
                     <span className={styles.shortcutSummary}>{destination.summary}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             </aside>

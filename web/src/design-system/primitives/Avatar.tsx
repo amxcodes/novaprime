@@ -20,8 +20,8 @@ export function Avatar({ size = 32, accessibleName, className, ...spanProps }: A
       aria-hidden={accessibleName ? undefined : true}
     >
       <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-        <circle cx="24" cy="16" r="8" />
-        <path d="M8 42c.6-9.2 6.8-14 16-14s15.4 4.8 16 14H8Z" />
+        <circle cx="24" cy="16.8" r="7.2" />
+        <ellipse cx="24" cy="35.04" rx="13.92" ry="8.16" />
       </svg>
     </span>
   );

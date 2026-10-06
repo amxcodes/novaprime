@@ -6,11 +6,13 @@ const read = () => readFileSync(new URL("./AssignmentList.module.css", import.me
 describe("assignment list responsive contract", () => {
   it("uses a quiet shared surface with separated rows and token-backed states", () => {
     const css = read();
+    const component = readFileSync(new URL("./assignment-list.tsx", import.meta.url), "utf8");
 
     expect(css).toMatch(/\.state\s*\{[^}]*container-type:\s*inline-size;[^}]*container-name:\s*assignments;/s);
     expect(css).toMatch(/\.list,[\s\S]*?border:\s*1px solid var\(--nova-color-border\);[\s\S]*?border-radius:\s*var\(--nova-radius-surface\);/);
     expect(css).toMatch(/\.item \+ \.item,[\s\S]*?border-block-start:\s*1px solid var\(--nova-color-border\);/);
-    expect(css).toMatch(/\.status\s*\{[^}]*border-radius:\s*var\(--nova-radius-pill\);/s);
+    expect(component).toMatch(/import \{ Badge, Button, StateMessage \} from "\.\.\/\.\.\/design-system";/);
+    expect(component).toMatch(/<Badge tone=\{status\.tone\}>\{status\.label\}<\/Badge>/);
     expect(css).not.toMatch(/#[\da-f]{3,8}\b|rgb\(/i);
   });
 

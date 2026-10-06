@@ -27,7 +27,8 @@
   gap: var(--nova-space-4);
   padding: var(--nova-space-4);
   border: 1px solid var(--nova-color-border);
-  border-radius: var(--nova-radius-control);
+  border-radius: var(--nova-radius-surface);
+  color: var(--nova-color-text-primary);
   background: var(--nova-color-surface);
 }
 
@@ -49,9 +50,9 @@
   min-width: 0;
   margin: 0;
   color: var(--nova-color-text-primary);
-  font-size: var(--nova-type-size-sm);
-  font-weight: var(--nova-type-weight-semibold);
-  line-height: var(--nova-type-line-normal);
+  font-size: var(--nova-type-size-subheading);
+  font-weight: var(--nova-type-weight-medium);
+  line-height: var(--nova-type-line-tight);
   overflow-wrap: anywhere;
 }
 
@@ -62,7 +63,7 @@
   flex-wrap: wrap;
   gap: var(--nova-space-1) var(--nova-space-3);
   color: var(--nova-color-text-secondary);
-  font-size: var(--nova-type-size-xs);
+  font-size: var(--nova-type-size-detail);
   line-height: var(--nova-type-line-normal);
   overflow-wrap: anywhere;
 }
@@ -78,7 +79,7 @@
 
 .elapsedLabel {
   color: var(--nova-color-text-secondary);
-  font-size: var(--nova-type-size-xs);
+  font-size: var(--nova-type-size-detail);
 }
 
 .timer {
@@ -89,8 +90,6 @@
   font-weight: var(--nova-type-weight-semibold);
   letter-spacing: 0.01em;
 }
-
-.liveIndicator { justify-self: start; }
 
 .actions {
   display: flex;
@@ -117,6 +116,253 @@
   margin-block-start: var(--nova-space-3);
 }
 
+/* Orbit Daily Workflows / Time / Session / Running (Figma 0:646). */
+.activeSession {
+  min-height: 20.9375rem;
+  grid-template-areas:
+    "eyebrow status"
+    "summary elapsed"
+    "timeline timeline"
+    "divider divider"
+    "note actions"
+    "error error";
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 18px 60px 1fr 1px auto auto;
+  align-items: center;
+  column-gap: var(--nova-space-6);
+  row-gap: 0;
+  padding: 15px 23px 20px;
+  border-radius: var(--nova-radius-surface);
+}
+
+.eyebrow {
+  grid-area: eyebrow;
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-detail);
+  font-weight: var(--nova-type-weight-medium);
+  line-height: 18px;
+  letter-spacing: 0.02em;
+}
+
+.activeStatus {
+  grid-area: status;
+  width: 8.25rem;
+  min-height: 1.75rem;
+  justify-content: center;
+  border-radius: 0.625rem;
+  color: var(--nova-color-success);
+  font-size: var(--nova-type-size-detail);
+  font-weight: var(--nova-type-weight-medium);
+  letter-spacing: 0.02em;
+}
+
+.activeSession .summary {
+  grid-area: summary;
+  align-content: center;
+  gap: var(--nova-space-1);
+}
+
+.activeSession .heading {
+  display: block;
+}
+
+.activeSession .title {
+  font-size: 1.0625rem;
+  font-weight: var(--nova-type-weight-medium);
+  line-height: 1.35;
+}
+
+.activeSession .metadata {
+  font-size: var(--nova-type-size-detail);
+}
+
+.activeElapsed {
+  grid-area: elapsed;
+  display: grid;
+  justify-items: end;
+  align-content: center;
+  gap: 0;
+  margin: 0;
+}
+
+.activeElapsed .timer {
+  font-size: 1.5rem;
+  font-weight: var(--nova-type-weight-medium);
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.activeElapsed .elapsedLabel {
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-detail);
+  font-weight: var(--nova-type-weight-medium);
+  letter-spacing: 0.02em;
+}
+
+.timeline {
+  grid-area: timeline;
+  align-self: stretch;
+  min-width: 0;
+  margin: 0;
+  padding-block-start: var(--nova-space-2);
+}
+
+.timelineTitle {
+  margin-block-end: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-detail);
+  font-weight: var(--nova-type-weight-medium);
+  letter-spacing: 0.02em;
+  line-height: 14px;
+}
+
+.timelineLabels {
+  position: relative;
+  display: block;
+  height: 14px;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-detail);
+  line-height: 14px;
+}
+
+.timelineLabels time {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.timelineLabels time:first-child { transform: none; }
+.timelineLabels time:last-child { transform: translateX(-100%); }
+
+.timelinePlot {
+  position: relative;
+  display: block;
+  height: 31px;
+  border-block-end: 1px solid var(--nova-color-border);
+}
+
+.majorTick,
+.minorTick {
+  position: absolute;
+  inset-block-end: 0;
+  width: 1px;
+  background: var(--nova-color-border);
+  transform: translate(0, 1px);
+}
+
+.majorTick { height: 12px; }
+.minorTick { height: 8px; }
+
+.liveInterval {
+  position: absolute;
+  inset-block-start: 11px;
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--nova-radius-pill);
+  color: var(--nova-color-action-contrast);
+  background: var(--nova-color-action);
+  font-size: var(--nova-type-size-detail);
+  font-weight: var(--nova-type-weight-medium);
+  white-space: nowrap;
+}
+
+.liveInterval > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.startMarker,
+.currentMarker {
+  position: absolute;
+  z-index: 2;
+  width: 2px;
+  transform: translateX(-1px);
+}
+
+.startMarker {
+  inset-block-start: 6px;
+  height: 24px;
+  background: var(--nova-color-action-edge);
+}
+
+.currentMarker {
+  inset-block-start: 0;
+  height: 30px;
+  background: var(--nova-color-text-primary);
+}
+
+.currentMarker::after {
+  position: absolute;
+  inset-block-start: -1px;
+  inset-inline-start: 50%;
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  transform: translateX(-50%);
+  border: 1px solid var(--nova-color-action-contrast);
+  border-radius: 50%;
+  background: var(--nova-color-action);
+  content: "";
+}
+
+.timelineCaptions {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: var(--nova-space-2);
+  margin-block-start: var(--nova-space-2);
+  color: var(--nova-color-action-text);
+  font-size: var(--nova-type-size-detail);
+  font-weight: var(--nova-type-weight-medium);
+  line-height: 14px;
+}
+
+.timelineCaptions time:last-child {
+  color: var(--nova-color-text-primary);
+}
+
+.divider {
+  grid-area: divider;
+  width: 100%;
+  height: 1px;
+  background: var(--nova-color-border);
+}
+
+.saveNote {
+  grid-area: note;
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-detail);
+  line-height: var(--nova-type-line-normal);
+}
+
+.activeSession .actions {
+  grid-area: actions;
+  flex-wrap: nowrap;
+}
+
+.activeSession .actions > button {
+  min-width: 7rem;
+}
+
+.activeSession .actions > button[data-variant="primary"] {
+  min-width: 8.625rem;
+}
+
+.activeSession .actionError {
+  grid-area: error;
+  margin-block-start: var(--nova-space-2);
+}
+
 @container work-sessions (max-width: 40rem) {
   .session {
     grid-template-columns: minmax(0, 1fr);
@@ -132,10 +378,63 @@
     width: 100%;
     min-width: 0;
   }
+
+  .activeSession {
+    min-height: 0;
+    grid-template-areas:
+      "eyebrow"
+      "status"
+      "summary"
+      "elapsed"
+      "timeline"
+      "divider"
+      "note"
+      "actions"
+      "error";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    gap: var(--nova-space-3);
+    padding: var(--nova-space-4);
+  }
+
+  .activeSession .activeStatus {
+    justify-self: start;
+  }
+
+  .activeElapsed {
+    justify-items: start;
+  }
+
+  .activeSession .actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+  }
+
+  .activeSession .actions > button {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 @container work-sessions (max-width: 22rem) {
-  .session {
-    padding: var(--nova-space-3);
+  .session { padding: var(--nova-space-3); }
+  .activeSession { padding: var(--nova-space-3); }
+}
+
+@media (any-pointer: coarse) {
+  .activeSession .actions > button { min-height: var(--nova-control-touch-target); }
+}
+
+@media (forced-colors: active) {
+  .liveInterval,
+  .majorTick,
+  .minorTick,
+  .startMarker,
+  .currentMarker,
+  .currentMarker::after,
+  .divider {
+    background: CanvasText;
   }
+
+  .timelinePlot { border-color: CanvasText; }
 }

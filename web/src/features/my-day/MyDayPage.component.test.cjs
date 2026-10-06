@@ -76,6 +76,17 @@ test("renders only modules and shortcuts supplied by the route host", () => {
   assert.doesNotMatch(markup, /People/);
 });
 
+test("renders quick access destinations as shared quiet buttons with their supplied summaries", () => {
+  const markup = render({
+    modules: [],
+    destinations: [{ id: "work", label: "Work", summary: "Tasks in scope." }],
+  });
+
+  assert.match(markup, /<button[^>]*data-variant="quiet"[^>]*>/);
+  assert.match(markup, /<span[^>]*>Work<\/span><span[^>]*>Tasks in scope\.<\/span>/);
+  assert.doesNotMatch(markup, /<strong[^>]*>Work<\/strong>/);
+});
+
 test("empty modules preserve the Customize My Day action", () => {
   const markup = render({ modules: [], destinations: [] });
 

@@ -36,7 +36,7 @@ describe("responsive layout contracts", () => {
     expect(visibleTasks).toMatch(/@container visible-tasks\s*\(max-width:\s*40rem\)/);
     expect(visibleTasks).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
     expect(assignments).toMatch(/@container assignments\s*\(max-width:\s*60rem\)/);
-    expect(assignments).toContain("grid-template-columns: minmax(8rem, 1.5fr) minmax(6rem, 0.75fr) minmax(6rem, 0.75fr) minmax(9.5rem, 1.25fr)");
+    expect(assignments).toContain("grid-template-columns: minmax(8rem, 1.9fr) minmax(5.5rem, 0.7fr) minmax(6rem, 0.8fr) minmax(9.5rem, 1.45fr)");
     expect(assignments).toMatch(/@container assignments \(max-width: 34rem\)[\s\S]*?\.collectionHeader \{ display: none; \}[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
     expect(assignments).toMatch(/@container assignments \(max-width: 22rem\)[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/);
     expect(assignments).toMatch(/@media \(any-pointer: coarse\)[\s\S]*?\.actions :global\(button\)[\s\S]*?min-height: var\(--nova-control-touch-target\)/);

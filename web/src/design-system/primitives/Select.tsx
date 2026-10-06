@@ -94,7 +94,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
       {hint ? <Text slot="description" className={styles.description}>{hint}</Text> : null}
       {error ? <FieldError className={styles.error}>{error}</FieldError> : null}
 
-      <Popover className={styles.popover} placement="bottom start" offset={4}>
+      <Popover className={styles.popover} placement="bottom start" offset={12}>
         <ListBox aria-label={label} className={styles.listBox}>
           {options.map((option) => (
             <ListBoxItem
