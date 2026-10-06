@@ -127,8 +127,20 @@ async function configureSupabaseEnvironment(): Promise<Record<string, string>> {
   await confirmSupabaseProject(projectRef, "apply NOVA migrations and configure the restricted application role");
   const accessToken = optionalArgument("--access-token") ?? process.env.SUPABASE_ACCESS_TOKEN ??
     existing.SUPABASE_ACCESS_TOKEN ?? await promptValue("Supabase project-scoped access token");
-  const appPassword = existing.NOVA_APP_PASSWORD ?? optionalArgument("--app-password") ??
-    process.env.NOVA_APP_PASSWORD ?? secret(24);
+  const rotateAppRolePassword = process.argv.includes("--rotate-app-role-password");
+  const requestedAppPassword = optionalArgument("--app-password") ?? process.env.NOVA_APP_PASSWORD;
+  const savedAppPassword = existing.NOVA_APP_PASSWORD;
+  if (
+    !rotateAppRolePassword && savedAppPassword && requestedAppPassword &&
+    requestedAppPassword !== savedAppPassword
+  ) {
+    throw new Error("NOVA_APP_PASSWORD_CHANGE_REQUIRES_ROTATION_FLAG");
+  }
+  const appPassword = rotateAppRolePassword
+    ? requestedAppPassword && requestedAppPassword !== savedAppPassword
+      ? requestedAppPassword
+      : secret(24)
+    : savedAppPassword ?? requestedAppPassword ?? secret(24);
   if (!accessToken) throw new Error("SUPABASE_ACCESS_TOKEN_REQUIRED");
   if (appPassword.length < 24) throw new Error("NOVA_APP_PASSWORD_TOO_SHORT");
 
@@ -164,6 +176,11 @@ async function configureSupabaseEnvironment(): Promise<Record<string, string>> {
   updateEnvFile(persisted, ["SUPABASE_ACCESS_TOKEN", "Supabaseaccesstoken", "NOVA_SUPABASE_PROJECT_REF_CONFIRM"]);
   console.info(`Configured ${envPath} for Supabase project ${projectRef}.`);
   console.info("The management token is for this bootstrap command only; never upload it to Netlify, Vercel, or a public repository.");
+  if (rotateAppRolePassword) {
+    console.warn("Explicit database password rotation selected. Update the API host's DATABASE_URL to this exact project and password before serving traffic.");
+  } else {
+    console.info("Existing nova_app password is preserved by default. Use --rotate-app-role-password only for a coordinated runtime secret rotation.");
+  }
   return values;
 }
 
@@ -237,7 +254,12 @@ if (mode === "docker") {
   required(environment, "MIGRATOR_DATABASE_URL");
   run(process.execPath, ["run", "migrate"], environment, "MIGRATION_FAILED");
 } else {
-  run(process.execPath, ["run", "supabase:bootstrap"], environment, "SUPABASE_BOOTSTRAP_FAILED");
+  run(
+    process.execPath,
+    ["run", "supabase:bootstrap", ...(process.argv.includes("--rotate-app-role-password") ? ["--", "--rotate-app-role-password"] : [])],
+    environment,
+    "SUPABASE_BOOTSTRAP_FAILED",
+  );
 }
 
 run(process.execPath, ["run", "deployment:preflight"], environment, "PREFLIGHT_FAILED");

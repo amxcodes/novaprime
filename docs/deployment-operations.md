@@ -270,10 +270,12 @@ never a runtime secret.
 - Rotate `NOVA_SECRETS_ENCRYPTION_KEY` only with an explicit credential
   re-encryption procedure; it protects stored SMTP/Gmail/Resend credentials.
 - Rotate `NOVA_BOOTSTRAP_TOKEN` after first-run setup and never reuse it.
-- Rotate database passwords by choosing a long new `NOVA_APP_PASSWORD`, running
-  the one-time Supabase bootstrap (which reapplies the restricted `nova_app`
-  login even when migrations already exist), validating `/api/ready`, then
-  retiring the old credential. Never place the management token in the runtime.
+- Rotate database passwords only as a coordinated change: run
+  `bun run setup:supabase -- --rotate-app-role-password`, update the selected
+  API host's `DATABASE_URL` to the generated value, deploy/restart that API,
+  and validate `/api/ready` plus sign-in before retiring the old credential.
+  Routine bootstrap preserves an existing `nova_app` password. Setup never
+  changes hosted secrets, and the management token never belongs in the runtime.
 
 ## Scheduled maintenance
 

@@ -3,11 +3,13 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { confirmSupabaseProject } from "./supabase-project-confirmation.js";
 import { migrationSha256 } from "./migration-checksum.js";
+import { applicationRoleProvisioningSql } from "./application-role-provisioning.js";
 
 const projectRef = requiredEnvironment("NOVA_SUPABASE_PROJECT_REF");
 const accessToken =
   process.env.SUPABASE_ACCESS_TOKEN ?? process.env.Supabaseaccesstoken;
 const applicationPassword = requiredEnvironment("NOVA_APP_PASSWORD");
+const rotateExistingApplicationPassword = process.argv.includes("--rotate-app-role-password");
 const migrationDirectory = fileURLToPath(
   new URL("../../database/migrations/", import.meta.url),
 );
@@ -39,14 +41,6 @@ function requiredEnvironment(name: string): string {
   return value;
 }
 
-function sqlLiteral(value: string): string {
-  if (value.includes("\0")) {
-    throw new Error("NOVA_APP_PASSWORD_INVALID");
-  }
-
-  return `'${value.replaceAll("'", "''")}'`;
-}
-
 async function postSql(path: string, body: unknown): Promise<unknown> {
   const response = await fetch(`https://api.supabase.com/v1/projects/${projectRef}${path}`, {
     body: JSON.stringify(body),
@@ -71,27 +65,9 @@ async function postSql(path: string, body: unknown): Promise<unknown> {
   return response.status === 204 ? undefined : response.json();
 }
 
-const roleProvisioningSource = `
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nova_app') THEN
-    CREATE ROLE nova_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS
-      PASSWORD ${sqlLiteral(applicationPassword)};
-  ELSE
-    -- Supabase's managed postgres role may rotate a password for an existing
-    -- non-owner role but is intentionally not allowed to rewrite every role
-    -- attribute. The boundary is verified below; do not fail a safe rotation
-    -- by asking the managed role to repeat NOSUPERUSER/NOBYPASSRLS clauses.
-    ALTER ROLE nova_app LOGIN PASSWORD ${sqlLiteral(applicationPassword)};
-  END IF;
-END;
-$$;
-
-GRANT USAGE ON SCHEMA nova TO nova_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA nova TO nova_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA nova
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO nova_app;
-`;
+const roleProvisioningSource = applicationRoleProvisioningSql(applicationPassword, {
+  rotateExistingPassword: rotateExistingApplicationPassword,
+});
 
 await postSql("/database/query", {
   query: `
@@ -179,10 +155,9 @@ for (const filename of migrationFiles) {
   if (filename === checksumMigration) checksumColumnExists = true;
 }
 
-// Re-apply the restricted login on every bootstrap, not only when migration
-// 0001 is new. This makes an operator-owned NOVA_APP_PASSWORD rotation take
-// effect on an already-populated Supabase project without granting owner
-// privileges to the runtime role.
+// Ensure grants are present on every bootstrap. Existing role credentials are
+// stable unless rotation was explicitly requested, so a local .env update
+// cannot silently invalidate the deployed API's DATABASE_URL.
 await postSql("/database/query", { query: roleProvisioningSource });
 
 const roleBoundary = await postSql("/database/query", {
