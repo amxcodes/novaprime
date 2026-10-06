@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  assertSupabaseDatabaseUrlBinding,
   configuredSupabasePoolerHost,
   resolveSupabasePoolerHost,
   supabasePoolerHostFromConfiguration,
@@ -81,5 +82,42 @@ describe("Supabase transaction pooler discovery", () => {
     await expect(resolveSupabasePoolerHost("abcdefghijklmnopqrst", "token", async () =>
       new Response("sensitive server body", { status: 403 }),
     )).rejects.toThrow("SUPABASE_POOLER_CONFIG_LOOKUP_FAILED_403");
+  });
+});
+
+describe("Supabase database project binding", () => {
+  const projectRef = "abcdefghijklmnopqrst";
+
+  test("accepts an app-role pooler URL bound to the selected project", () => {
+    expect(() => assertSupabaseDatabaseUrlBinding(
+      `postgresql://nova_app.${projectRef}:private@aws-2-us-east-1.pooler.supabase.com:6543/postgres`,
+      projectRef,
+    )).not.toThrow();
+  });
+
+  test("rejects a pooler URL bound to a different project or role", () => {
+    expect(() => assertSupabaseDatabaseUrlBinding(
+      "postgresql://nova_app.otherproject:private@aws-2-us-east-1.pooler.supabase.com:6543/postgres",
+      projectRef,
+    )).toThrow("SUPABASE_DATABASE_URL_PROJECT_MISMATCH");
+    expect(() => assertSupabaseDatabaseUrlBinding(
+      `postgresql://postgres.${projectRef}:private@aws-2-us-east-1.pooler.supabase.com:6543/postgres`,
+      projectRef,
+    )).toThrow("SUPABASE_DATABASE_URL_PROJECT_MISMATCH");
+  });
+
+  test("accepts direct database hosts and rejects mismatched or unidentifiable targets", () => {
+    expect(() => assertSupabaseDatabaseUrlBinding(
+      `postgresql://nova_app:private@db.${projectRef}.supabase.co:5432/postgres`,
+      projectRef,
+    )).not.toThrow();
+    expect(() => assertSupabaseDatabaseUrlBinding(
+      "postgresql://nova_app:private@db.zyxwvutsrqponmlkjihg.supabase.co:5432/postgres",
+      projectRef,
+    )).toThrow("SUPABASE_DATABASE_URL_PROJECT_MISMATCH");
+    expect(() => assertSupabaseDatabaseUrlBinding(
+      "postgresql://nova_app:private@database.example.com:5432/postgres",
+      projectRef,
+    )).toThrow("SUPABASE_DATABASE_URL_PROJECT_UNVERIFIABLE");
   });
 });

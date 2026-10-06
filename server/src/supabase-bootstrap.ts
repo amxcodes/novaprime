@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { confirmSupabaseProject } from "./supabase-project-confirmation.js";
 import { migrationSha256 } from "./migration-checksum.js";
 import { applicationRoleProvisioningSql } from "./application-role-provisioning.js";
+import { assertSupabaseDatabaseUrlBinding } from "./supabase-pooler.js";
 
 const projectRef = requiredEnvironment("NOVA_SUPABASE_PROJECT_REF");
 const accessToken =
@@ -20,6 +21,7 @@ const testDirectory = fileURLToPath(
 if (!/^[a-z0-9]{20}$/.test(projectRef)) {
   throw new Error("NOVA_SUPABASE_PROJECT_REF_INVALID");
 }
+assertSupabaseDatabaseUrlBinding(requiredEnvironment("DATABASE_URL"), projectRef);
 
 if (!accessToken) {
   throw new Error("SUPABASE_ACCESS_TOKEN_REQUIRED");

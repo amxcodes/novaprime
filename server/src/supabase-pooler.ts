@@ -16,6 +16,62 @@ export function validateSupabasePoolerHost(value: string): string {
   return host;
 }
 
+/**
+ * Fail closed when an operator-selected Supabase project and the runtime
+ * connection string identify different databases. Pooler URLs bind the
+ * project in the role suffix; direct URLs bind it in the database hostname.
+ */
+export function assertSupabaseDatabaseUrlBinding(
+  databaseUrl: string,
+  projectRef: string,
+  applicationRole = "nova_app",
+): void {
+  if (!/^[a-z0-9]{20}$/.test(projectRef)) {
+    throw new Error("NOVA_SUPABASE_PROJECT_REF_INVALID");
+  }
+  if (!/^[a-z_][a-z0-9_]*$/i.test(applicationRole)) {
+    throw new Error("NOVA_APPLICATION_DATABASE_ROLE_INVALID");
+  }
+
+  let url: URL;
+  try {
+    url = new URL(databaseUrl);
+  } catch {
+    throw new Error("SUPABASE_DATABASE_URL_PROJECT_UNVERIFIABLE");
+  }
+  if (!/^(postgres|postgresql):$/.test(url.protocol)) {
+    throw new Error("SUPABASE_DATABASE_URL_PROJECT_UNVERIFIABLE");
+  }
+
+  let username: string;
+  try {
+    username = decodeURIComponent(url.username);
+  } catch {
+    throw new Error("SUPABASE_DATABASE_URL_PROJECT_UNVERIFIABLE");
+  }
+
+  const roleParts = username.split(".");
+  const roleMatches = roleParts[0] === applicationRole;
+  const pooler = poolerHostPattern.test(url.hostname.toLowerCase());
+  if (pooler) {
+    if (!roleMatches || roleParts.length !== 2 || roleParts[1] !== projectRef) {
+      throw new Error("SUPABASE_DATABASE_URL_PROJECT_MISMATCH");
+    }
+    return;
+  }
+
+  const directProject = url.hostname.toLowerCase().match(/^db\.([a-z0-9]{20})\.supabase\.co$/)?.[1];
+  if (!directProject) {
+    throw new Error("SUPABASE_DATABASE_URL_PROJECT_UNVERIFIABLE");
+  }
+  if (
+    directProject !== projectRef || !roleMatches ||
+    (roleParts.length > 1 && (roleParts.length !== 2 || roleParts[1] !== projectRef))
+  ) {
+    throw new Error("SUPABASE_DATABASE_URL_PROJECT_MISMATCH");
+  }
+}
+
 export function configuredSupabasePoolerHost(input: Readonly<{
   projectRef: string;
   explicitHost?: string;

@@ -94,7 +94,9 @@ project-scoped management token (create one from the [Supabase account token
 page](https://supabase.com/dashboard/account/tokens)), resolves the
 transaction-pooler host, applies
 the canonical migrations, creates the restricted `nova_app` login if absent,
-writes the local runtime URL, and runs the same preflight. It prepares the
+writes the local runtime URL, and runs the same preflight. Bootstrap and
+preflight verify that the database URL is bound to the selected Supabase
+project before making writes or opening a connection. It prepares the
 database only: it does not deploy or start the API. For a local API check, run
 `bun run dev` and open `http://localhost:3001`. For a hosted path, copy only
 runtime values from the private `.env` into the selected host's server-side

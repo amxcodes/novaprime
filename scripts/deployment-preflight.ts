@@ -10,6 +10,7 @@ type DatabasePool = {
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { isSecretsEncryptionKeyValid } from "../server/src/secrets.ts";
+import { assertSupabaseDatabaseUrlBinding } from "../server/src/supabase-pooler.ts";
 const pgModulePath = "../server/node_modules/pg/lib/index.js";
 const pg = await import(pgModulePath) as unknown as {
   Pool: new (configuration: { connectionString: string; max: number }) => DatabasePool;
@@ -71,6 +72,9 @@ async function readSupabaseMigrationLedger(): Promise<{
 
 if (!databaseUrl) {
   throw new Error("DATABASE_URL_REQUIRED");
+}
+if (supabaseProjectRef) {
+  assertSupabaseDatabaseUrlBinding(databaseUrl, supabaseProjectRef, expectedApplicationRole);
 }
 if (!migrationUpdateMode && !isSecretsEncryptionKeyValid()) {
   throw new Error("NOVA_SECRETS_ENCRYPTION_KEY_INVALID");
