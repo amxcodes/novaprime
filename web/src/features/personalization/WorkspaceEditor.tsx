@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import { Button, SearchableSelect, type SearchableSelectOption } from "../../design-system";
+import { canEditPersonalPreferenceDraft, type PersonalPreferenceReadStatus } from "./preference-availability";
 import styles from "./WorkspaceEditor.module.css";
 
 export type WorkspaceMoveDirection = -1 | 1;
@@ -28,6 +29,7 @@ export interface WorkspaceEditorProps {
   pinnedDestinationIds: readonly string[];
   /** Authorized My Day modules; preserve the host's presentation order. */
   modules: readonly WorkspaceModuleOption[];
+  readStatus: PersonalPreferenceReadStatus;
   writable: boolean;
   saveStatus: WorkspaceSaveStatus;
   /** A shared preference revision conflict blocks workspace edits until Appearance resolves it. */
@@ -58,6 +60,7 @@ export interface WorkspaceEditorProps {
   ) => void;
   onReset: () => void;
   onRetry?: () => void;
+  onReload: () => void;
 }
 
 const MAX_PINNED_DESTINATIONS = 4;
@@ -92,6 +95,7 @@ export function WorkspaceEditor({
   homeView,
   pinnedDestinationIds,
   modules,
+  readStatus,
   writable,
   saveStatus,
   blockedByConflict = false,
@@ -103,10 +107,12 @@ export function WorkspaceEditor({
   onMoveModule,
   onReset,
   onRetry,
+  onReload,
 }: WorkspaceEditorProps) {
   const id = useId();
   const [reorderAnnouncement, setReorderAnnouncement] = useState("");
-  const disabled = !writable || saveStatus === "saving" || blockedByConflict;
+  const canEdit = canEditPersonalPreferenceDraft(readStatus, writable, saveStatus === "saving", blockedByConflict);
+  const disabled = !canEdit;
   const pinnedIds = new Set(pinnedDestinationIds);
   const pinnedCount = destinations.reduce((count, destination) =>
     count + Number(pinnedIds.has(destination.id)), 0);
@@ -131,20 +137,26 @@ export function WorkspaceEditor({
       <div className={styles.statusRow}>
         <span className={styles.statusDot} data-state={saveStatus} aria-hidden="true" />
         <span role="status" aria-live="polite" aria-atomic="true">
-          {blockedByConflict ? "Preferences changed elsewhere." : writable ? SAVE_STATUS_LABEL[saveStatus] : "Workspace settings are read-only."}
+          {blockedByConflict ? "Preferences changed elsewhere." : readStatus === "read-failed" ? "Saved workspace preferences could not be loaded." : readStatus === "unsupported" ? "Workspace settings are unavailable for this server version." : readStatus === "access-lost" ? "Personal settings access needs to be restored." : SAVE_STATUS_LABEL[saveStatus]}
         </span>
-        {saveStatus === "error" && writable && !blockedByConflict && onRetry ? (
+        {readStatus === "read-failed" || readStatus === "access-lost" ? (
+          <Button className={styles.statusAction} variant="quiet" size="compact" onClick={onReload}>
+            Reload saved settings
+          </Button>
+        ) : saveStatus === "error" && writable && !blockedByConflict && onRetry ? (
           <Button className={styles.statusAction} variant="quiet" size="compact" onClick={onRetry}>
             Try again
           </Button>
         ) : null}
       </div>
-      {!writable ? <p className={styles.readOnlyNote}>Your account does not currently allow workspace customization.</p> : null}
+      {readStatus === "read-failed" ? <p className={styles.error} role="alert">You can preview changes in this browser session, but they will not be saved until the preferences load successfully. Reloading replaces this preview with the saved settings.</p> : null}
+      {readStatus === "unsupported" ? <p className={styles.readOnlyNote}>Saved workspace settings are not supported by the current preference schema. Ask your NOVA administrator to apply the available database update.</p> : null}
+      {readStatus === "access-lost" ? <p className={styles.readOnlyNote}>Your session cannot currently read personal workspace settings. Reload them after your access is restored.</p> : null}
       {blockedByConflict ? (
         <p className={styles.conflictNote} role="status">
           Workspace changes are paused. Resolve the saved preference conflict in Appearance before editing these settings.
         </p>
-      ) : error ? <p className={styles.error} role="alert">{error}</p> : null}
+      ) : error && readStatus === "ready" ? <p className={styles.error} role="alert">{error}</p> : null}
 
       <div className={styles.sections}>
         <section className={styles.section} aria-labelledby={`${id}-home-title`}>

@@ -42,3 +42,21 @@ test("appearance writes disable a denied editor and use its captured identity fo
   assert.match(save, /error\?\.httpStatus === 401 \|\| error\?\.httpStatus === 403/);
   assert.match(save, /error\.httpStatus === 403[\s\S]*?state\.uiPreferenceWritable = false[\s\S]*?recoverProtectedCommandFailure\(error, identityContext/);
 });
+
+test("failed preference reads allow only session preview until saved settings reload successfully", () => {
+  const load = section("async function refreshSession()", "function canOpenView(");
+  const schedule = section("function scheduleUiPreferenceSave()", "async function reloadUiPreferences()");
+  const reload = section("async function reloadUiPreferences()", "async function saveAppearancePreferences()");
+  const save = section("async function saveAppearancePreferences()", "function clearIdentityScopedState(");
+
+  assert.match(load, /if \(saved\.readError\)[\s\S]*?personalPreferenceReadStatus\(saved\)/);
+  assert.match(load, /saved\.readHttpStatus === 401 \|\| saved\.readHttpStatus === 403/);
+  assert.match(schedule, /canPersistPersonalPreferences\(state\.uiPreferenceReadStatus/);
+  assert.match(save, /if \(appearanceSaveInFlight \|\| !canPersistPersonalPreferences\(state\.uiPreferenceReadStatus/);
+  assert.match(reload, /personId !== state\.uiPreferencePersonId/);
+  assert.match(reload, /state\.uiPreferences = \{[\s\S]*?normalizeAppearance\(saved\.appearance\)/);
+});
+
+test("grant-derived navigation refreshes when an active browser tab resumes", () => {
+  assert.match(appSource, /installPermissionRefreshOnResume\(\{[\s\S]*?readIdentity:[\s\S]*?state\.identityPersonId[\s\S]*?refresh: \(\{ identityEpoch, actorPersonId \}\) => refreshActorPermissions\(identityEpoch, actorPersonId\)/);
+});

@@ -38,6 +38,7 @@ const baseProps = {
     { id: "attendance", label: "Attendance", enabled: true },
     { id: "assignments", label: "Assignments", enabled: true },
   ],
+  readStatus: "ready",
   writable: true,
   saveStatus: "idle",
   onHomeViewChange() {},
@@ -46,6 +47,7 @@ const baseProps = {
   onModuleChange() {},
   onMoveModule() {},
   onReset() {},
+  onReload() {},
 };
 
 function render(overrides = {}) {
@@ -92,6 +94,31 @@ test("an unavailable saved destination remains visibly selected but disabled whi
 test("read-only workspaces keep the custom home control disabled", () => {
   const html = render({ writable: false });
   assert.match(html, /<input(?=[^>]*id="[^"]+-home")(?=[^>]*role="combobox")(?=[^>]*disabled="")[^>]*>/);
+});
+
+test("failed preference reads permit preview edits and clearly prevent persistence", () => {
+  const html = render({ readStatus: "read-failed", writable: false });
+  const home = html.match(/<input(?=[^>]*id="[^"]+-home")(?=[^>]*role="combobox")[^>]*>/)?.[0] || "";
+  const pin = html.match(/<input(?=[^>]*id="[^"]+-pin-people")[^>]*>/)?.[0] || "";
+  const reset = html.match(/<button\b[^>]*>[\s\S]*?Reset workspace[\s\S]*?<\/button>/)?.[0] || "";
+
+  assert.doesNotMatch(home, /disabled=""/);
+  assert.doesNotMatch(pin, /disabled=""/);
+  assert.doesNotMatch(reset, /disabled=""/);
+  assert.match(html, /could not be loaded/);
+  assert.match(html, /they will not be saved until the preferences load successfully/);
+  assert.match(html, /Reloading replaces this preview with the saved settings/);
+  assert.match(html, /Reload saved settings/);
+  assert.doesNotMatch(html, /Your account does not currently allow/);
+});
+
+test("unsupported preference schemas keep workspace controls read-only without implying a role denial", () => {
+  const html = render({ readStatus: "unsupported", writable: false });
+  const home = html.match(/<input(?=[^>]*id="[^"]+-home")(?=[^>]*role="combobox")[^>]*>/)?.[0] || "";
+
+  assert.match(home, /disabled=""/);
+  assert.match(html, /not supported by the current preference schema/);
+  assert.doesNotMatch(html, /Your account does not currently allow/);
 });
 
 test("a preference conflict disables home, pin, reorder, module, reset, and retry actions", () => {

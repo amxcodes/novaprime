@@ -20,6 +20,7 @@ const baseProps: WorkspaceEditorProps = {
     { id: "leave", label: "Leave", enabled: false },
     { id: "assignments", label: "Assignments", enabled: true },
   ],
+  readStatus: "ready",
   writable: true,
   saveStatus: "idle",
   onHomeViewChange: () => {},
@@ -28,6 +29,7 @@ const baseProps: WorkspaceEditorProps = {
   onModuleChange: () => {},
   onMoveModule: () => {},
   onReset: () => {},
+  onReload: () => {},
 };
 
 function render(props: Partial<WorkspaceEditorProps> = {}) {

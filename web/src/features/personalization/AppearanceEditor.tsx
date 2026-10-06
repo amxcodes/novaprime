@@ -10,6 +10,10 @@ import {
   TYPEFACE_PREFERENCE_PRESENTATION,
   type AppearanceSaveStatus,
 } from "./appearance-presentation";
+import {
+  canEditPersonalPreferenceDraft,
+  type PersonalPreferenceReadStatus,
+} from "./preference-availability";
 import styles from "./AppearanceEditor.module.css";
 
 export type AppearanceConflictResolution = "reload" | "overwrite";
@@ -22,6 +26,7 @@ export interface AppearanceRevisionConflict {
 export interface AppearanceEditorProps {
   /** Fully normalized against the persisted UI-preference allowlist. */
   appearance: PersonalAppearance;
+  readStatus: PersonalPreferenceReadStatus;
   writable: boolean;
   saveStatus: AppearanceSaveStatus;
   revision: number | null;
@@ -30,6 +35,7 @@ export interface AppearanceEditorProps {
   onChange: (next: PersonalAppearance) => void;
   onReset: () => void;
   onRetry: () => void;
+  onReload: () => void;
   onResolveConflict: (resolution: AppearanceConflictResolution) => void;
 }
 
@@ -152,6 +158,7 @@ function ChoiceGroup<T extends string>({
 
 export function AppearanceEditor({
   appearance,
+  readStatus,
   writable,
   saveStatus,
   revision,
@@ -160,11 +167,20 @@ export function AppearanceEditor({
   onChange,
   onReset,
   onRetry,
+  onReload,
   onResolveConflict,
 }: AppearanceEditorProps) {
   const id = useId();
   const [customAccentDraft, setCustomAccentDraft] = useState(appearance.customAccent);
-  const disabled = !writable || saveStatus === "saving" || Boolean(conflict);
+  const canEdit = canEditPersonalPreferenceDraft(readStatus, writable, saveStatus === "saving", Boolean(conflict));
+  const disabled = !canEdit;
+  const statusMessage = readStatus === "read-failed"
+    ? "Saved appearance preferences could not be loaded."
+    : readStatus === "unsupported"
+      ? "Appearance settings are unavailable for this server version."
+      : readStatus === "access-lost"
+        ? "Personal settings access needs to be restored."
+        : getAppearanceStatusMessage(saveStatus, writable);
 
   useEffect(() => setCustomAccentDraft(appearance.customAccent), [appearance.customAccent]);
 
@@ -184,14 +200,22 @@ export function AppearanceEditor({
       </header>
 
       <div className={styles.statusRow}>
-        <span className={styles.statusDot} data-state={saveStatus} aria-hidden="true" />
+        <span className={styles.statusDot} data-state={readStatus === "read-failed" || readStatus === "unsupported" || readStatus === "access-lost" ? "error" : saveStatus} aria-hidden="true" />
         <span role="status" aria-live="polite" aria-atomic="true">
-          {conflict ? "Appearance changed elsewhere." : getAppearanceStatusMessage(saveStatus, writable)}
+          {conflict ? "Appearance changed elsewhere." : statusMessage}
         </span>
         {revision !== null ? <span className={styles.revision}>Revision {revision}</span> : null}
-        {saveStatus === "error" && writable ? <Button variant="quiet" size="compact" onClick={onRetry}>Try again</Button> : null}
+        {readStatus === "read-failed" || readStatus === "access-lost"
+          ? <Button variant="quiet" size="compact" onClick={onReload}>Reload saved settings</Button>
+          : saveStatus === "error" && writable
+            ? <Button variant="quiet" size="compact" onClick={onRetry}>Try again</Button>
+            : null}
       </div>
-      {!writable ? <p className={styles.readOnlyNote}>Your account does not currently allow personal appearance changes.</p> : null}
+      {readStatus === "read-failed" ? (
+        <p className={styles.error} role="alert">You can preview changes in this browser session, but they will not be saved until the preferences load successfully. Reloading replaces this preview with the saved settings.</p>
+      ) : null}
+      {readStatus === "unsupported" ? <p className={styles.readOnlyNote}>Saved appearance settings are not supported by the current preference schema. Ask your NOVA administrator to apply the available database update.</p> : null}
+      {readStatus === "access-lost" ? <p className={styles.readOnlyNote}>Your session cannot currently read personal appearance settings. Reload them after your access is restored.</p> : null}
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
 
       {conflict ? (

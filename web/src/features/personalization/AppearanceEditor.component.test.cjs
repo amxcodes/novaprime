@@ -43,12 +43,14 @@ const baseAppearance = {
 function render(font = "system", overrides = {}) {
   return renderToStaticMarkup(React.createElement(AppearanceEditor, {
     appearance: { ...baseAppearance, font },
+    readStatus: "ready",
     writable: true,
     saveStatus: "idle",
     revision: 1,
     onChange() {},
     onReset() {},
     onRetry() {},
+    onReload() {},
     onResolveConflict() {},
     ...overrides,
   }));
@@ -159,6 +161,32 @@ test("announces only appearance save state, keeping retry and revision controls 
   assert.ok(retry > statusEnd);
   assert.match(html, /Revision 3/);
   assert.doesNotMatch(html, /class="[^"]+statusRow" aria-live=/);
+});
+
+test("a failed preference read permits a clearly preview-only appearance draft without enabling persistence", () => {
+  const html = render("system", { readStatus: "read-failed", writable: false, saveStatus: "idle" });
+  const system = fontRadio(html, "system");
+  const reset = html.match(/<button\b[^>]*>Reset appearance<\/button>/)?.[0] || "";
+
+  assert.doesNotMatch(system, /disabled=""/);
+  assert.doesNotMatch(reset, /disabled=""/);
+  assert.match(html, /could not be loaded/);
+  assert.match(html, /they will not be saved until the preferences load successfully/);
+  assert.match(html, /Reloading replaces this preview with the saved settings/);
+  assert.match(html, /Reload saved settings/);
+  assert.doesNotMatch(html, /Your account does not currently allow/);
+});
+
+test("unsupported and access-lost preference states stay read-only and explain the actual state", () => {
+  for (const [readStatus, message] of [
+    ["unsupported", /not supported by the current preference schema/],
+    ["access-lost", /session cannot currently read personal appearance settings/],
+  ]) {
+    const html = render("system", { readStatus, writable: false, saveStatus: "idle" });
+    assert.match(html, /<fieldset[^>]*disabled=""/);
+    assert.match(html, message);
+    assert.doesNotMatch(html, /preview-only/);
+  }
 });
 
 test("custom accent input meets the shared touch-target size on coarse pointers", () => {

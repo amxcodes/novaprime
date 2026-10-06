@@ -28,12 +28,13 @@ export const WORKSPACE_DESTINATIONS = Object.freeze([
   }),
   Object.freeze({
     view: "availability", label: "Availability", summary: "Availability tools available under your access.", group: "My workspace", requiresResolvedGrants: true,
+    homePriority: 3,
     canAccess: canShowAvailabilityNavigation,
   }),
   Object.freeze({
     view: "people", label: "People", summary: "People tools available under your access.", group: "Team operations", requiresResolvedGrants: true,
     canAccess: canShowPeopleNavigation,
-    homePriority: 4,
+    homePriority: 5,
   }),
   Object.freeze({
     view: "notifications", label: "Notifications", summary: "Your NOVA notifications and activity.", group: "My workspace", requiresResolvedGrants: false,
@@ -41,24 +42,27 @@ export const WORKSPACE_DESTINATIONS = Object.freeze([
   }),
   Object.freeze({
     view: "operations", label: "Operations", summary: "Operational pages available under your access.", group: "Team operations", requiresResolvedGrants: true,
-    homePriority: 3,
+    homePriority: 4,
     canAccess: canShowOperationsNavigation,
   }),
   Object.freeze({
     view: "admin", label: "Admin console", summary: "Organization controls available under your access.", group: "Team operations", requiresResolvedGrants: true,
+    homePriority: 6,
     canAccess: canShowAdminNavigation,
   }),
   Object.freeze({
     view: "invite", label: "Invite a person", summary: "Invite someone to NOVA with an assigned role.", group: "Team operations", requiresResolvedGrants: true,
+    homePriority: 7,
     canAccess: canShowInviteNavigation,
   }),
   Object.freeze({
     view: "work-setup", label: "Work setup", summary: "Work configuration available under your access.", group: "Configuration", requiresResolvedGrants: true,
+    homePriority: 8,
     canAccess: canShowWorkSetupNavigation,
   }),
   Object.freeze({
     view: "settings", label: "Settings", summary: "Appearance and personal workspace preferences.", group: "Configuration", requiresResolvedGrants: false,
-    homePriority: 5,
+    homePriority: 9,
     canAccess: () => true,
   }),
 ]);

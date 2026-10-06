@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { describe, expect, it } from "bun:test";
-import { getVisibleWorkspaceDestinations, canAccessWorkspaceDestination } from "../../workspace-destinations.js";
+import { getVisibleWorkspaceDestinations, canAccessWorkspaceDestination, resolveWorkspaceHome } from "../../workspace-destinations.js";
 import { planAvailabilityAgendaReads } from "../features/availability/capabilities";
 import { planAdminReads } from "../features/admin/capabilities";
 import { planOperationsReads } from "../features/operations/capabilities";
@@ -86,6 +86,25 @@ describe("capability composition across routes, Admin sections, and feature read
     expect(visibleAdminSections(read)).toEqual(["people"]);
     expect(enabledKeys(planAdminReads(read))).toEqual([]);
     expect(enabledKeys(planOperationsReads(read))).toEqual([]);
+  });
+
+  it("lands feature-only custom roles on the page their grants make useful", () => {
+    const cases: Array<{ name: string; permissionKey: string; home: string }> = [
+      { name: "invite-only", permissionKey: "people.invite", home: "invite" },
+      { name: "role-administrator", permissionKey: "roles.view", home: "admin" },
+      { name: "availability-only", permissionKey: "availability.holiday.view", home: "availability" },
+      { name: "work-setup-only", permissionKey: "tasks.catalog.view", home: "work-setup" },
+    ];
+
+    for (const { name, permissionKey, home } of cases) {
+      const read = {
+        actorPersonId: `${name}-actor`,
+        grants: [{ permissionKey, scope: "organisation" }],
+      };
+      expect(resolveWorkspaceHome(read), `${name} should land on ${home}`).toBe(home);
+      expect(visibleViews(read)).toContain(home);
+      expect(canAccessWorkspaceDestination(home, read)).toBe(true);
+    }
   });
 
   it("routes a mixed-scope people manager and reviewer only to independently authorized surfaces", () => {

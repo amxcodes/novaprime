@@ -42,6 +42,7 @@ import {
 import { describeInvitationFeedback } from "./src/features/admin/invitation-feedback.ts";
 import { canInviteAdminPeople, canShowOwnerTransfer, canViewAdminPeople } from "./src/features/admin/capabilities.ts";
 import { LegacyRouteShell } from "./src/app-shell/LegacyRouteShell.tsx";
+import { installPermissionRefreshOnResume } from "./src/app-shell/permission-refresh.ts";
 import { RouteUnavailablePage } from "./src/pages/route-unavailable/RouteUnavailablePage.tsx";
 import { MyDayPage } from "./src/features/my-day/MyDayPage.tsx";
 import {
@@ -86,6 +87,11 @@ import {
   normalizeWorkspace,
 } from "./ui-preferences.js";
 import {
+  canEditPersonalPreferenceDraft,
+  canPersistPersonalPreferences,
+  personalPreferenceReadStatus,
+} from "./src/features/personalization/preference-availability.ts";
+import {
   createRequestLifecycle,
   isCommandContextCurrent,
   isCommandIdentityCurrent,
@@ -98,6 +104,7 @@ let deploymentProbe = null;
 const deploymentProbeLifecycle = createDeploymentProbeLifecycle();
 let appearanceSaveTimer = null;
 let appearanceSaveInFlight = false;
+let uiPreferenceReadRetry = null;
 let appearanceSaveGeneration = 0;
 let appearanceEditorRenderGeneration = 0;
 let workspaceEditorRenderGeneration = 0;
@@ -122,7 +129,7 @@ const state = {
   uiPreferencePersonId: null,
   identityPersonId: null,
   uiPreferenceWritable: false,
-  uiPreferenceReadError: false,
+  uiPreferenceReadStatus: "unavailable",
   uiPreferenceSaveStatus: "idle",
   uiPreferenceConflict: null,
   identityEpoch: 0,
@@ -978,9 +985,7 @@ async function updateWorkspaceEditor() {
   const visibleDestinations = currentWorkspaceDestinations(workspace);
   const destinations = visibleDestinations.map((item) => ({ id: item.view, label: item.label, group: item.group }));
   const modules = currentWorkspaceModules(workspace);
-  const error = state.uiPreferenceReadError
-    ? "Saved workspace preferences could not be loaded. Changes apply for this session only."
-    : state.uiPreferenceConflict
+  const error = state.uiPreferenceConflict
       ? "Preferences changed in another session. Resolve the conflict in Appearance before saving workspace changes."
       : state.uiPreferenceSaveStatus === "error"
         ? "NOVA could not save the current workspace preferences."
@@ -990,6 +995,7 @@ async function updateWorkspaceEditor() {
     homeView: workspace.homeView,
     pinnedDestinationIds: workspace.pinnedDestinations,
     modules,
+    readStatus: state.uiPreferenceReadStatus,
     writable: state.uiPreferenceWritable,
     blockedByConflict: Boolean(state.uiPreferenceConflict),
     saveStatus: state.uiPreferenceSaveStatus,
@@ -1035,6 +1041,7 @@ async function updateWorkspaceEditor() {
       setWorkspace({ ...current, myDayModules });
     },
     onReset: () => setWorkspace({ ...DEFAULT_WORKSPACE }),
+    onReload: () => { void reloadUiPreferences(); },
     onRetry: state.uiPreferenceConflict ? undefined : () => {
       state.uiPreferenceSaveStatus = "pending";
       void updateWorkspaceEditor();
@@ -1098,12 +1105,11 @@ async function renderAppearanceEditor() {
     : undefined;
   mountReactIsland(target, AppearanceEditor, {
     appearance: normalizeAppearance(state.uiPreferences.appearance),
+    readStatus: state.uiPreferenceReadStatus,
     writable: state.uiPreferenceWritable,
     saveStatus: state.uiPreferenceSaveStatus,
     revision: Number.isSafeInteger(state.uiPreferenceRevision) ? state.uiPreferenceRevision : null,
-    error: state.uiPreferenceReadError
-      ? "Saved appearance preferences could not be loaded. These changes preview for this session only."
-      : state.uiPreferenceSaveStatus === "error" && !state.uiPreferenceConflict
+    error: state.uiPreferenceSaveStatus === "error" && !state.uiPreferenceConflict && state.uiPreferenceReadStatus === "ready"
         ? "The current appearance preview is active, but NOVA could not save it."
         : undefined,
     conflict,
@@ -1114,6 +1120,7 @@ async function renderAppearanceEditor() {
       renderAppearanceEditor();
       void saveAppearancePreferences();
     },
+    onReload: () => { void reloadUiPreferences(); },
     onResolveConflict: resolveAppearanceConflict,
   });
 }
@@ -1147,7 +1154,7 @@ function setAppearance(appearance) {
 }
 
 function setWorkspace(workspace) {
-  if (!state.uiPreferenceWritable || state.uiPreferenceConflict) return;
+  if (!canEditPersonalPreferenceDraft(state.uiPreferenceReadStatus, state.uiPreferenceWritable, false, Boolean(state.uiPreferenceConflict))) return;
   state.uiPreferences.workspace = normalizeWorkspace(workspace);
   scheduleUiPreferenceSave();
 }
@@ -1379,11 +1386,12 @@ function createSavedTaskViewsPanel(SavedTaskViewsPanel, collection, filters, nav
 }
 
 function scheduleUiPreferenceSave() {
-  state.uiPreferenceSaveStatus = state.uiPreferenceWritable ? "pending" : "idle";
+  const canPersist = canPersistPersonalPreferences(state.uiPreferenceReadStatus, state.uiPreferenceWritable, Boolean(state.uiPreferenceConflict));
+  state.uiPreferenceSaveStatus = canPersist ? "pending" : "idle";
   renderAppearanceEditor();
   void updateWorkspaceEditor();
   if (appearanceSaveTimer) clearTimeout(appearanceSaveTimer);
-  if (state.uiPreferenceWritable && !state.uiPreferenceConflict) {
+  if (canPersist) {
     appearanceSaveTimer = setTimeout(() => {
       appearanceSaveTimer = null;
       saveAppearancePreferences();
@@ -1391,8 +1399,64 @@ function scheduleUiPreferenceSave() {
   }
 }
 
+async function reloadUiPreferences() {
+  if (uiPreferenceReadRetry) return uiPreferenceReadRetry;
+  const personId = state.uiPreferencePersonId;
+  const identityEpoch = state.identityEpoch;
+  if (!personId || !state.session) return false;
+
+  const request = (async () => {
+    const saved = await readOrError(api("/api/me/ui-preferences"), {
+      schemaVersion: UI_PREFERENCE_SCHEMA_VERSION,
+      revision: 0,
+      appearance: { ...DEFAULT_APPEARANCE },
+      workspace: normalizeWorkspace(DEFAULT_WORKSPACE),
+      writable: false,
+    });
+    if (identityEpoch !== state.identityEpoch || personId !== state.uiPreferencePersonId) return false;
+    if (saved.readError || saved.personId !== personId) {
+      state.uiPreferenceWritable = false;
+      state.uiPreferenceReadStatus = saved.readError
+        ? personalPreferenceReadStatus(saved)
+        : "access-lost";
+      state.uiPreferenceSaveStatus = "idle";
+      renderAppearanceEditor();
+      void updateWorkspaceEditor();
+      if (saved.readHttpStatus === 401 || saved.readHttpStatus === 403) {
+        recoverProtectedCommandFailure(
+          { code: saved.readError, httpStatus: saved.readHttpStatus },
+          { identityEpoch, actorPersonId: personId },
+          "Your personal settings access changed. Refresh to check current access.",
+        );
+      }
+      return false;
+    }
+
+    state.uiPreferences = {
+      appearance: normalizeAppearance(saved.appearance),
+      workspace: normalizeWorkspace(saved.workspace),
+    };
+    state.uiPreferenceRevision = Number.isInteger(saved.revision) ? saved.revision : 0;
+    state.uiPreferenceWritable = saved.writable === true;
+    state.uiPreferenceReadStatus = personalPreferenceReadStatus(saved);
+    state.uiPreferenceSaveStatus = state.uiPreferenceWritable ? "saved" : "idle";
+    state.uiPreferenceConflict = null;
+    applyAppearanceTokens(state.uiPreferences.appearance);
+    renderAppearanceEditor();
+    void updateWorkspaceEditor();
+    return true;
+  })();
+
+  uiPreferenceReadRetry = request;
+  try {
+    return await request;
+  } finally {
+    if (uiPreferenceReadRetry === request) uiPreferenceReadRetry = null;
+  }
+}
+
 async function saveAppearancePreferences() {
-  if (appearanceSaveInFlight || state.uiPreferenceConflict || !state.uiPreferenceWritable) return;
+  if (appearanceSaveInFlight || !canPersistPersonalPreferences(state.uiPreferenceReadStatus, state.uiPreferenceWritable, Boolean(state.uiPreferenceConflict))) return;
   const appearance = normalizeAppearance(state.uiPreferences.appearance);
   const workspace = normalizeWorkspace(state.uiPreferences.workspace);
   const expectedRevision = state.uiPreferenceRevision;
@@ -1415,7 +1479,7 @@ async function saveAppearancePreferences() {
     if (identityEpoch !== state.identityEpoch || personId !== state.uiPreferencePersonId) return;
     state.uiPreferenceRevision = saved.revision;
     state.uiPreferenceWritable = saved.writable === true;
-    state.uiPreferenceReadError = false;
+    state.uiPreferenceReadStatus = personalPreferenceReadStatus(saved);
     state.uiPreferenceSaveStatus = JSON.stringify(normalizeAppearance(state.uiPreferences.appearance)) === JSON.stringify(appearance) &&
       JSON.stringify(normalizeWorkspace(state.uiPreferences.workspace)) === JSON.stringify(workspace)
       ? "saved"
@@ -1425,6 +1489,7 @@ async function saveAppearancePreferences() {
     if (error?.httpStatus === 401 || error?.httpStatus === 403) {
       if (error.httpStatus === 403) {
         state.uiPreferenceWritable = false;
+        state.uiPreferenceReadStatus = "access-lost";
         state.uiPreferenceSaveStatus = "error";
       }
       if (recoverProtectedCommandFailure(error, identityContext, "Your personal settings access changed. Refresh to check current access.")) return;
@@ -1432,12 +1497,16 @@ async function saveAppearancePreferences() {
     if (error.code === "UI_PREFERENCE_IDENTITY_CHANGED") {
       state.uiPreferenceSaveStatus = "idle";
       state.uiPreferenceWritable = false;
-      state.uiPreferenceReadError = true;
+      state.uiPreferenceReadStatus = "access-lost";
       await refreshSession();
       render();
       return;
     }
-    if (error.code === "UI_PREFERENCE_CONFLICT" || error.code === "UI_PREFERENCE_SCHEMA_UNSUPPORTED") {
+    if (error.code === "UI_PREFERENCE_SCHEMA_UNSUPPORTED") {
+      state.uiPreferenceWritable = false;
+      state.uiPreferenceReadStatus = "unsupported";
+      state.uiPreferenceSaveStatus = "error";
+    } else if (error.code === "UI_PREFERENCE_CONFLICT") {
       const current = error.payload?.current;
       if (current) {
         state.uiPreferenceConflict = {
@@ -1458,7 +1527,7 @@ async function saveAppearancePreferences() {
       renderAppearanceEditor();
       void updateWorkspaceEditor();
     }
-    if (saveGeneration === appearanceSaveGeneration && state.uiPreferenceSaveStatus === "pending" && state.uiPreferenceWritable && !state.uiPreferenceConflict) {
+    if (saveGeneration === appearanceSaveGeneration && state.uiPreferenceSaveStatus === "pending" && canPersistPersonalPreferences(state.uiPreferenceReadStatus, state.uiPreferenceWritable, Boolean(state.uiPreferenceConflict))) {
       if (appearanceSaveTimer) clearTimeout(appearanceSaveTimer);
       appearanceSaveTimer = setTimeout(() => {
         appearanceSaveTimer = null;
@@ -1480,6 +1549,7 @@ function clearIdentityScopedState() {
   appearanceSaveInFlight = false;
   if (appearanceSaveTimer) clearTimeout(appearanceSaveTimer);
   appearanceSaveTimer = null;
+  uiPreferenceReadRetry = null;
   state.adminData = null;
   state.taskCreateFingerprint = "";
   state.taskCreateRequestKey = "";
@@ -1495,7 +1565,7 @@ function clearIdentityScopedState() {
   state.uiPreferencePersonId = null;
   state.identityPersonId = null;
   state.uiPreferenceWritable = false;
-  state.uiPreferenceReadError = false;
+  state.uiPreferenceReadStatus = "unavailable";
   state.uiPreferenceSaveStatus = "idle";
   state.uiPreferenceConflict = null;
   state.bootstrapToken = "";
@@ -3263,7 +3333,7 @@ async function refreshSession() {
       state.uiPreferenceRevision = 0;
       state.uiPreferencePersonId = null;
       state.uiPreferenceWritable = false;
-      state.uiPreferenceReadError = true;
+      state.uiPreferenceReadStatus = "access-lost";
       state.uiPreferenceSaveStatus = "idle";
       state.uiPreferenceConflict = null;
       return;
@@ -3281,20 +3351,38 @@ async function refreshSession() {
       writable: false,
     });
     if (preferenceEpoch !== state.identityEpoch || state.uiPreferencePersonId !== grants.actorPersonId) return;
-    if (saved.personId !== grants.actorPersonId) {
+    if (saved.readError) {
+      state.uiPreferences = {
+        appearance: normalizeAppearance(saved.appearance),
+        workspace: normalizeWorkspace(saved.workspace),
+      };
+      state.uiPreferenceRevision = 0;
       state.uiPreferenceWritable = false;
-      state.uiPreferenceReadError = true;
+      state.uiPreferenceReadStatus = personalPreferenceReadStatus(saved);
+      state.uiPreferenceSaveStatus = "idle";
+      if (saved.readHttpStatus === 401 || saved.readHttpStatus === 403) {
+        recoverProtectedCommandFailure(
+          { code: saved.readError, httpStatus: saved.readHttpStatus },
+          { identityEpoch: preferenceEpoch, actorPersonId: grants.actorPersonId },
+          "Your personal settings access changed. Refresh to check current access.",
+        );
+        if (preferenceEpoch !== state.identityEpoch) return;
+      }
+    } else if (saved.personId !== grants.actorPersonId) {
+      state.uiPreferenceWritable = false;
+      state.uiPreferenceReadStatus = "access-lost";
       state.uiPreferenceSaveStatus = "idle";
       return;
+    } else {
+      state.uiPreferences = {
+        appearance: normalizeAppearance(saved.appearance),
+        workspace: normalizeWorkspace(saved.workspace),
+      };
+      state.uiPreferenceRevision = Number.isInteger(saved.revision) ? saved.revision : 0;
+      state.uiPreferenceWritable = saved.writable === true;
+      state.uiPreferenceReadStatus = personalPreferenceReadStatus(saved);
+      state.uiPreferenceSaveStatus = state.uiPreferenceWritable ? "saved" : "idle";
     }
-    state.uiPreferences = {
-      appearance: normalizeAppearance(saved.appearance),
-      workspace: normalizeWorkspace(saved.workspace),
-    };
-    state.uiPreferenceRevision = Number.isInteger(saved.revision) ? saved.revision : 0;
-    state.uiPreferenceWritable = saved.writable === true && !saved.readError;
-    state.uiPreferenceReadError = Boolean(saved.readError);
-    state.uiPreferenceSaveStatus = saved.readError ? "idle" : state.uiPreferenceWritable ? "saved" : "idle";
     state.uiPreferenceConflict = null;
     await loadSavedTaskViews(grants.actorPersonId, preferenceEpoch);
     if (preferenceEpoch !== state.identityEpoch || state.uiPreferencePersonId !== grants.actorPersonId) return;
@@ -3408,6 +3496,15 @@ window.addEventListener("popstate", (event) => {
     : null;
   render();
   window.requestAnimationFrame(focusPageHeading);
+});
+
+installPermissionRefreshOnResume({
+  documentRef: document,
+  windowRef: window,
+  readIdentity: () => state.session && state.identityPersonId
+    ? { identityEpoch: state.identityEpoch, actorPersonId: state.identityPersonId }
+    : null,
+  refresh: ({ identityEpoch, actorPersonId }) => refreshActorPermissions(identityEpoch, actorPersonId),
 });
 
 refreshSession().then(render);

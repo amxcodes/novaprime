@@ -47,7 +47,11 @@ export async function readOrError(promise, fallback) {
   try {
     return await promise;
   } catch (error) {
-    return { ...fallback, readError: error?.code || "REQUEST_FAILED" };
+    return {
+      ...fallback,
+      readError: error?.code || "REQUEST_FAILED",
+      readHttpStatus: error?.httpStatus,
+    };
   }
 }
 
