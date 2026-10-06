@@ -11,8 +11,15 @@ test("the application host delegates Admin composition with its identity, API, c
   assert.match(appSource, /import \{ createAdminPageRoute \} from "\.\/app\/admin-page-route\.js"/);
   assert.match(appSource, /const adminPageRoute = createAdminPageRoute\(\{[\s\S]*?state,[\s\S]*?isCurrentPageRequest,[\s\S]*?api,[\s\S]*?runAdminProtectedCommand,/);
   assert.match(appSource, /const adminPageRoute = createAdminPageRoute\(\{[\s\S]*?mountAdminPage,/);
+  assert.match(appSource, /const adminPageRoute = createAdminPageRoute\(\{[\s\S]*?showFeedback,\s*renderAdmin,/);
   assert.match(appSource, /async function renderAdminContent\(data, lifetime\) \{\s*return adminPageRoute\(data, lifetime\);\s*\}/);
   assert.doesNotMatch(appSource, /async function renderAdminContent\(data, lifetime\)[\s\S]*?buildAuthorizedAdminPageSections/);
+});
+
+test("Super Admin transfer and Admin retry callbacks use the host's real page renderer", () => {
+  assert.match(routeSource, /runAdminProtectedCommand,\s*renderAdmin,\s*adminCommandUiError/);
+  assert.match(routeSource, /onRetryRead: \(\) => \{\s*if \(target\.isConnected && isCurrentPageRequest\(lifetime\)\) void renderAdmin\(lifetime\);/);
+  assert.doesNotMatch(routeSource, /onRetryRead: \(\) => \{\s*if \(target\.isConnected && isCurrentPageRequest\(lifetime\)\) void loadAdmin\(lifetime\);/);
 });
 
 test("Admin feature and route chunks are imported only when their corresponding capability allows them", () => {

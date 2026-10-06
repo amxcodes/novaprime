@@ -52,7 +52,7 @@ export function createAdminPageRoute(host) {
     saveAdminRole,
     setMessage,
     showFeedback,
-    loadAdmin,
+    renderAdmin,
     render,
     taskCreateIdempotencyHeaders,
     clearTaskCreateIdempotency,
@@ -67,7 +67,7 @@ export function createAdminPageRoute(host) {
     isCurrentCommand, isCurrentCommandIdentity, recoverProtectedCommandFailure, api, pageApi,
     requestOptions, errorText, adminCommandUiError, adminFeatureReadError,
     hasAdminPermission, runAdminProtectedCommand, runAdminRequestReviewCommand, saveAdminRole,
-    setMessage, showFeedback, loadAdmin, render, taskCreateIdempotencyHeaders,
+    setMessage, showFeedback, renderAdmin, render, taskCreateIdempotencyHeaders,
     clearTaskCreateIdempotency, reflectInvitationDelivery, taskBillingConfirmation, taskCorrectionConfirmation, isWithinApp,
   };
   for (const [name, service] of Object.entries(requiredFunctions)) {
@@ -705,7 +705,7 @@ export function createAdminPageRoute(host) {
       ),
       canRequeue: hasAdminPermission(data, "notifications.manage"),
       onRetryRead: () => {
-        if (target.isConnected && isCurrentPageRequest(lifetime)) void loadAdmin(lifetime);
+        if (target.isConnected && isCurrentPageRequest(lifetime)) void renderAdmin(lifetime);
       },
       onRequeue: async (deliveryId) => {
         const current = data;

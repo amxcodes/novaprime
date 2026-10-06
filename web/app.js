@@ -388,7 +388,7 @@ const adminPageRoute = createAdminPageRoute({
   saveAdminRole,
   setMessage,
   showFeedback,
-  loadAdmin,
+  renderAdmin,
   render,
   taskCreateIdempotencyHeaders,
   clearTaskCreateIdempotency,
