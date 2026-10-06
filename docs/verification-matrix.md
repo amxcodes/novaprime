@@ -35,12 +35,38 @@ hit PostgreSQL's default connection ceiling, as that local mode bypasses
 Hyperdrive pooling. This is not a hosted Hyperdrive capacity result; a real
 Hyperdrive 100-employee burst remains unverified.
 
+## Follow-up evidence — 2026-10-07
+
+The disposable Supabase log export records migrations 0075–0078 as applied,
+then later PostgreSQL `28P01` authentication failures. Better Auth's schema
+validation message is secondary to that connection failure. A credential-free
+Netlify probe returned `/api/health` 200 in 0.857–1.367 s, `/api/ready` 503 in
+2.356–2.384 s, and `/api/auth/get-session` 500 in 3.466–3.915 s (three samples
+per route). These failed-readiness timings include caller/network and function
+overhead; they are not a healthy API performance baseline. Do not tune database
+pools from these failed-auth samples.
+
+Two safeguards now address the setup path: routine bootstrap preserves an
+existing `nova_app` password unless rotation is explicitly requested, and
+bootstrap/preflight reject a Supabase connection URL whose project identity
+does not match the confirmed project. The latter was checked against the
+current QA env file without displaying or transmitting its credentials and
+failed before any database write. GitHub Actions `Verify NOVA` passed for
+commit `cfb3c761bbbd79d4f48cfa653f6ba7e7dc1ec3b7` ([run 37521496578](https://github.com/amxcodes/novaprime/actions/runs/37521496578)).
+
+The hosted app is still not ready: the live readiness/session checks remain
+503/500. An operator must set Netlify Functions `DATABASE_URL` to a credential
+and connection URL for the same confirmed Supabase project, deploy, and repeat
+the readiness/auth smoke before healthy-route latency or Super Admin workflows
+can be accepted. The observed migration sequence has no pending schema change
+for this incident.
+
 ## Verified evidence (database and host-local scopes)
 
 | Area | Evidence | Result |
 | --- | --- | --- |
 | Unit and API contracts | `bun run test` — 118 tests, 512 assertions; includes pooler-host discovery, project-scoped host selection, canonical billing-rule route, editable role-starter draft/scope tests, provider adapter contracts, Cloudflare Direct-vs-pooler guidance and required Hyperdrive binding, deployment host/scheduler actions and locations, Netlify scheduler-specific function-directory selection, runtime-value placement, conditional Vercel Cron configuration, role-grant round trips, permission-grant scope and navigation, unverified-user guidance, read-failure versus empty-state tests, static asset paths, SMTP STARTTLS enforcement, Gmail HTTPS/MIME delivery, sanitized Google errors, Cloudflare Cron failure propagation, and rendered deployment-assistant phase/probe gating | PASS locally on 2026-09-27 |
-| Continuous integration | `.github/workflows/verify.yml` defines fast checks and the isolated PostgreSQL lifecycle gate; hosted execution has not yet been observed | CONFIGURED; first GitHub run pending |
+| Continuous integration | `.github/workflows/verify.yml` defines fast checks and the isolated PostgreSQL lifecycle gate; `Verify NOVA` passed for commit `cfb3c761` on 2026-10-06 UTC | PASS on hosted GitHub Actions |
 | Public-origin link safety | `public-origin.test.ts` rejects network-path, backslash-host and absolute external paths; `notification-worker.test.ts` verifies notification links are rebased to the configured NOVA origin | PASS for pure link formatting; persisted-origin integration remains a separate smoke gate |
 | TypeScript/API and adapters | `bun run typecheck`, `bun run typecheck:cloudflare`, server build, `node --check web/app.js` and `web/deployment-guide.js`; Vercel/Netlify wrapper tests and Cloudflare Worker Bun harness, including fail-closed behavior when Hyperdrive is absent even if a legacy `DATABASE_URL` exists. An earlier Wrangler 4.141.0 dry-run and local `workerd` startup/Gmail MIME smoke passed. After the Wrangler configs gained `keep_vars=true`, a refreshed dry-run was attempted but the CLI bootstrap could not fetch its bundled CLI, so the updated TOML was not re-bundled in this pass. | PASS for current type/syntax/tests; current Wrangler dry-run and live Cloudflare deployment remain unverified |
 | Smoke harness and QA launcher type safety | Strict TypeScript check of the preflight, WSL-aware QA launcher, local QA runner and both runtime smoke scripts | PASS |

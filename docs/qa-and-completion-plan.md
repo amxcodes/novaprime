@@ -8,6 +8,21 @@ test alone does not count as an end-to-end workflow.
 
 ## Current result
 
+Hosted auth/connectivity follow-up — 2026-10-07: the Supabase log export
+shows migrations 0075–0078 applied, followed by PostgreSQL `28P01` failures;
+Better Auth's schema-validation warning is downstream of the rejected runtime
+database login. Read-only probes returned `/api/health` 200 (0.857–1.367 s),
+`/api/ready` 503 (2.356–2.384 s), and `/api/auth/get-session` 500
+(3.466–3.915 s), three samples per route. Those timings measure failed
+authentication and deployment overhead, not healthy API latency. The hosted
+app still needs its Netlify Functions `DATABASE_URL` reconciled with the
+confirmed Supabase project and current `nova_app` credential before auth,
+Super Admin access, and performance can be re-verified. No schema migration is
+pending for this incident. Bootstrap now avoids implicit password rotation;
+project-bound database URLs are validated before bootstrap writes or preflight
+connections. Current local QA env drift is blocked by this guard. GitHub
+Actions passed the full `Verify NOVA` workflow for commit `cfb3c761`.
+
 Deployment-assistant follow-up on 2026-09-27: the UI now gives a six-part
 “You do / Then / Confirm” map and a simple source → runtime ↔ database diagram,
 while collapsing the repeated service cards and full action/effect table behind
