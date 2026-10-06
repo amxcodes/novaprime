@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { normalizeReviewFeedback, REVIEW_FEEDBACK_MAX_LENGTH } from "../../../web/review-actions.js";
 import { authenticationConfiguration } from "../auth-configuration.js";
 import { withDatabaseRequest, type DatabaseRequestContext } from "../db.js";
 import { isNormalOperationalActor, requestActor } from "../request-actor.js";
@@ -19,6 +20,33 @@ async function actor(request: Request): Promise<{ context: DatabaseRequestContex
 async function body(request: Request): Promise<Record<string, unknown>> {
   const value = await request.json().catch(() => ({}));
   return typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+}
+
+export type ReviewDecisionInput = Readonly<{
+  decision: "approved" | "changes_requested";
+  expectedReviewCycleId: string;
+  feedback: string | null;
+}>;
+
+export function parseReviewDecisionInput(value: unknown): ReviewDecisionInput | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  if (input.decision !== "approved" && input.decision !== "changes_requested") return null;
+  if (typeof input.expectedReviewCycleId !== "string" || !uuidPattern.test(input.expectedReviewCycleId)) return null;
+
+  let feedback: string | null = null;
+  if (input.feedback !== undefined && input.feedback !== null) {
+    if (typeof input.feedback !== "string") return null;
+    const normalized = normalizeReviewFeedback(input.feedback);
+    if (!normalized || normalized.length > REVIEW_FEEDBACK_MAX_LENGTH) return null;
+    feedback = normalized;
+  }
+  if (input.decision === "changes_requested" && feedback === null) return null;
+  return {
+    decision: input.decision,
+    expectedReviewCycleId: input.expectedReviewCycleId,
+    feedback,
+  };
 }
 
 type Assignment = Readonly<{ id: string; task_id: string; person_id: string; reviewer_person_id: string | null; review_required: boolean; status: string; task_status: string; client_id: string | null; client_workstream_id: string | null; work_group_id: string | null; title: string }>;
@@ -139,7 +167,7 @@ export async function submitAssignment(request: Request, assignmentId: string): 
           await enqueueNotification(transaction, {
             organisationId: access.context.organisationId, recipientPersonId: reviewerPersonId, eventKey: "task.review_requested",
             title: "Review requested", body: `Work submitted for review: ${row.title}.`, aggregateType: "task_assignment", aggregateId: assignmentId,
-            deepLink: "/?view=today&task=" + row.task_id, idempotencyKey: `task.submitted:${assignmentId}:${cycle.rows[0]?.id ?? "cycle"}`,
+            deepLink: "/?view=work&review=" + assignmentId, idempotencyKey: `task.submitted:${assignmentId}:${cycle.rows[0]?.id ?? "cycle"}`,
           });
         }
       }
@@ -164,10 +192,9 @@ export async function reviewAssignment(request: Request, assignmentId: string): 
   const access = await actor(request);
   if ("response" in access) return access.response;
   if (!uuidPattern.test(assignmentId)) return json({ error: "ASSIGNMENT_NOT_FOUND" }, 404);
-  const value = await body(request);
-  const decision = value.decision;
-  const feedback = value.feedback === undefined || value.feedback === null ? null : (typeof value.feedback === "string" ? value.feedback.trim() : undefined);
-  if ((decision !== "approved" && decision !== "changes_requested") || feedback === undefined || (decision === "changes_requested" && !feedback)) return json({ error: "REVIEW_INPUT_INVALID" }, 400);
+  const input = parseReviewDecisionInput(await body(request));
+  if (!input) return json({ error: "REVIEW_INPUT_INVALID" }, 400);
+  const { decision, expectedReviewCycleId, feedback } = input;
   try {
     const result = await withDatabaseRequest(access.context, async (transaction) => {
       const row = await assignment(transaction, assignmentId, access.context.organisationId);
@@ -178,6 +205,7 @@ export async function reviewAssignment(request: Request, assignmentId: string): 
       );
       const cycleId = cycle.rows[0]?.id;
       if (!cycleId || row.status !== "awaiting_review") return "REVIEW_NOT_OPEN" as const;
+      if (cycleId !== expectedReviewCycleId) return "REVIEW_CYCLE_STALE" as const;
       await transaction.query(
         `UPDATE nova.task_review_cycles SET decision = $2, feedback = $3, decided_at = clock_timestamp() WHERE id = $1`,
         [cycleId, decision, feedback],
@@ -221,13 +249,14 @@ export async function reviewAssignment(request: Request, assignmentId: string): 
         eventKey: decision === "approved" ? "task.approved" : "task.changes_requested",
         title: decision === "approved" ? "Work approved" : "Changes requested",
         body: decision === "approved" ? `Your submitted work was approved: ${row.title}.` : `Changes were requested for ${row.title}.${feedback ? ` ${feedback}` : ""}`,
-        aggregateType: "task_assignment", aggregateId: assignmentId, deepLink: "/?view=today&task=" + row.task_id,
+        aggregateType: "task_assignment", aggregateId: assignmentId, deepLink: "/?view=work&task=" + row.task_id,
         idempotencyKey: `task.reviewed:${assignmentId}:${cycleId}:${decision}`,
       });
       return { assignmentId, status: decision };
     });
     if (result === "PERMISSION_DENIED") return json({ error: result }, 403);
     if (result === "ASSIGNMENT_NOT_FOUND") return json({ error: result }, 404);
+    if (result === "REVIEW_CYCLE_STALE") return json({ error: result }, 409);
     if (typeof result === "string") return json({ error: result }, 409);
     return json(result);
   } catch { return json({ error: "INTERNAL_ERROR" }, 500); }

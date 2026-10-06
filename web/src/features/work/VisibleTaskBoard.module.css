@@ -1,0 +1,148 @@
+.boardRoot {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+}
+
+.guidance {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+}
+
+.lanePicker { display: none; min-width: 0; }
+
+.lanes {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--nova-space-3);
+}
+
+.lane {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface-subtle);
+}
+
+.laneHeader {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-1);
+  padding-inline: var(--nova-space-1);
+}
+
+.laneHeader h3 {
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.laneHeader span {
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+}
+
+.cards {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cardItem { min-width: 0; }
+
+.card {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface);
+}
+
+.title {
+  min-width: 0;
+  margin: 0;
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.title a {
+  color: var(--nova-color-action-text);
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.18em;
+}
+
+.title a:focus-visible { outline: 2px solid var(--nova-color-focus); outline-offset: 2px; }
+
+.context {
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.status { min-width: 0; }
+.status > * { max-width: 100%; }
+
+.facts {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--nova-space-2);
+  margin: 0;
+}
+
+.facts > div { min-width: 0; }
+
+.facts dt {
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+}
+
+.facts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.facts > div:last-child { grid-column: 1 / -1; }
+
+@container visible-tasks (max-width: 47.999rem) {
+  .lanePicker { display: block; }
+  .lanes { grid-template-columns: minmax(0, 1fr); }
+  .lane:not([data-active="true"]) { display: none; }
+}
+
+@container visible-tasks (min-width: 48rem) and (max-width: 71.999rem) {
+  .lanes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (forced-colors: active) {
+  .lane,
+  .card { border-color: CanvasText; background: Canvas; }
+  .title a:focus-visible { outline-color: Highlight; }
+}

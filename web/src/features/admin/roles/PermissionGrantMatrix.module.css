@@ -1,0 +1,184 @@
+.matrix {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--nova-space-4);
+}
+
+.sectionHeading {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--nova-space-3);
+}
+
+.sectionHeading h4 {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-md);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.sectionHeading p,
+.permissionCopy small,
+.moduleCopy small {
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.moduleCopy,
+.permissionCopy {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-1);
+}
+
+.moduleCopy strong,
+.permissionCopy strong {
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.permissionModules {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+}
+
+.permissionModule {
+  min-width: 0;
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface);
+}
+
+.moduleSummary {
+  display: flex;
+  min-height: var(--nova-control-touch-target);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-3) var(--nova-space-4);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface-subtle);
+  border-start-start-radius: calc(var(--nova-radius-control) - 1px);
+  border-start-end-radius: calc(var(--nova-radius-control) - 1px);
+  cursor: pointer;
+  list-style: none;
+}
+
+.permissionModule:not([open]) > .moduleSummary {
+  border-end-start-radius: calc(var(--nova-radius-control) - 1px);
+  border-end-end-radius: calc(var(--nova-radius-control) - 1px);
+}
+
+.moduleSummary::-webkit-details-marker { display: none; }
+.moduleSummary::after {
+  width: 0.55rem;
+  height: 0.55rem;
+  flex: none;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(45deg) translateY(-0.1rem);
+}
+.permissionModule[open] > .moduleSummary::after { transform: rotate(225deg) translate(-0.1rem, -0.1rem); }
+
+.permissionRows {
+  display: grid;
+  min-width: 0;
+  padding: var(--nova-space-2);
+}
+
+.permissionRow {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-3);
+  border-block-end: 1px solid var(--nova-color-border);
+}
+
+.permissionRow:last-child { border-block-end: 0; }
+
+.permissionToggle {
+  display: flex;
+  min-width: 0;
+  min-height: var(--nova-control-touch-target);
+  align-items: flex-start;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--nova-radius-control);
+  background: transparent;
+  cursor: pointer;
+}
+
+.permissionToggle input {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+  margin: 0.125rem 0 0;
+  accent-color: var(--nova-color-action);
+}
+
+.grantList {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+  padding-inline-start: var(--nova-space-3);
+  border-inline-start: 2px solid var(--nova-color-border);
+}
+
+.grantRow {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: end;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+}
+
+.grantRow > button,
+.grantList > button { min-height: var(--nova-control-touch-target); }
+
+.scopeUnavailable {
+  margin: 0;
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-sm);
+}
+
+.targetIssue { display: block; margin-block-end: var(--nova-space-1); }
+
+@container role-editor (min-width: 40rem) and (max-width: 63.999rem) {
+  .grantRow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grantRow > :last-child { justify-self: start; }
+}
+
+@container role-editor (min-width: 64rem) {
+  .grantRow { grid-template-columns: minmax(11rem, 0.8fr) minmax(12rem, 1fr) auto; }
+}
+
+@container role-editor (max-width: 39.999rem) {
+  .sectionHeading { align-items: flex-start; }
+  .moduleSummary { padding-inline: var(--nova-space-3); }
+}
+
+@media (forced-colors: active) {
+  .permissionModule,
+  .grantRow {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+  .permissionToggle input { accent-color: Highlight; }
+}

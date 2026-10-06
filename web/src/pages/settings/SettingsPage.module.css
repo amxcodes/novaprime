@@ -1,0 +1,129 @@
+.page {
+  container: settings-page / inline-size;
+  width: 100%;
+  min-width: 0;
+}
+
+.content,
+.sections {
+  display: grid;
+  min-width: 0;
+}
+
+.content {
+  gap: var(--nova-space-7);
+}
+
+.header {
+  min-width: 0;
+  padding-block-end: var(--nova-space-5);
+  border-block-end: 1px solid var(--nova-color-border);
+}
+
+.feedback {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.content > .feedback:empty {
+  display: none;
+}
+
+.sections {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--nova-space-7);
+}
+
+.slot,
+.workspaceSlot,
+.administrativeSettings {
+  min-width: 0;
+}
+
+.workspaceSlot {
+  display: grid;
+  gap: var(--nova-space-6);
+}
+
+.administrativeSettings {
+  display: grid;
+  gap: var(--nova-space-7);
+  padding-block-start: var(--nova-space-7);
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.handoffs {
+  display: grid;
+  gap: var(--nova-space-4);
+}
+
+.handoffsHeader {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+}
+
+.handoffsHeader h2,
+.handoffsHeader p {
+  margin: 0;
+}
+
+.handoffsHeader h2 {
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-xl);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.handoffsHeader p {
+  max-width: 62ch;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.placeholder {
+  margin: 0;
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+}
+
+@container settings-page (max-width: 60rem) {
+  .content,
+  .sections,
+  .administrativeSettings {
+    gap: var(--nova-space-6);
+  }
+
+  .administrativeSettings {
+    padding-block-start: var(--nova-space-6);
+  }
+}
+
+@container settings-page (max-width: 40rem) {
+  .content,
+  .sections,
+  .administrativeSettings {
+    gap: var(--nova-space-5);
+  }
+
+  .administrativeSettings {
+    padding-block-start: var(--nova-space-5);
+  }
+
+  .header {
+    padding-block-end: var(--nova-space-4);
+  }
+}
+
+@media (forced-colors: active) {
+  .header,
+  .administrativeSettings {
+    border-color: CanvasText;
+  }
+}

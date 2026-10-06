@@ -36,9 +36,7 @@ function freezePersonInput(body: unknown): FreezePersonInput | undefined {
   });
 }
 
-async function canFreeze(transaction: PoolClient, actorId: string): Promise<boolean> {
-  const result = await transaction.query<{ permitted: boolean }>(
-    `SELECT EXISTS (
+export const canFreezePersonSql = `SELECT EXISTS (
       SELECT 1
       FROM nova.person_role_assignments assignments
       JOIN nova.roles roles ON roles.id = assignments.role_id
@@ -48,9 +46,56 @@ async function canFreeze(transaction: PoolClient, actorId: string): Promise<bool
         AND (assignments.effective_until IS NULL OR assignments.effective_until >= nova.person_business_date($1))
         AND roles.archived_at IS NULL
         AND grants.permission_key = 'people.freeze'
-        AND grants.scope = 'organisation'
-    ) AS permitted`,
-    [actorId],
+        AND (
+          grants.scope = 'organisation'
+          OR (grants.scope = 'office' AND EXISTS (
+            SELECT 1 FROM nova.person_office_assignments target_offices
+            WHERE target_offices.person_id = $2
+              AND target_offices.office_id = grants.office_id
+              AND target_offices.effective_on <= nova.person_business_date($2)
+              AND (target_offices.effective_until IS NULL OR target_offices.effective_until >= nova.person_business_date($2))
+          ))
+          OR (grants.scope = 'organisation_department' AND EXISTS (
+            SELECT 1 FROM nova.person_department_assignments target_departments
+            WHERE target_departments.person_id = $2
+              AND target_departments.organisation_department_id = grants.organisation_department_id
+              AND target_departments.effective_on <= nova.person_business_date($2)
+              AND (target_departments.effective_until IS NULL OR target_departments.effective_until >= nova.person_business_date($2))
+          ))
+        )
+    ) AS permitted`;
+
+export const freezeNotificationRecipientsSql = `SELECT DISTINCT assignments.person_id
+         FROM nova.person_role_assignments assignments
+         JOIN nova.roles roles ON roles.id = assignments.role_id
+         JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
+         WHERE assignments.person_id <> $1
+           AND assignments.effective_on <= nova.person_business_date(assignments.person_id)
+           AND (assignments.effective_until IS NULL OR assignments.effective_until >= nova.person_business_date(assignments.person_id))
+           AND roles.archived_at IS NULL
+           AND grants.permission_key = 'people.freeze'
+           AND (
+             grants.scope = 'organisation'
+             OR (grants.scope = 'office' AND EXISTS (
+               SELECT 1 FROM nova.person_office_assignments target_offices
+               WHERE target_offices.person_id = $1
+                 AND target_offices.office_id = grants.office_id
+                 AND target_offices.effective_on <= nova.person_business_date($1)
+                 AND (target_offices.effective_until IS NULL OR target_offices.effective_until >= nova.person_business_date($1))
+             ))
+             OR (grants.scope = 'organisation_department' AND EXISTS (
+               SELECT 1 FROM nova.person_department_assignments target_departments
+               WHERE target_departments.person_id = $1
+                 AND target_departments.organisation_department_id = grants.organisation_department_id
+                 AND target_departments.effective_on <= nova.person_business_date($1)
+                 AND (target_departments.effective_until IS NULL OR target_departments.effective_until >= nova.person_business_date($1))
+             ))
+           )`;
+
+async function canFreeze(transaction: PoolClient, actorId: string, targetPersonId: string): Promise<boolean> {
+  const result = await transaction.query<{ permitted: boolean }>(
+    canFreezePersonSql,
+    [actorId, targetPersonId],
   );
   return result.rows[0]?.permitted === true;
 }
@@ -86,7 +131,7 @@ export async function freezePerson(request: Request): Promise<Response> {
 
   try {
     const result = await withDatabaseRequest(actor.context, async (transaction) => {
-      if (!await canFreeze(transaction, actor.context.userId)) {
+      if (!await canFreeze(transaction, actor.context.userId, input.personId)) {
         return "PERMISSION_DENIED" as const;
       }
 
@@ -181,16 +226,7 @@ export async function freezePerson(request: Request): Promise<Response> {
         ],
       );
       const recipients = await transaction.query<{ person_id: string }>(
-        `SELECT DISTINCT assignments.person_id
-         FROM nova.person_role_assignments assignments
-         JOIN nova.roles roles ON roles.id = assignments.role_id
-         JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
-         WHERE assignments.person_id <> $1
-           AND assignments.effective_on <= nova.person_business_date(assignments.person_id)
-           AND (assignments.effective_until IS NULL OR assignments.effective_until >= nova.person_business_date(assignments.person_id))
-           AND roles.archived_at IS NULL
-           AND grants.permission_key = 'people.freeze'
-           AND grants.scope = 'organisation'`,
+        freezeNotificationRecipientsSql,
         [input.personId],
       );
       for (const recipient of [input.personId, ...recipients.rows.map((row) => row.person_id)]) {

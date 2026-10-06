@@ -1,0 +1,42 @@
+.section,
+.failure {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-5);
+  color: var(--nova-color-text-primary);
+}
+
+.section {
+  container: admin-work-section / inline-size;
+}
+
+.slots {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  gap: var(--nova-space-6);
+}
+
+.slot {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@container admin-work-section (min-width: 64rem) {
+  .slots {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    column-gap: var(--nova-space-8);
+    row-gap: var(--nova-space-6);
+  }
+
+  .slot[data-admin-work-slot="task-operations"],
+  .slot[data-admin-work-slot="membership-targets"] {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (forced-colors: active) {
+  .section,
+  .failure { color: CanvasText; }
+}

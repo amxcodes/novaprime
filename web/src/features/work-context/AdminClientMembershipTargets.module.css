@@ -1,0 +1,82 @@
+.section {
+  container: admin-client-membership-targets / inline-size;
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+  color: var(--nova-color-text-primary);
+}
+
+.targetList {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.target {
+  min-width: 0;
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.targetHeading {
+  min-width: 0;
+  margin: 0;
+}
+
+.disclosureButton {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: max(44px, var(--nova-control-touch-target));
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nova-space-3);
+  padding-inline: var(--nova-space-3);
+  text-align: start;
+  white-space: normal;
+}
+
+.clientName {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chevron {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  margin-inline-end: var(--nova-space-1);
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  color: var(--nova-color-text-secondary);
+  transform: rotate(45deg) translateY(-0.1rem);
+  transition: transform var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+
+.chevron[data-expanded="true"] {
+  transform: rotate(225deg) translateY(-0.1rem);
+}
+
+.editorPanel {
+  min-width: 0;
+  padding: var(--nova-space-2) 0 var(--nova-space-4);
+}
+
+.editorPanel[hidden] {
+  display: none;
+}
+
+@container admin-client-membership-targets (max-width: 36rem) {
+  .section { gap: var(--nova-space-3); }
+  .disclosureButton { padding-inline: var(--nova-space-2); }
+}
+
+@container admin-client-membership-targets (min-width: 56rem) {
+  .editorPanel { padding-inline: var(--nova-space-3); }
+}
+
+@media (forced-colors: active) {
+  .target { border-color: CanvasText; }
+  .chevron { border-color: ButtonText; color: ButtonText; }
+}

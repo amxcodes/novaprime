@@ -1,21 +1,19 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="system">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="color-scheme" content="light">
     <meta name="referrer" content="no-referrer">
     <meta name="description" content="Accept a NOVA invitation">
     <title>Accept invitation · NOVA</title>
-    <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <a class="skip-link" href="#app">Skip to content</a>
     <header class="site-header">
       <a class="wordmark" href="/" aria-label="NOVA home">NOVA<span>·</span></a>
     </header>
-    <main id="app" tabindex="-1"><p class="loading">Loading your invitation…</p></main>
+    <div id="app" tabindex="-1"><p class="loading">Loading your invitation…</p></div>
     <noscript>NOVA needs JavaScript enabled to securely accept an invitation.</noscript>
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

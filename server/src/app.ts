@@ -18,9 +18,17 @@ import { invitePerson, resendInvitation } from "./commands/invite-person.js";
 import { freezePerson } from "./commands/freeze-person.js";
 import { offboardPerson } from "./commands/offboard-person.js";
 import { transferSuperAdmin } from "./commands/owner-transfer.js";
-import { createClientDepartment, createClientMembership } from "./commands/client-access.js";
+import {
+  createClientDepartment,
+  createClientMembership,
+  endClientMembership,
+  readClientMemberships,
+} from "./commands/client-access.js";
 import { reviewAssignment, submitAssignment } from "./commands/reviews.js";
 import { readPendingReviews } from "./commands/review-queue.js";
+import { readReviewerReviewDetail } from "./commands/review-detail.js";
+import { readTaskDetail } from "./commands/task-detail.js";
+import { readPersonHistory } from "./commands/person-history.js";
 import {
   createHandoverRequest,
   createReviewerRequest,
@@ -36,12 +44,14 @@ import {
   readAuditEvents,
   readActorPermissionGrants,
   readDepartments,
+  readGeofenceOfficeOptions,
   readOffices,
   readOrganisation,
   readPeople,
   readPermissions,
   readRoles,
 } from "./commands/admin-read.js";
+import { readPeopleDirectory, readPersonDirectoryRecord } from "./commands/people-directory.js";
 import {
   completePersonOnboarding,
   createOffice,
@@ -55,6 +65,7 @@ import {
   createWorkingCalendar,
   readAvailabilityConfig,
 } from "./commands/availability-setup.js";
+import { readAvailabilityAgenda } from "./commands/availability-agenda.js";
 import { createWfhPolicy, readWfhPolicies } from "./commands/wfh-policy.js";
 import {
   readHistoricalExceptions,
@@ -64,9 +75,10 @@ import {
   changeAttendanceMode,
   checkIn,
   checkOut,
+  readAttendanceActionContext,
   readAttendanceToday,
 } from "./commands/attendance.js";
-import { recoverAttendance } from "./commands/attendance-recovery.js";
+import { readAttendanceRecoveryCandidates, recoverAttendance } from "./commands/attendance-recovery.js";
 import { closeWorkSession, readWorkSessions, startWorkSession } from "./commands/work-sessions.js";
 import {
   cancelLeave,
@@ -99,7 +111,9 @@ import {
   reassignTaskAssignment,
   readWorkContext,
   readMyAssignments,
+  readVisibleTasks,
   readTasks,
+  readTaskAssignmentOptions,
   updateAssignmentReviewer,
 } from "./commands/work-context.js";
 import {
@@ -109,6 +123,11 @@ import {
   reviewTaskCatalogProposal,
   updateTaskCatalogEntry,
 } from "./commands/task-catalog.js";
+import {
+  readReviewerExceptionCandidates,
+  readReviewerManagementAssignment,
+  readReviewerManagementList,
+} from "./commands/reviewer-management.js";
 import {
   markAllNotificationsRead,
   markNotificationRead,
@@ -121,6 +140,8 @@ import {
 } from "./commands/notifications.js";
 import { stateChangingRequestError } from "./request-security.js";
 import { readPublicOrigin, updatePublicOrigin } from "./commands/public-origin.js";
+import { readPersonalUiPreferences, updatePersonalUiPreferences } from "./commands/ui-preferences.js";
+import { deletePersonalTaskView, readPersonalTaskViews, writePersonalTaskView } from "./commands/task-views.js";
 import {
   backgroundJobSecretMatches,
   backgroundSchedulerMatches,
@@ -283,8 +304,24 @@ export async function handleRequest(request: Request): Promise<Response> {
   if (request.method === "GET" && commandPath === "/work/assignments/mine") {
     return readMyAssignments(request);
   }
+  if (request.method === "GET" && commandPath === "/work/tasks/visible") {
+    return readVisibleTasks(request);
+  }
   if (request.method === "GET" && commandPath === "/tasks") {
     return readTasks(request);
+  }
+  if (request.method === "GET" && commandPath === "/task-assignments/reviewer-management") {
+    return readReviewerManagementList(request);
+  }
+  const taskAssignmentOptionsRoute = commandPath.match(
+    /^\/tasks\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/assignment-options$/i,
+  );
+  if (request.method === "GET" && taskAssignmentOptionsRoute) {
+    return readTaskAssignmentOptions(request, taskAssignmentOptionsRoute[1]);
+  }
+  const taskDetailRoute = commandPath.match(/^\/tasks\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i);
+  if (request.method === "GET" && taskDetailRoute) {
+    return readTaskDetail(request, taskDetailRoute[1]);
   }
   if (request.method === "GET" && commandPath === "/task-catalog") {
     return readTaskCatalog(request);
@@ -311,9 +348,14 @@ export async function handleRequest(request: Request): Promise<Response> {
   if (request.method === "POST" && clientDepartmentRoute) {
     return createClientDepartment(request, clientDepartmentRoute[1]);
   }
+  const clientMembershipEndRoute = commandPath.match(/^\/clients\/([0-9a-f-]{36})\/members\/([0-9a-f-]{36})\/end$/i);
+  if (request.method === "PATCH" && clientMembershipEndRoute) {
+    return endClientMembership(request, clientMembershipEndRoute[1], clientMembershipEndRoute[2]);
+  }
   const clientMembershipRoute = commandPath.match(/^\/clients\/([0-9a-f-]{36})\/members$/i);
-  if (request.method === "POST" && clientMembershipRoute) {
-    return createClientMembership(request, clientMembershipRoute[1]);
+  if (clientMembershipRoute) {
+    if (request.method === "GET") return readClientMemberships(request, clientMembershipRoute[1]);
+    if (request.method === "POST") return createClientMembership(request, clientMembershipRoute[1]);
   }
   if (request.method === "POST" && commandPath === "/workstreams/client") {
     return createClientWorkstream(request);
@@ -377,6 +419,18 @@ export async function handleRequest(request: Request): Promise<Response> {
   if (request.method === "POST" && handoverRequestRoute) return createHandoverRequest(request, handoverRequestRoute[1]);
   const assignmentCandidatesRoute = commandPath.match(/^\/task-assignments\/([0-9a-f-]{36})\/candidates$/i);
   if (request.method === "GET" && assignmentCandidatesRoute) return readAssignmentCandidates(request, assignmentCandidatesRoute[1]);
+  const reviewerExceptionCandidatesRoute = commandPath.match(
+    /^\/task-assignments\/([0-9a-f-]{36})\/reviewer-management\/exception-candidates$/i,
+  );
+  if (request.method === "GET" && reviewerExceptionCandidatesRoute) {
+    return readReviewerExceptionCandidates(request, reviewerExceptionCandidatesRoute[1]);
+  }
+  const reviewerManagementAssignmentRoute = commandPath.match(
+    /^\/task-assignments\/([0-9a-f-]{36})\/reviewer-management$/i,
+  );
+  if (request.method === "GET" && reviewerManagementAssignmentRoute) {
+    return readReviewerManagementAssignment(request, reviewerManagementAssignmentRoute[1]);
+  }
   const reviewerRequestDecisionRoute = commandPath.match(/^\/task-reviewer-requests\/([0-9a-f-]{36})\/(accept|decline|withdraw)$/i);
   if (request.method === "POST" && reviewerRequestDecisionRoute) return resolveReviewerRequest(request, reviewerRequestDecisionRoute[1], reviewerRequestDecisionRoute[2] as "accept" | "decline" | "withdraw");
   const handoverRequestDecisionRoute = commandPath.match(/^\/task-handover-requests\/([0-9a-f-]{36})\/(accept|decline|withdraw)$/i);
@@ -386,11 +440,18 @@ export async function handleRequest(request: Request): Promise<Response> {
   const reviewDecisionRoute = commandPath.match(/^\/task-assignments\/([0-9a-f-]{36})\/review$/i);
   if (request.method === "POST" && reviewDecisionRoute) return reviewAssignment(request, reviewDecisionRoute[1]);
   if (request.method === "GET" && commandPath === "/reviews/pending") return readPendingReviews(request);
+  const reviewerReviewDetailRoute = commandPath.match(/^\/task-assignments\/([0-9a-f-]{36})\/review$/i);
+  if (request.method === "GET" && reviewerReviewDetailRoute) {
+    return readReviewerReviewDetail(request, reviewerReviewDetailRoute[1]);
+  }
   if (request.method === "GET" && commandPath === "/task-reviewer-requests") return readReviewerRequests(request);
   if (request.method === "GET" && commandPath === "/task-handover-requests") return readHandoverRequests(request);
 
   if (request.method === "GET" && commandPath === "/availability/config") {
     return readAvailabilityConfig(request);
+  }
+  if (request.method === "GET" && commandPath === "/availability/agenda") {
+    return readAvailabilityAgenda(request);
   }
   if (request.method === "POST" && commandPath === "/availability/shifts") {
     return createShift(request);
@@ -432,6 +493,9 @@ export async function handleRequest(request: Request): Promise<Response> {
   if (request.method === "GET" && commandPath === "/attendance/today") {
     return readAttendanceToday(request);
   }
+  if (request.method === "GET" && commandPath === "/attendance/action-context") {
+    return readAttendanceActionContext(request);
+  }
   if (request.method === "POST" && commandPath === "/attendance/check-in") {
     return checkIn(request);
   }
@@ -443,6 +507,9 @@ export async function handleRequest(request: Request): Promise<Response> {
   }
   if (request.method === "POST" && commandPath === "/attendance/recover") {
     return recoverAttendance(request);
+  }
+  if (request.method === "GET" && commandPath === "/attendance/recovery-candidates") {
+    return readAttendanceRecoveryCandidates(request);
   }
   if (request.method === "GET" && commandPath === "/work-sessions/mine") {
     return readWorkSessions(request);
@@ -554,6 +621,22 @@ export async function handleRequest(request: Request): Promise<Response> {
   if (request.method === "GET" && commandPath === "/me/permission-grants") {
     return readActorPermissionGrants(request);
   }
+  if (request.method === "GET" && commandPath === "/me/ui-preferences") {
+    return readPersonalUiPreferences(request);
+  }
+  if (request.method === "PATCH" && commandPath === "/me/ui-preferences") {
+    return updatePersonalUiPreferences(request);
+  }
+  if (request.method === "GET" && commandPath === "/me/task-views") {
+    return readPersonalTaskViews(request);
+  }
+  if (request.method === "POST" && commandPath === "/me/task-views") {
+    return writePersonalTaskView(request);
+  }
+  const personalTaskViewRoute = commandPath.match(/^\/me\/task-views\/([0-9a-f-]{36})$/i);
+  if (request.method === "DELETE" && personalTaskViewRoute) {
+    return deletePersonalTaskView(request, personalTaskViewRoute[1]);
+  }
   if (request.method === "GET" && commandPath === "/organisation/public-origin") {
     return readPublicOrigin(request);
   }
@@ -562,6 +645,9 @@ export async function handleRequest(request: Request): Promise<Response> {
   }
   if (request.method === "GET" && commandPath === "/offices") {
     return readOffices(request);
+  }
+  if (request.method === "GET" && commandPath === "/offices/geofence-options") {
+    return readGeofenceOfficeOptions(request);
   }
   if (request.method === "GET" && commandPath === "/organisation-departments") {
     return readDepartments(request);
@@ -574,6 +660,17 @@ export async function handleRequest(request: Request): Promise<Response> {
   }
   if (request.method === "GET" && commandPath === "/people") {
     return readPeople(request);
+  }
+  if (request.method === "GET" && commandPath === "/people/directory") {
+    return readPeopleDirectory(request);
+  }
+  const personDirectoryRecordRoute = commandPath.match(/^\/people\/([0-9a-f-]{36})$/i);
+  if (request.method === "GET" && personDirectoryRecordRoute) {
+    return readPersonDirectoryRecord(request, personDirectoryRecordRoute[1]);
+  }
+  const personHistoryRoute = commandPath.match(/^\/people\/([0-9a-f-]{36})\/history$/i);
+  if (request.method === "GET" && personHistoryRoute) {
+    return readPersonHistory(request, personHistoryRoute[1]);
   }
   if (request.method === "GET" && commandPath === "/audit-events") {
     return readAuditEvents(request);

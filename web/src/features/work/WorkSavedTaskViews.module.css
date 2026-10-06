@@ -1,0 +1,130 @@
+.panel {
+  display: grid;
+  min-width: 0;
+  min-inline-size: 0;
+  gap: var(--nova-space-3);
+  margin: 0;
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+  container-type: inline-size;
+  container-name: saved-task-work;
+}
+
+.legend {
+  max-width: 100%;
+  padding-inline: var(--nova-space-2);
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.description,
+.limitNote {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.openControls {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(10rem, 1fr) auto auto;
+  align-items: end;
+  gap: var(--nova-space-2);
+}
+
+.openControls > * { min-width: 0; }
+.readError {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nova-space-3);
+}
+
+.readError > :first-child { flex: 1 1 16rem; }
+
+.createDisclosure {
+  min-width: 0;
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.createDisclosure summary {
+  display: flex;
+  min-width: 0;
+  min-height: var(--nova-control-touch-target);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nova-space-3);
+  padding-inline: var(--nova-space-2);
+  color: var(--nova-color-action-text);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+  cursor: pointer;
+  list-style: none;
+}
+.createDisclosure summary::marker { content: ""; }
+.createDisclosure summary::-webkit-details-marker { display: none; }
+.createDisclosure summary::after {
+  width: 0.45em;
+  height: 0.45em;
+  flex: 0 0 auto;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(45deg) translateY(-0.12em);
+  transition: transform var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+.createDisclosure[open] summary::after {
+  transform: rotate(225deg) translateY(-0.12em);
+}
+.createDisclosure summary:hover { background: var(--nova-color-surface-subtle); }
+
+.createForm {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--nova-space-3);
+  padding-block: var(--nova-space-2) var(--nova-space-1);
+}
+
+.nameField { min-width: 0; }
+.limitNote { grid-column: 1 / -1; }
+
+.panel :global(button),
+.panel :global(input) {
+  min-height: var(--nova-control-touch-target);
+}
+
+.panel :global(:focus-visible) {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+@container saved-task-work (max-width: 44rem) {
+  .openControls,
+  .createForm {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .openControls > :global(button),
+  .createForm > :global(button) {
+    width: 100%;
+  }
+}
+
+@media (forced-colors: active) {
+  .panel,
+  .createDisclosure { border-color: CanvasText; }
+  .createDisclosure summary::after { border-color: currentColor; }
+  .createDisclosure summary:focus-visible { outline-color: Highlight; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .createDisclosure summary::after { transition: none; }
+}

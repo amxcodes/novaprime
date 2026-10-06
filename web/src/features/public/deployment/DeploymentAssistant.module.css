@@ -1,0 +1,717 @@
+.root {
+  box-sizing: border-box;
+  container: deployment-assistant / inline-size;
+  width: min(100%, var(--nova-content-max));
+  max-width: none;
+  min-width: 0;
+  margin-inline: auto;
+  padding: clamp(var(--nova-space-4), 2.5cqi, var(--nova-space-8));
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface);
+  box-shadow: var(--nova-elevation-raised);
+}
+
+.root .header {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--nova-space-4);
+  padding-block-end: var(--nova-space-5);
+  border-block-end: 1px solid var(--nova-color-border);
+}
+
+.root .title {
+  max-width: 24ch;
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: clamp(var(--nova-type-size-xl), 4cqi, var(--nova-type-size-display));
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: -0.035em;
+  line-height: var(--nova-type-line-tight);
+  text-wrap: balance;
+}
+
+.root :global(.eyebrow) {
+  margin-block: 0 var(--nova-space-2);
+  color: var(--nova-color-action-text);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.root :global(.lede) {
+  max-width: 68ch;
+  margin-block-start: var(--nova-space-3);
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-md);
+  line-height: var(--nova-type-line-relaxed);
+}
+
+.root :global(.small) {
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+}
+
+.root :global(.link-button) {
+  appearance: none;
+  display: inline-flex;
+  min-height: var(--nova-control-touch-target);
+  align-items: center;
+  margin-inline: -0.25rem;
+  padding: 0 0.25rem;
+  border: 0;
+  color: var(--nova-color-action-text);
+  background: transparent;
+  font: inherit;
+  text-align: start;
+  text-decoration: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.16em;
+  cursor: pointer;
+}
+
+.root :global(.link-button:hover:not(:disabled)) {
+  color: var(--nova-color-action-text-hover);
+}
+
+.root :global(.link-button:disabled) {
+  color: var(--nova-color-text-muted);
+  cursor: not-allowed;
+}
+
+.root :global(.notice) {
+  margin-block-start: var(--nova-space-4);
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface-subtle);
+  font-size: var(--nova-type-size-sm);
+}
+
+.root :global(.notice.error) {
+  border-color: color-mix(in srgb, var(--nova-color-danger) 38%, var(--nova-color-border));
+  color: var(--nova-color-danger);
+  background: var(--nova-color-danger-surface);
+}
+
+.root :global(.notice.warning) {
+  border-color: color-mix(in srgb, var(--nova-color-warning) 38%, var(--nova-color-border));
+  color: var(--nova-color-warning);
+  background: var(--nova-color-warning-surface);
+}
+
+.root .publicAction {
+  min-height: var(--nova-control-touch-target);
+  padding: 0.625rem 1rem;
+  border: 1px solid var(--nova-color-action);
+  border-radius: var(--nova-radius-pill);
+  font-size: var(--nova-type-size-sm);
+  line-height: 1.25;
+  text-decoration: none;
+  opacity: 1;
+}
+
+.root .publicAction[data-size="compact"] {
+  min-height: var(--nova-control-touch-target);
+  font-size: var(--nova-type-size-sm);
+}
+
+.root .publicAction[data-variant="secondary"] {
+  border-color: var(--nova-color-border);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface);
+  font-weight: var(--nova-type-weight-medium);
+}
+
+.root .publicAction[data-variant="primary"]:hover:not(:disabled) {
+  border-color: var(--nova-color-action-text-hover);
+}
+
+.root .publicAction:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.root .publicAction:disabled {
+  border-color: var(--nova-color-border);
+  color: var(--nova-color-text-muted);
+  background: var(--nova-color-surface-subtle);
+  cursor: not-allowed;
+  transform: none;
+  opacity: 1;
+}
+
+.root :global(h2),
+.root :global(h3),
+.root :global(h4) {
+  color: var(--nova-color-text-primary);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  text-wrap: balance;
+}
+
+.root :global(h2) {
+  margin-block: var(--nova-space-5) var(--nova-space-3);
+  font-size: var(--nova-type-size-lg);
+}
+
+.root :global(h3) {
+  margin: 0;
+  font-size: var(--nova-type-size-md);
+}
+
+.root :global(h4) {
+  margin: 0;
+  font-size: var(--nova-type-size-sm);
+}
+
+.root :global(.deployment-path-grid) {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: var(--nova-space-3);
+}
+
+.root :global(.deployment-path) {
+  display: grid;
+  min-width: 0;
+  min-height: 8rem;
+  align-content: start;
+  justify-items: start;
+  gap: var(--nova-space-2);
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-secondary);
+  background: var(--nova-color-surface);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: border-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    background-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+
+.root :global(.deployment-path:hover),
+.root :global(.deployment-stage:hover:not(:disabled)) {
+  border-color: var(--nova-color-action);
+  background: var(--nova-color-surface-subtle);
+}
+
+.root :global(.deployment-path.selected),
+.root :global(.deployment-stage.active) {
+  border-color: var(--nova-color-action);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-action-subtle);
+}
+
+.root :global(.deployment-path strong),
+.root :global(.deployment-stage strong) {
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-md);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+}
+
+.root :global(.deployment-path .status) {
+  padding: var(--nova-space-1) var(--nova-space-2);
+  border-radius: var(--nova-radius-pill);
+  color: var(--nova-color-action-text);
+  background: var(--nova-color-action-subtle);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.root :global(.deployment-layout) {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(13rem, 0.28fr) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--nova-space-6);
+  padding-block-start: var(--nova-space-5);
+}
+
+.root :global(.deployment-steps) {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+}
+
+.root :global(.deployment-stage) {
+  display: grid;
+  min-width: 0;
+  min-height: var(--nova-control-touch-target);
+  grid-template-columns: 2rem minmax(0, 1fr);
+  align-items: start;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-secondary);
+  background: transparent;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: border-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    background-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+
+.root :global(.deployment-stage:disabled) {
+  border-color: var(--nova-control-border);
+  color: var(--nova-color-text-secondary);
+  background: var(--nova-control-background-disabled);
+  cursor: not-allowed;
+}
+
+.root :global(.deployment-stage-number) {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-pill);
+  color: var(--nova-color-text-secondary);
+  background: var(--nova-color-surface);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.root :global(.deployment-stage.active .deployment-stage-number),
+.root :global(.deployment-stage.complete .deployment-stage-number) {
+  border-color: var(--nova-color-action);
+  color: var(--nova-color-action-contrast);
+  background: var(--nova-color-action);
+}
+
+.root :global(.deployment-stage small) {
+  display: block;
+  margin-block-start: var(--nova-space-1);
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+}
+
+.root :global(.deployment-content) {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+}
+
+.root :global(.deployment-selected) {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-1);
+  padding: var(--nova-space-3) var(--nova-space-4);
+  border-inline-start: 3px solid var(--nova-color-action);
+  border-radius: 0 var(--nova-radius-control) var(--nova-radius-control) 0;
+  color: var(--nova-color-text-secondary);
+  background: var(--nova-color-surface-subtle);
+  overflow-wrap: anywhere;
+}
+
+.root :global(.deployment-selected strong) {
+  color: var(--nova-color-text-primary);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.root :global(.deployment-location) {
+  margin: calc(-1 * var(--nova-space-2)) 0 0;
+  color: var(--nova-color-action-text);
+  font-size: var(--nova-type-size-sm);
+}
+
+.root :global(.deployment-checklist) {
+  display: grid;
+  gap: var(--nova-space-2);
+  margin: 0;
+  padding-inline-start: 1.25rem;
+  color: var(--nova-color-text-secondary);
+}
+
+.root :global(.deployment-checklist li) {
+  padding-inline-start: var(--nova-space-1);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.root :global(.deployment-scheduler-grid),
+.root :global(.deployment-places) {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+  padding-block-start: var(--nova-space-4);
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.root :global(.deployment-scheduler-choices) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: var(--nova-space-2);
+}
+
+.root :global(.deployment-scheduler) {
+  display: flex;
+  min-width: 0;
+  min-height: var(--nova-control-touch-target);
+  align-items: center;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-2) var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface);
+  font-size: var(--nova-type-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.root :global(.deployment-scheduler input),
+.root :global(.deployment-confirm input) {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: none;
+  accent-color: var(--nova-color-action);
+}
+
+.root :global(.deployment-scheduler-outcome) {
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+}
+
+.root :global(.deployment-scheduler-outcome dl) {
+  display: grid;
+  gap: var(--nova-space-3);
+  margin: var(--nova-space-3) 0 0;
+}
+
+.root :global(.deployment-scheduler-outcome dl > div) {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.35fr) minmax(0, 1fr);
+  gap: var(--nova-space-3);
+}
+
+.root :global(.deployment-scheduler-outcome dt) {
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.root :global(.deployment-scheduler-outcome dd) {
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.root :global(.deployment-architecture) {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--nova-space-2);
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+  text-align: center;
+}
+
+.root :global(.deployment-architecture > span:not(.deployment-architecture-scheduler)) {
+  min-width: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.root :global(.deployment-architecture-scheduler) {
+  grid-column: 1 / -1;
+  padding-block-start: var(--nova-space-2);
+  border-block-start: 1px solid var(--nova-color-border);
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+}
+
+.root :global(.deployment-provider-boundary) {
+  margin: 0;
+  padding: var(--nova-space-3) var(--nova-space-4);
+  border-inline-start: 3px solid var(--nova-color-info);
+  border-radius: 0 var(--nova-radius-control) var(--nova-radius-control) 0;
+  color: var(--nova-color-text-secondary);
+  background: var(--nova-color-info-surface);
+  font-size: var(--nova-type-size-sm);
+}
+
+.root :global(.deployment-places-grid) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--nova-space-3);
+  padding-block-start: var(--nova-space-3);
+}
+
+.root :global(.deployment-place) {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--nova-space-2);
+  padding: var(--nova-space-3);
+  border-inline-start: 2px solid var(--nova-color-border);
+  color: var(--nova-color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.root :global(.deployment-place > span) {
+  color: var(--nova-color-action-text);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.root :global(.deployment-place > strong) {
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.root :global(.deployment-place p) {
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+}
+
+.root :global(.deployment-map-details),
+.root :global(.deployment-wiring) {
+  min-width: 0;
+  padding-block-start: var(--nova-space-3);
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.root :global(.deployment-map-details > summary),
+.root :global(.deployment-wiring > summary),
+.root :global(.deployment-scheduler-plan > summary) {
+  display: flex;
+  min-height: var(--nova-control-touch-target);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nova-space-3);
+  padding-inline: var(--nova-space-2);
+  color: var(--nova-color-action-text);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-medium);
+  cursor: pointer;
+  list-style: none;
+}
+
+.root :global(.deployment-map-details > summary)::marker,
+.root :global(.deployment-wiring > summary)::marker,
+.root :global(.deployment-scheduler-plan > summary)::marker { content: ""; }
+
+.root :global(.deployment-map-details > summary::-webkit-details-marker),
+.root :global(.deployment-wiring > summary::-webkit-details-marker),
+.root :global(.deployment-scheduler-plan > summary::-webkit-details-marker) { display: none; }
+
+.root :global(.deployment-map-details > summary)::after,
+.root :global(.deployment-wiring > summary)::after,
+.root :global(.deployment-scheduler-plan > summary)::after {
+  width: 0.45em;
+  height: 0.45em;
+  flex: 0 0 auto;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(45deg) translateY(-0.12em);
+  transition: transform var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+
+.root :global(.deployment-map-details[open] > summary)::after,
+.root :global(.deployment-wiring[open] > summary)::after,
+.root :global(.deployment-scheduler-plan[open] > summary)::after {
+  transform: rotate(225deg) translateY(-0.12em);
+}
+
+.root :global(.deployment-map-details > summary:hover),
+.root :global(.deployment-wiring > summary:hover),
+.root :global(.deployment-scheduler-plan > summary:hover) {
+  background: var(--nova-color-surface-subtle);
+}
+
+.root :global(.deployment-map-details > summary:focus-visible),
+.root :global(.deployment-wiring > summary:focus-visible),
+.root :global(.deployment-scheduler-plan > summary:focus-visible) {
+  outline-offset: -3px;
+}
+
+.root :global(.deployment-scheduler-plan-body) {
+  display: grid;
+  gap: var(--nova-space-3);
+  padding-block-start: var(--nova-space-3);
+  color: var(--nova-color-text-secondary);
+}
+
+.root :global(.deployment-scheduler-plan-body ol) {
+  display: grid;
+  gap: var(--nova-space-3);
+  margin: 0;
+  padding-inline-start: 1.5rem;
+}
+
+.root :global(.deployment-action-scroll) {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+}
+
+.root :global(.deployment-action-map) {
+  width: 100%;
+  min-width: 38rem;
+  border-collapse: collapse;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  text-align: start;
+}
+
+.root :global(.deployment-action-map th),
+.root :global(.deployment-action-map td) {
+  padding: var(--nova-space-3);
+  border-block-end: 1px solid var(--nova-color-border);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.root :global(.deployment-action-map th) {
+  color: var(--nova-color-text-primary);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.root :global(.deployment-confirm) {
+  display: flex;
+  min-width: 0;
+  min-height: var(--nova-control-touch-target);
+  align-items: center;
+  gap: var(--nova-space-3);
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+}
+
+.root .formActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--nova-space-2);
+  padding-block-start: var(--nova-space-3);
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.root :global(:focus-visible) {
+  outline: 3px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+@container deployment-assistant (max-width: 48rem) {
+  .root .header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .root .header > button {
+    justify-self: start;
+  }
+
+  .root :global(.deployment-layout) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--nova-space-4);
+  }
+
+  .root :global(.deployment-steps) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .root :global(.deployment-stage) {
+    grid-template-columns: 2rem minmax(0, 1fr);
+  }
+}
+
+@container deployment-assistant (max-width: 32rem) {
+  .root :global(.deployment-steps) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .root :global(.deployment-architecture) {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: stretch;
+    text-align: start;
+  }
+
+  .root :global(.deployment-architecture > span[aria-hidden="true"]) {
+    display: none;
+  }
+
+  .root :global(.deployment-architecture-scheduler) {
+    grid-column: auto;
+  }
+
+  .root :global(.deployment-scheduler-outcome dl > div) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--nova-space-1);
+  }
+
+  .root .formActions {
+    align-items: stretch;
+  }
+
+  .root .formActions > button {
+    flex: 1 1 auto;
+  }
+}
+
+@media (forced-colors: active) {
+  .root,
+  .root :global(.deployment-path),
+  .root :global(.deployment-stage),
+  .root :global(.deployment-scheduler),
+  .root :global(.deployment-action-map th),
+  .root :global(.deployment-action-map td),
+  .root :global(.notice),
+  .root .publicAction {
+    border-color: CanvasText;
+  }
+
+  .root :global(.link-button) {
+    color: LinkText;
+  }
+
+  .root :global(.link-button:focus-visible) {
+    outline-color: Highlight;
+  }
+
+  .root :global(.deployment-path.selected),
+  .root :global(.deployment-stage.active) {
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
+  }
+
+  .root :global(.deployment-map-details > summary)::after,
+  .root :global(.deployment-wiring > summary)::after,
+  .root :global(.deployment-scheduler-plan > summary)::after {
+    border-color: currentColor;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root :global(.deployment-map-details > summary)::after,
+  .root :global(.deployment-wiring > summary)::after,
+  .root :global(.deployment-scheduler-plan > summary)::after {
+    transition: none;
+  }
+}

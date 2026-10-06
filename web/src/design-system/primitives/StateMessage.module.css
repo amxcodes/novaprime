@@ -1,0 +1,87 @@
+.message {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-3) var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface-subtle);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+}
+
+.message[data-kind="success"] {
+  border-color: color-mix(in srgb, var(--nova-color-success) 28%, var(--nova-color-border));
+  color: var(--nova-color-success);
+  background: var(--nova-color-success-surface);
+}
+
+.message[data-kind="warning"] {
+  border-color: color-mix(in srgb, var(--nova-color-warning) 28%, var(--nova-color-border));
+  color: var(--nova-color-warning);
+  background: var(--nova-color-warning-surface);
+}
+
+.message[data-kind="error"] {
+  border-color: color-mix(in srgb, var(--nova-color-danger) 28%, var(--nova-color-border));
+  color: var(--nova-color-danger);
+  background: var(--nova-color-danger-surface);
+}
+
+.message[data-kind="info"] {
+  color: var(--nova-color-info);
+  background: var(--nova-color-info-surface);
+}
+
+.copy {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-1);
+}
+
+.title {
+  color: inherit;
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.description {
+  min-width: 0;
+  color: var(--nova-color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  margin-top: 0.125rem;
+  border: 2px solid var(--nova-color-action);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: nova-state-spin 700ms linear infinite;
+}
+
+@keyframes nova-state-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (forced-colors: active) {
+  .message {
+    border-color: CanvasText;
+    color: CanvasText;
+    background: Canvas;
+  }
+
+  .description {
+    color: CanvasText;
+  }
+
+  .spinner {
+    border-color: CanvasText;
+    border-right-color: transparent;
+  }
+}

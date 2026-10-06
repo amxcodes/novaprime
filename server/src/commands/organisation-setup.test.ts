@@ -59,6 +59,22 @@ test("accepts an onboarding completion with server-validated identifiers", () =>
     personId: "44444444-4444-4444-8444-444444444444",
     roleId: "55555555-5555-4555-8555-555555555555",
   });
+  expect(completeOnboardingInput({
+    designation: "Designer",
+    employmentStartsOn: "2026-09-19",
+    managerPersonId: null,
+    officeId: "22222222-2222-4222-8222-222222222222",
+    organisationDepartmentId: "33333333-3333-4333-8333-333333333333",
+    personId: "44444444-4444-4444-8444-444444444444",
+    roleId: "55555555-5555-4555-8555-555555555555",
+  })).toEqual({
+    designation: "Designer",
+    employmentStartsOn: "2026-09-19",
+    officeId: "22222222-2222-4222-8222-222222222222",
+    organisationDepartmentId: "33333333-3333-4333-8333-333333333333",
+    personId: "44444444-4444-4444-8444-444444444444",
+    roleId: "55555555-5555-4555-8555-555555555555",
+  });
 });
 
 test("accepts effective-dated attendance policy setup and rejects invalid duration", () => {

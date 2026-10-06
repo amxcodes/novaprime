@@ -501,10 +501,18 @@ export async function readAvailabilityConfig(request: Request): Promise<Response
   if ("response" in actor) return actor.response;
   try {
     const result = await withDatabaseRequest(actor.context, async (transaction) => {
-      if (!await hasOrganisationPermission(transaction, actor.context.userId, "availability.calendar.view")) {
-        return undefined;
-      }
-      const shifts = await transaction.query<{
+      const shiftView = await hasOrganisationPermission(transaction, actor.context.userId, "availability.shift.view");
+      const shiftManage = await hasOrganisationPermission(transaction, actor.context.userId, "availability.shift.manage");
+      const calendarView = await hasOrganisationPermission(transaction, actor.context.userId, "availability.calendar.view");
+      const calendarManage = await hasOrganisationPermission(transaction, actor.context.userId, "availability.calendar.manage");
+      const holidayView = await hasOrganisationPermission(transaction, actor.context.userId, "availability.holiday.view");
+      const holidayManage = await hasOrganisationPermission(transaction, actor.context.userId, "availability.holiday.manage");
+      const canReadShifts = shiftView || shiftManage;
+      const canReadShiftOptions = canReadShifts || calendarManage;
+      const canReadCalendars = calendarView || calendarManage;
+      const canReadHolidays = holidayView || holidayManage;
+      if (!canReadShiftOptions && !canReadCalendars && !canReadHolidays) return undefined;
+      const shifts = canReadShifts ? await transaction.query<{
         id: string; name: string; start_local_time: string; end_local_time: string;
         break_start_local_time: string | null; break_end_local_time: string | null;
         grace_minutes: number; overtime_enabled: boolean; spans_midnight: boolean;
@@ -516,8 +524,16 @@ export async function readAvailabilityConfig(request: Request): Promise<Response
          WHERE organisation_id = $1 AND archived_at IS NULL
          ORDER BY name`,
         [actor.context.organisationId],
-      );
-      const calendars = await transaction.query<{
+      ) : { rows: [] as Array<never> };
+      const shiftOptions = canReadShiftOptions
+        ? canReadShifts
+          ? shifts.rows.map((shift) => ({ id: shift.id, name: shift.name }))
+          : (await transaction.query<{ id: string; name: string }>(
+            `SELECT id, name FROM nova.shifts WHERE organisation_id = $1 AND archived_at IS NULL ORDER BY name`,
+            [actor.context.organisationId],
+          )).rows
+        : [];
+      const calendars = canReadCalendars ? await transaction.query<{
         id: string; name: string; office_id: string; office_name: string;
         effective_on: string; rules: unknown;
       }>(
@@ -543,8 +559,8 @@ export async function readAvailabilityConfig(request: Request): Promise<Response
          GROUP BY calendars.id, assignments.office_id, offices.name, assignments.effective_on
          ORDER BY calendars.name`,
         [actor.context.organisationId],
-      );
-      const holidays = await transaction.query<{
+      ) : { rows: [] as Array<never> };
+      const holidays = canReadHolidays ? await transaction.query<{
         id: string; office_id: string; office_name: string; holiday_date: string; name: string;
       }>(
         `SELECT holidays.id, holidays.office_id, offices.name AS office_name,
@@ -554,8 +570,10 @@ export async function readAvailabilityConfig(request: Request): Promise<Response
          WHERE holidays.organisation_id = $1
          ORDER BY holidays.holiday_date, offices.name`,
         [actor.context.organisationId],
-      );
+      ) : { rows: [] as Array<never> };
       return {
+        visibility: { shifts: canReadShifts, shiftOptions: canReadShiftOptions, calendars: canReadCalendars, holidays: canReadHolidays },
+        shiftOptions,
         shifts: shifts.rows.map((shift) => ({
           id: shift.id,
           name: shift.name,

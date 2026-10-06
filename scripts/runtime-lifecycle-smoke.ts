@@ -142,6 +142,14 @@ function field(label: string, result: ApiResult, name: string): string {
   return value;
 }
 
+async function pendingReviewCycleId(label: string, assignmentId: string, reviewerCookie: string): Promise<string> {
+  const pending = await request("GET", `/reviews/pending?assignmentId=${assignmentId}`, undefined, reviewerCookie);
+  assertStatus(`${label}_pending_reviews`, pending, 200);
+  const cycleId = pending.body?.reviews?.find((review: any) => review.assignmentId === assignmentId)?.reviewCycleId;
+  assert(typeof cycleId === "string" && cycleId.length > 0, `${label}_cycle_id_read`);
+  return cycleId;
+}
+
 function numberField(label: string, result: ApiResult, name: string): number {
   const value = result.body?.[name];
   if (!Number.isSafeInteger(value) || value < 1) throw new Error(`${label}_FIELD_MISSING_${name}`);
@@ -2226,8 +2234,10 @@ async function main(): Promise<void> {
   const firstSubmission = await request("POST", `/task-assignments/${resubmission.assignmentId}/submit`, {}, secondEmployee.cookie);
   assertStatus("resubmission_first_submit", firstSubmission, 200);
   assert(firstSubmission.body?.status === "awaiting_review", "first_submission_opens_review_cycle");
+  const firstReviewCycleId = await pendingReviewCycleId("resubmission_first_cycle", resubmission.assignmentId, founderCookie);
   const changesRequested = await request("POST", `/task-assignments/${resubmission.assignmentId}/review`, {
     decision: "changes_requested",
+    expectedReviewCycleId: firstReviewCycleId,
     feedback: "Please add the missing delivery notes.",
   }, founderCookie);
   assertStatus("resubmission_changes_requested", changesRequested, 200);
@@ -2266,8 +2276,10 @@ async function main(): Promise<void> {
   const secondSubmission = await request("POST", `/task-assignments/${resubmission.assignmentId}/submit`, {}, secondEmployee.cookie);
   assertStatus("resubmission_second_submit", secondSubmission, 200);
   assert(secondSubmission.body?.status === "awaiting_review", "resubmission_opens_next_review_cycle");
+  const secondReviewCycleId = await pendingReviewCycleId("resubmission_second_cycle", resubmission.assignmentId, founderCookie);
   const resubmissionApproval = await request("POST", `/task-assignments/${resubmission.assignmentId}/review`, {
     decision: "approved",
+    expectedReviewCycleId: secondReviewCycleId,
   }, founderCookie);
   assertStatus("resubmission_final_approval", resubmissionApproval, 200);
   const completedCycles = await sql<{
@@ -2337,8 +2349,12 @@ async function main(): Promise<void> {
   assertStatus("billing_original_submit", await request(
     "POST", `/task-assignments/${billingAssignmentId}/submit`, {}, firstEmployee.cookie,
   ), 200);
+  const billingReviewCycleId = await pendingReviewCycleId("billing_original_cycle", billingAssignmentId, founderCookie);
   assertStatus("billing_original_approval", await request(
-    "POST", `/task-assignments/${billingAssignmentId}/review`, { decision: "approved" }, founderCookie,
+    "POST", `/task-assignments/${billingAssignmentId}/review`, {
+      decision: "approved",
+      expectedReviewCycleId: billingReviewCycleId,
+    }, founderCookie,
   ), 200);
   const completedOriginalCancellation = await request(
     "POST", `/tasks/${billingOriginalId}/cancel`, {}, founderCookie,
@@ -2925,10 +2941,15 @@ async function main(): Promise<void> {
   assertStatus("review_race_submission", await request(
     "POST", `/task-assignments/${reviewRace.assignmentId}/submit`, {}, secondEmployee.cookie,
   ), 200);
+  const reviewRaceCycleId = await pendingReviewCycleId("review_race_cycle", reviewRace.assignmentId, founderCookie);
   const reviewDecisions = await Promise.all([
-    request("POST", `/task-assignments/${reviewRace.assignmentId}/review`, { decision: "approved" }, founderCookie),
+    request("POST", `/task-assignments/${reviewRace.assignmentId}/review`, {
+      decision: "approved",
+      expectedReviewCycleId: reviewRaceCycleId,
+    }, founderCookie),
     request("POST", `/task-assignments/${reviewRace.assignmentId}/review`, {
       decision: "changes_requested",
+      expectedReviewCycleId: reviewRaceCycleId,
       feedback: "Concurrent decision must not overwrite the winner.",
     }, founderCookie),
   ]);
@@ -2973,11 +2994,15 @@ async function main(): Promise<void> {
   assertStatus("cancel_review_submission", await request(
     "POST", `/task-assignments/${cancellationReview.assignmentId}/submit`, {}, secondEmployee.cookie,
   ), 200);
+  const cancelledReviewCycleId = await pendingReviewCycleId(
+    "cancel_pending_review_cycle", cancellationReview.assignmentId, founderCookie,
+  );
   assertStatus("cancel_task_awaiting_review", await request(
     "POST", `/tasks/${cancellationReview.taskId}/cancel`, {}, founderCookie,
   ), 200);
   const reviewAfterCancel = await request("POST", `/task-assignments/${cancellationReview.assignmentId}/review`, {
     decision: "approved",
+    expectedReviewCycleId: cancelledReviewCycleId,
   }, founderCookie);
   assertStatus("cancelled_assignment_rejects_review", reviewAfterCancel, 409);
   assert(reviewAfterCancel.body?.error === "REVIEW_NOT_OPEN", "cancelled_review_cycle_cannot_be_decided");

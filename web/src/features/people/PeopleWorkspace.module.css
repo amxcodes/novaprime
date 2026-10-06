@@ -1,0 +1,79 @@
+.feature {
+  min-width: 0;
+  container: people-workspace / inline-size;
+}
+
+.workspace {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--nova-space-6);
+}
+
+.directoryPane,
+.detailPane {
+  min-width: 0;
+}
+
+.detailPane {
+  display: grid;
+  align-content: start;
+  gap: var(--nova-space-3);
+  overflow-wrap: anywhere;
+}
+
+.detailToolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.detailToolbar > button {
+  min-height: var(--nova-control-touch-target);
+}
+
+/* Expanded uses the same directory and history state in a master-detail work surface. */
+@container people-workspace (min-width: 64rem) {
+  .feature[data-has-directory="true"][data-has-selection="true"] .workspace {
+    grid-template-columns: minmax(18rem, 0.78fr) minmax(0, 1.42fr);
+    gap: var(--nova-space-6);
+  }
+
+  .feature[data-has-directory="true"][data-has-selection="true"] .detailPane {
+    padding-inline-start: var(--nova-space-6);
+    border-inline-start: 1px solid var(--nova-color-border);
+  }
+
+  .feature[data-has-directory="true"][data-has-selection="true"] [data-people-history-back] {
+    display: none;
+  }
+}
+
+/* Medium and compact keep URL selection while presenting one person surface at a time. */
+@container people-workspace (max-width: 63.999rem) {
+  .feature[data-has-directory="true"][data-has-selection="true"] [data-people-directory-pane] {
+    display: none;
+  }
+
+  .detailToolbar {
+    display: none;
+  }
+}
+
+@container people-workspace (max-width: 39.999rem) {
+  .workspace {
+    gap: var(--nova-space-4);
+  }
+
+  .detailPane [data-people-history-back] > button {
+    width: 100%;
+    min-height: var(--nova-control-touch-target);
+    justify-content: flex-start;
+  }
+}
+
+@media (forced-colors: active) {
+  .feature[data-has-directory="true"][data-has-selection="true"] .detailPane {
+    border-color: CanvasText;
+  }
+}

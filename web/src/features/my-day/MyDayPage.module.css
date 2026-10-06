@@ -1,0 +1,215 @@
+.page {
+  container: my-day-page / inline-size;
+  max-width: var(--nova-content-max);
+  min-width: 0;
+  margin-inline: auto;
+}
+
+.content {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-8);
+}
+
+.header {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+  padding-block-end: var(--nova-space-5);
+  border-block-end: 1px solid var(--nova-color-border);
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--nova-color-action-text);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.header h1 {
+  max-width: 22ch;
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-display);
+  letter-spacing: -0.04em;
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.lede {
+  max-width: 58ch;
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  line-height: var(--nova-type-line-normal);
+}
+
+.content > #feedback:empty { display: none; }
+.content > #feedback { margin: 0; }
+
+.layout {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.34fr);
+  align-items: start;
+  gap: var(--nova-space-8);
+}
+
+.layoutSingleColumn { grid-template-columns: minmax(0, 1fr); }
+.main { min-width: 0; }
+
+.moduleGrid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--nova-space-8) var(--nova-space-6);
+}
+
+.module,
+.moduleContent { min-width: 0; }
+
+.module {
+  display: grid;
+  align-content: start;
+  gap: var(--nova-space-3);
+}
+
+.wideModule,
+.module[data-my-day-module="attendance"] { grid-column: 1 / -1; }
+
+.moduleHeader {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-1);
+  padding-block-end: var(--nova-space-2);
+  border-block-end: 1px solid var(--nova-color-border);
+}
+
+.moduleHeader h2 {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-lg);
+  letter-spacing: -0.02em;
+}
+
+.moduleHeader p,
+.contentSlot > p {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.shortcuts {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--nova-space-3);
+  padding-inline-start: var(--nova-space-5);
+  border-inline-start: 1px solid var(--nova-color-border);
+}
+
+.shortcutsHeader { display: grid; min-width: 0; gap: var(--nova-space-1); }
+
+.shortcutsHeader h2 {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-md);
+}
+
+.shortcutsHeader p {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+}
+
+.shortcutGrid {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+}
+
+.shortcut {
+  display: grid;
+  min-width: 0;
+  min-height: var(--nova-control-touch-target);
+  align-content: center;
+  gap: var(--nova-space-1);
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface);
+  font: var(--nova-type-body);
+  text-align: start;
+  cursor: pointer;
+  transition:
+    background-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    border-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    transform var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+
+.shortcut:hover {
+  border-color: var(--nova-color-action-text);
+  background: var(--nova-color-surface-subtle);
+}
+
+.shortcut:active { transform: translateY(1px); }
+
+.shortcut:focus-visible {
+  outline: 3px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+.shortcutTitle {
+  min-width: 0;
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.shortcutSummary {
+  min-width: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.emptyState { min-width: 0; }
+.islandSlot { display: contents; }
+
+@container my-day-page (max-width: 60rem) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .shortcuts {
+    padding: var(--nova-space-4) 0 0;
+    border-block-start: 1px solid var(--nova-color-border);
+    border-inline-start: 0;
+  }
+  .shortcutGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@container my-day-page (max-width: 40rem) {
+  .content { gap: var(--nova-space-6); }
+  .moduleGrid { grid-template-columns: minmax(0, 1fr); gap: var(--nova-space-6); }
+  .wideModule,
+  .module[data-my-day-module="attendance"] { grid-column: auto; }
+  .shortcutGrid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shortcut { transition: none; }
+}
+
+@media (forced-colors: active) {
+  .header,
+  .moduleHeader,
+  .shortcuts,
+  .shortcut { border-color: CanvasText; }
+  .shortcut:focus-visible { outline-color: Highlight; }
+}

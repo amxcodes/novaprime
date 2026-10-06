@@ -1,0 +1,306 @@
+.root {
+  container: work-task-detail / inline-size;
+  display: grid;
+  gap: var(--nova-space-4);
+  min-width: 0;
+}
+
+.header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--nova-space-4);
+  min-width: 0;
+}
+
+.header > button {
+  min-height: var(--nova-control-touch-target);
+}
+
+.identity {
+  display: grid;
+  gap: var(--nova-space-2);
+  min-width: 0;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: clamp(var(--nova-type-size-xl), 2.2vw, var(--nova-type-size-display));
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nova-space-2);
+}
+
+.section {
+  display: grid;
+  gap: var(--nova-space-3);
+  min-width: 0;
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.sectionTitle {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-lg);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+}
+
+.sectionDescription {
+  margin: var(--nova-space-1) 0 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--nova-space-3) var(--nova-space-5);
+  margin: 0;
+}
+
+.field {
+  display: grid;
+  align-content: start;
+  gap: var(--nova-space-1);
+  min-width: 0;
+}
+
+.field dt {
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-sm);
+}
+
+.field dd {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.description {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+}
+
+.assignments {
+  display: grid;
+  gap: var(--nova-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assignment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--nova-space-2) var(--nova-space-4);
+  min-width: 0;
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+}
+
+.person {
+  color: var(--nova-color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.assignmentState {
+  justify-self: end;
+}
+
+.assignmentMeta,
+.blocker {
+  grid-column: 1 / -1;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.blocker {
+  color: var(--nova-color-warning);
+}
+
+.correction {
+  margin: 0;
+  padding: var(--nova-space-3);
+  border-inline-start: 3px solid var(--nova-color-warning);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-warning-surface);
+  color: var(--nova-color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.dueEditor {
+  min-width: 0;
+  width: 100%;
+  max-width: 32rem;
+  margin-block-start: var(--nova-space-2);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface);
+}
+
+.dueEditor summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-2) var(--nova-space-3);
+  min-height: var(--nova-control-height);
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-medium);
+  line-height: var(--nova-type-line-normal);
+  list-style: none;
+  cursor: pointer;
+}
+
+.dueEditor summary::marker {
+  content: "";
+}
+
+.dueEditor summary::-webkit-details-marker {
+  display: none;
+}
+
+.dueEditor summary::after {
+  width: 0.45em;
+  height: 0.45em;
+  flex: 0 0 auto;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(45deg) translateY(-0.12em);
+  transition: transform var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+
+.dueEditor[open] summary::after {
+  transform: rotate(225deg) translateY(-0.12em);
+}
+
+.dueEditor summary:hover {
+  background: var(--nova-color-surface-subtle);
+}
+
+.dueEditor summary:focus-visible {
+  border-radius: var(--nova-radius-control);
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+.dueForm {
+  display: grid;
+  gap: var(--nova-space-3);
+  min-width: 0;
+  padding: var(--nova-space-3);
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.saveConflict {
+  display: grid;
+  justify-items: start;
+  gap: var(--nova-space-2);
+}
+
+.unavailable {
+  justify-items: start;
+  max-width: 38rem;
+}
+
+.noticeTitle {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-xl);
+  line-height: var(--nova-type-line-tight);
+}
+
+@media (any-pointer: coarse) {
+  .header > button,
+  .dueForm input,
+  .dueForm > button,
+  .badges > button,
+  .saveConflict > button {
+    min-height: var(--nova-control-touch-target);
+  }
+
+  .dueEditor summary {
+    min-height: var(--nova-control-touch-target);
+  }
+}
+
+@container work-task-detail (max-width: 42rem) {
+  .header {
+    grid-template-columns: 1fr;
+    gap: var(--nova-space-3);
+  }
+
+  .fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container work-task-detail (max-width: 30rem) {
+  .section {
+    padding: var(--nova-space-3);
+  }
+
+  .fields,
+  .assignment {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .assignmentState {
+    justify-self: start;
+  }
+}
+
+@media (forced-colors: active) {
+  .section,
+  .assignment,
+  .dueEditor {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+
+  .correction {
+    border-inline-start-color: Mark;
+  }
+
+  .dueEditor summary::after {
+    border-color: currentColor;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dueEditor summary::after {
+    transition: none;
+  }
+}

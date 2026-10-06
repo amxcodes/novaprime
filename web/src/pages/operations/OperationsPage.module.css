@@ -1,0 +1,50 @@
+.page {
+  container: operations-page / inline-size;
+  min-width: 0;
+  max-width: var(--nova-content-max);
+  margin-inline: auto;
+}
+
+.content {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-7);
+}
+
+.header {
+  min-width: 0;
+  padding-block: 0 var(--nova-space-5);
+  border-block-end: 1px solid var(--nova-color-border);
+}
+
+.feedback {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.content > .feedback:empty {
+  display: none;
+}
+
+@container operations-page (max-width: 60rem) {
+  .content {
+    gap: var(--nova-space-6);
+  }
+}
+
+@container operations-page (max-width: 40rem) {
+  .content {
+    gap: var(--nova-space-5);
+  }
+
+  .header {
+    padding-block: 0 var(--nova-space-4);
+  }
+}
+
+@media (forced-colors: active) {
+  .header {
+    border-color: CanvasText;
+  }
+}

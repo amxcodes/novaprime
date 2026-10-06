@@ -1,0 +1,272 @@
+.page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: clamp(var(--nova-space-4), 3vw, var(--nova-space-8));
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-canvas);
+}
+
+.frame {
+  width: min(100%, var(--nova-content-max));
+  min-width: 0;
+  margin-inline: auto;
+  container: ui-workbench / inline-size;
+}
+
+.header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--nova-space-6);
+  margin-block-end: var(--nova-space-6);
+}
+
+.intro,
+.column,
+.section,
+.appearanceSection,
+.note,
+.subsection {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+}
+
+.intro { gap: var(--nova-space-2); }
+
+.eyebrow {
+  margin: 0;
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: 0.045em;
+}
+
+.intro h1 {
+  margin: 0;
+  font-size: var(--nova-type-size-display);
+  line-height: var(--nova-type-line-tight);
+}
+
+.intro > p:last-child,
+.sectionHeading p,
+.note p {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-relaxed);
+}
+
+.themeStatus {
+  max-width: 18rem;
+  margin: 0;
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  text-align: end;
+  text-transform: capitalize;
+}
+
+.appearanceSection {
+  padding: var(--nova-space-5);
+  margin-block-end: var(--nova-space-5);
+}
+
+.appearanceGrid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--nova-space-4);
+}
+
+.accentFieldRow {
+  display: grid;
+  min-width: 0;
+  min-height: var(--nova-control-height);
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--nova-space-3);
+  padding-inline: var(--nova-space-3);
+  border: 1px solid var(--nova-control-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-control-background);
+}
+
+.accentFieldRow:focus-within {
+  border-color: var(--nova-control-border-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--nova-color-focus) 22%, transparent);
+}
+
+.accentSwatch {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 1px solid var(--nova-color-border);
+  border-radius: 50%;
+  background: var(--swatch-color, transparent);
+}
+
+.accentHexInput {
+  min-height: calc(var(--nova-control-height) - 2px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--nova-type-family-mono);
+}
+
+.accentHexInput:hover:not(:disabled),
+.accentHexInput:focus-visible {
+  border-color: transparent;
+}
+
+.accentHexInput:focus-visible {
+  outline: 0;
+  box-shadow: none;
+}
+
+.layout {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.75fr);
+  align-items: start;
+  gap: var(--nova-space-5);
+}
+
+.column { align-content: start; }
+
+.section {
+  padding: var(--nova-space-5);
+}
+
+.sectionHeading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--nova-space-4);
+}
+
+.sectionHeading > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+}
+
+.sectionHeading h2,
+.note h2,
+.subsection h3 {
+  margin: 0;
+  font-size: var(--nova-type-size-lg);
+  line-height: var(--nova-type-line-tight);
+}
+
+.subsection h3 {
+  font-size: var(--nova-type-size-sm);
+}
+
+.buttonRow,
+.statusRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--nova-space-2);
+}
+
+.fieldGrid,
+.surfaceGrid,
+.messageList {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--nova-space-4);
+}
+
+.fieldGrid > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.surfaceSample {
+  padding: var(--nova-space-4);
+  font-size: var(--nova-type-size-sm);
+}
+
+.messageList {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.note {
+  padding: var(--nova-space-5);
+}
+
+@container ui-workbench (max-width: 52rem) {
+  .header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .themeStatus { text-align: start; }
+
+  .appearanceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container ui-workbench (max-width: 34rem) {
+  .section,
+  .note,
+  .appearanceSection {
+    padding: var(--nova-space-4);
+  }
+
+  .sectionHeading,
+  .appearanceSection > .sectionHeading {
+    flex-direction: column;
+  }
+
+  .appearanceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fieldGrid,
+  .surfaceGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fieldGrid > :last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+}
+
+@container ui-workbench (max-width: 20rem) {
+  .appearanceGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 34rem) {
+  .page {
+    padding: var(--nova-space-3);
+  }
+}
+
+@media (any-pointer: coarse) {
+  .accentFieldRow {
+    min-height: var(--nova-control-touch-target);
+  }
+}
+
+@media (forced-colors: active) {
+  .section,
+  .note,
+  .surfaceSample,
+  .accentFieldRow {
+    border-color: CanvasText;
+  }
+}

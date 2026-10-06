@@ -1,0 +1,183 @@
+.root {
+  container-name: task-composer;
+  container-type: inline-size;
+  min-width: 0;
+  color: var(--nova-color-text-primary);
+}
+
+.header { display: grid; gap: var(--nova-space-1); margin-block-end: var(--nova-space-4); }
+.header h2 { margin: 0; color: var(--nova-color-text-primary); font: var(--nova-type-heading); }
+.header p { max-width: 72ch; margin: 0; color: var(--nova-color-text-secondary); font: var(--nova-type-label); }
+
+.form {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--nova-space-4);
+}
+
+.field,
+.targetField,
+.full {
+  min-width: 0;
+}
+
+.targetField { display: grid; gap: var(--nova-space-2); }
+
+.pairedFields {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--nova-space-4);
+}
+
+.textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 7rem;
+  resize: vertical;
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-control-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-control-background);
+  font: var(--nova-type-body);
+  line-height: var(--nova-type-line-normal);
+}
+
+.textarea:focus-visible,
+.textarea[aria-invalid="true"] {
+  border-color: var(--nova-color-focus);
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 1px;
+}
+
+.textarea[aria-invalid="true"] { border-color: var(--nova-color-danger); }
+.textarea:disabled { background: var(--nova-control-background-disabled); }
+
+.priorityGroup {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--nova-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.priorityLegend {
+  margin-block-end: var(--nova-space-2);
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-medium);
+}
+
+.requiredMark { color: var(--nova-color-danger); }
+
+.priorityChoices {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--nova-space-2);
+}
+
+.priorityChoice {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: var(--nova-control-touch-target);
+  align-items: center;
+  justify-content: center;
+  padding: var(--nova-space-2) var(--nova-space-3);
+  border: 1px solid var(--nova-control-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-secondary);
+  background: var(--nova-control-background);
+  font-size: var(--nova-type-size-sm);
+  cursor: pointer;
+}
+
+.priorityChoice[data-selected="true"] {
+  border-color: var(--nova-color-action);
+  color: var(--nova-color-action-text);
+  background: var(--nova-color-action-subtle);
+}
+.priorityGroup[aria-invalid="true"] .priorityChoice { border-color: var(--nova-color-danger); }
+
+.priorityChoice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.priorityChoice:focus-within {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+.priorityChoice input:disabled + span { color: var(--nova-color-text-muted); }
+.fieldError { color: var(--nova-color-danger); font-size: var(--nova-type-size-xs); }
+
+.policyHint,
+.hint,
+.templateHint {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.templateHint {
+  padding: var(--nova-space-3);
+  border-inline-start: 3px solid var(--nova-color-action);
+  border-radius: 0 var(--nova-radius-control) var(--nova-radius-control) 0;
+  background: var(--nova-color-action-subtle);
+}
+
+.lockedValue {
+  display: flex;
+  min-height: var(--nova-control-height);
+  align-items: center;
+  padding-inline: var(--nova-space-3);
+  border: 1px solid var(--nova-control-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-secondary);
+  background: var(--nova-control-background-disabled);
+  font-size: var(--nova-type-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.assignment { display: grid; gap: var(--nova-space-2); }
+.checkRow { display: flex; min-height: var(--nova-control-touch-target); align-items: center; gap: var(--nova-space-3); font-size: var(--nova-type-size-sm); }
+.checkRow input { width: 1.125rem; height: 1.125rem; flex: none; accent-color: var(--nova-color-action); }
+.actions { display: flex; min-width: 0; justify-content: stretch; }
+.actions > button { width: 100%; }
+.optionalMessage { margin-block-end: var(--nova-space-3); }
+.submitError { scroll-margin-block: var(--nova-space-4); }
+
+@container task-composer (min-width: 42rem) {
+  .pairedFields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .priorityChoices { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .actions { justify-content: flex-start; }
+  .actions > button { width: auto; }
+}
+
+@media (any-pointer: coarse) {
+  .textarea,
+  .lockedValue { min-height: var(--nova-control-touch-target); }
+}
+
+@media (forced-colors: active) {
+  .textarea,
+  .lockedValue { border-color: CanvasText; }
+  .priorityChoice { border-color: CanvasText; }
+  .priorityChoice:focus-within { outline-color: Highlight; }
+  .priorityChoice[data-selected="true"] { border-color: Highlight; color: HighlightText; background: Highlight; }
+  .checkRow input { accent-color: Highlight; }
+}

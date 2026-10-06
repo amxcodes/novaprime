@@ -1,0 +1,148 @@
+.button {
+  display: inline-flex;
+  min-width: 0;
+  min-height: var(--nova-control-height);
+  align-items: center;
+  justify-content: center;
+  gap: var(--nova-space-2);
+  padding: 0 var(--nova-space-4);
+  border: 1px solid transparent;
+  border-radius: var(--nova-radius-control);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  transition:
+    background-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    border-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    transform var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+
+.button[data-size="compact"] {
+  min-height: var(--nova-control-height-compact);
+  padding-inline: var(--nova-space-3);
+  font-size: var(--nova-type-size-xs);
+}
+
+.button[data-variant="primary"] {
+  color: var(--nova-color-action-contrast);
+  background: var(--nova-color-action);
+}
+
+.button[data-variant="primary"]:hover:not(:disabled) {
+  background: var(--nova-color-action-hover);
+}
+
+.button[data-variant="secondary"] {
+  border-color: var(--nova-color-border);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface);
+}
+
+.button[data-variant="secondary"]:hover:not(:disabled) {
+  background: var(--nova-color-surface-subtle);
+}
+
+.button[data-variant="quiet"] {
+  color: var(--nova-color-text-secondary);
+  background: transparent;
+}
+
+.button[data-variant="quiet"]:hover:not(:disabled) {
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface-subtle);
+}
+
+.button[data-variant="danger"] {
+  color: var(--nova-color-danger-contrast);
+  background: var(--nova-color-danger);
+}
+
+.button[data-variant="danger"]:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  color: var(--nova-color-text-muted);
+  background: var(--nova-color-surface-subtle);
+  border-color: var(--nova-color-border);
+  opacity: 0.76;
+}
+
+.content {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: inherit;
+}
+
+.iconButton {
+  width: var(--nova-control-height);
+  padding: 0;
+}
+
+.iconButton[data-size="compact"] {
+  width: var(--nova-control-height-compact);
+  padding: 0;
+}
+
+.spinner {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: none;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: nova-spin 700ms linear infinite;
+}
+
+@keyframes nova-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (any-pointer: coarse) {
+  .button,
+  .button[data-size="compact"] {
+    min-height: var(--nova-control-touch-target);
+  }
+
+  .iconButton,
+  .iconButton[data-size="compact"] {
+    width: var(--nova-control-touch-target);
+  }
+}
+
+@media (forced-colors: active) {
+  .button {
+    border: 1px solid ButtonText;
+  }
+
+  .button[data-variant="primary"],
+  .button[data-variant="danger"] {
+    color: ButtonText;
+    background: ButtonFace;
+  }
+
+  .button[data-variant="primary"]:hover:not(:disabled),
+  .button[data-variant="danger"]:hover:not(:disabled) {
+    color: ButtonText;
+    background: ButtonFace;
+    filter: none;
+  }
+
+  .button:disabled {
+    color: GrayText;
+    border-color: GrayText;
+    opacity: 1;
+  }
+}

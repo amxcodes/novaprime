@@ -1,0 +1,118 @@
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const { test } = require("node:test");
+const ts = require("../../../../server/node_modules/typescript");
+
+for (const extension of [".ts", ".tsx"]) {
+  require.extensions[extension] = (module, filename) => {
+    const source = fs.readFileSync(filename, "utf8");
+    const output = ts.transpileModule(source, {
+      compilerOptions: {
+        esModuleInterop: true,
+        jsx: ts.JsxEmit.ReactJSX,
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+      },
+      fileName: filename,
+    }).outputText;
+    module._compile(output, filename);
+  };
+}
+
+require.extensions[".css"] = (module) => {
+  module.exports = new Proxy({}, { get: (_target, key) => String(key) });
+};
+
+const React = require("react");
+const { renderToStaticMarkup } = require("react-dom/server");
+const { Select } = require("./Select.tsx");
+
+const options = [
+  { value: "office", label: "Office" },
+  { value: "wfh", label: "Work from home", disabled: true },
+];
+
+function render(props = {}) {
+  return renderToStaticMarkup(React.createElement("form", null, React.createElement(Select, {
+    id: "attendance-mode",
+    name: "mode",
+    label: "Attendance mode",
+    value: "office",
+    options,
+    onChange() {},
+    ...props,
+  })));
+}
+
+test("renders an accessible custom trigger and selected key in the named backing select", () => {
+  const html = render({ required: true, hint: "Choose where attendance is recorded.", error: "Choose a mode." });
+
+  assert.match(html, /Attendance mode/);
+  assert.match(html, /data-invalid="true" data-required="true"/);
+  const trigger = html.match(/<button id="attendance-mode"[^>]*>/)?.[0];
+  const labelId = html.match(/<span id="([^"]+)"><span>Attendance mode<\/span>/)?.[1];
+  const hintId = html.match(/<span id="([^"]+)" slot="description">/)?.[1];
+  const errorId = html.match(/<span class="react-aria-FieldError" id="([^"]+)" slot="errorMessage"/)?.[1];
+  assert.ok(trigger, "Select trigger is rendered as a button");
+  const labelledBy = trigger.match(/aria-labelledby="([^"]+)"/)?.[1].split(" ") ?? [];
+  assert.ok(labelId && labelledBy.includes(labelId), "visible label is referenced by the trigger");
+  assert.match(trigger, /aria-haspopup="listbox"/);
+  assert.match(trigger, /aria-expanded="false"/);
+  const describedBy = trigger.match(/aria-describedby="([^"]+)"/)?.[1].split(" ") ?? [];
+  assert.ok(hintId && describedBy.includes(hintId), "hint is referenced by the trigger");
+  assert.ok(errorId && describedBy.includes(errorId), "validation error is referenced by the trigger");
+  assert.match(html, /slot="errorMessage"[^>]*>Choose a mode\.<\/span>/);
+  assert.match(html, /Attendance mode<\/span>[\s\S]*?Required/);
+  assert.match(html, /data-testid="hidden-select-container"[\s\S]*?<select tabindex="-1" required="" name="mode"[\s\S]*?<option value="office" selected="">Office/);
+  assert.doesNotMatch(html, /<select(?! tabindex="-1")/);
+});
+
+test("empty selection is represented by the backing select placeholder and disabled state reaches the form control", () => {
+  const empty = render({ value: null, required: true });
+  const disabled = render({ disabled: true, required: true });
+
+  assert.match(empty, /Choose an option/);
+  assert.match(empty, /<select tabindex="-1" required="" name="mode"><option value=""[^>]*selected=""/);
+  assert.match(disabled, /data-disabled/);
+  assert.match(disabled, /<button[^>]*disabled=""[^>]*data-disabled="true"/);
+  assert.match(disabled, /<select tabindex="-1" disabled="" required="" name="mode"/);
+});
+
+test("styles custom popup states with NOVA theme, touch, focus, reduced-motion and forced-color contracts", () => {
+  const css = fs.readFileSync(require.resolve("./Select.module.css"), "utf8");
+  const source = fs.readFileSync(require.resolve("./Select.tsx"), "utf8");
+  const buttonCss = fs.readFileSync(require.resolve("./Button.module.css"), "utf8");
+  const fieldCss = fs.readFileSync(require.resolve("./Field.module.css"), "utf8");
+
+  assert.match(css, /var\(--nova-control-border\)/);
+  assert.match(css, /var\(--nova-color-focus\)/);
+  assert.match(css, /var\(--nova-color-danger\)/);
+  assert.match(css, /var\(--nova-control-background-disabled\)/);
+  assert.match(css, /var\(--nova-select-popup-background\)/);
+  assert.match(css, /var\(--nova-select-popup-border\)/);
+  assert.match(css, /var\(--nova-select-popup-shadow\)/);
+  assert.match(css, /var\(--nova-select-option-hover\)/);
+  assert.match(css, /var\(--nova-select-option-selected\)/);
+  assert.match(css, /var\(--nova-control-touch-target\)/);
+  assert.match(css, /\.option\s*\{\s*display:\s*flex;\s*min-width:\s*0;\s*min-height:\s*var\(--nova-control-height\)/);
+  assert.match(css, /@media\s*\(any-pointer:\s*coarse\)[\s\S]*?\.trigger,\s*\.option\s*\{\s*min-height:\s*var\(--nova-control-touch-target\)/);
+  assert.match(fieldCss, /@media\s*\(any-pointer:\s*coarse\)[\s\S]*?\.control\s*\{\s*min-height:\s*var\(--nova-control-touch-target\)/);
+  assert.match(css, /-webkit-appearance:\s*none/);
+  assert.match(css, /appearance:\s*none/);
+  assert.match(css, /font:\s*inherit/);
+  assert.match(css, /\.trigger\[data-focus-visible\]/);
+  assert.match(css, /\.option\[data-focused\]/);
+  assert.match(css, /\.option\[data-disabled\]/);
+  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+  assert.match(css, /@media\s*\(forced-colors:\s*active\)/);
+  assert.match(css, /HighlightText/);
+  const forcedColorsCss = css.slice(css.indexOf("@media (forced-colors: active)"));
+  assert.match(forcedColorsCss, /\.option\[data-selected\]\s+\.optionDetail,\s*\.option\[data-focused\]\s+\.optionDetail\s*\{\s*color:\s*inherit/);
+  assert.match(css, /\.select\[data-invalid\]\s+\.trigger\s*\{\s*border-color:\s*Mark/);
+  assert.match(css, /\.option\[data-selected\]\s+\.check\s*\{\s*color:\s*inherit/);
+  assert.match(buttonCss, /\.button\[data-variant="primary"\]:hover:not\(:disabled\)[\s\S]*?background:\s*ButtonFace/);
+  assert.match(buttonCss, /filter:\s*none/);
+  assert.match(fieldCss, /\.control\[aria-invalid="true"\]\s*\{\s*border-color:\s*Mark/);
+  assert.match(source, /react-aria-components/);
+  assert.match(source, /isDisabled=\{option\.disabled\}/);
+});

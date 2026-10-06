@@ -1,0 +1,16 @@
+.root {
+  display: grid;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-4);
+  color: var(--nova-color-text-primary);
+  border: 1px solid var(--nova-color-border-subtle);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.root h2 {
+  margin: 0;
+  font-size: var(--nova-type-size-xl);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+}

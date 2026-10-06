@@ -1,6 +1,6 @@
 {
   "name": "nova",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "engines": {
     "node": ">=22"
@@ -17,6 +17,9 @@
   "scripts": {
     "dev": "bun run --cwd server dev",
     "dev:local": "bun run --cwd server dev:local",
+    "dev:web": "vite --config vite.config.ts",
+    "build:web": "vite build --config vite.config.ts",
+    "typecheck:web": "node server/node_modules/typescript/bin/tsc --noEmit -p tsconfig.ui.json",
     "test:database": "bun --env-file=.env server/src/database-test.ts",
     "migrate": "bun --env-file=.env server/src/migrate.ts",
     "supabase:bootstrap": "bun --env-file=.env server/src/supabase-bootstrap.ts",
@@ -25,13 +28,24 @@
     "supabase:audit": "bun --env-file=.env scripts/supabase-boundary-audit.ts",
     "setup": "bun scripts/setup.ts",
     "setup:supabase": "bun scripts/setup.ts --mode supabase",
+    "nova:update": "bun scripts/update.ts",
+    "update:manifest": "bun scripts/update/manifest.ts",
     "deployment:preflight": "bun --env-file=.env scripts/deployment-preflight.ts",
     "qa:postgres": "bun scripts/qa-postgres.ts",
     "notifications:worker": "bun --env-file=.env server/src/notification-worker.ts",
     "maintenance": "bun --env-file=.env server/src/maintenance-worker.ts",
     "test": "bun --no-env-file run --cwd server test",
     "typecheck": "bun run --cwd server typecheck",
-    "typecheck:operator": "node server/node_modules/typescript/bin/tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --typeRoots server/node_modules/@types --types node,bun --skipLibCheck --allowImportingTsExtensions scripts/setup.ts scripts/supabase-scheduler.ts scripts/deployment-ui-smoke.ts vercel.ts web/vercel-config.ts",
+    "typecheck:operator": "node server/node_modules/typescript/bin/tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --jsx react-jsx --typeRoots server/node_modules/@types --types node,bun --skipLibCheck --allowImportingTsExtensions scripts/setup.ts scripts/update.ts scripts/update/manifest.ts scripts/supabase-scheduler.ts scripts/deployment-preflight.ts scripts/deployment-ui-smoke.ts vercel.ts web/vercel-config.ts web/src/design-system/assets.d.ts",
     "typecheck:cloudflare": "node server/node_modules/typescript/bin/tsc --noEmit -p cloudflare/tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.2.0",
+    "react": "19.2.8",
+    "react-aria-components": "^1.21.1",
+    "react-dom": "19.2.8",
+    "vite": "7.3.6"
   }
 }

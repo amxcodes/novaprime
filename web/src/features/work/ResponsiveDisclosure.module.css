@@ -1,0 +1,85 @@
+.disclosure {
+  display: contents;
+  min-width: 0;
+}
+
+.summary { display: none; }
+.panel { display: contents; min-width: 0; }
+
+.count {
+  display: inline-flex;
+  min-height: var(--nova-control-height-compact);
+  align-items: center;
+  padding-inline: var(--nova-space-2);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-pill);
+  background: var(--nova-color-surface-subtle);
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-medium);
+  line-height: var(--nova-type-line-tight);
+}
+
+@container (max-width: 40rem) {
+  .disclosure {
+    display: grid;
+    min-width: 0;
+    gap: var(--nova-space-2);
+  }
+
+  .summary {
+    display: flex;
+    min-width: 0;
+    min-height: var(--nova-control-height);
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--nova-space-3);
+    padding: var(--nova-space-2) var(--nova-space-3);
+    border: 1px solid var(--nova-color-border);
+    border-radius: var(--nova-radius-control);
+    background: var(--nova-color-surface);
+    color: var(--nova-color-text-primary);
+    font-size: var(--nova-type-size-sm);
+    font-weight: var(--nova-type-weight-medium);
+    line-height: var(--nova-type-line-normal);
+    list-style: none;
+    cursor: pointer;
+  }
+
+  .summary::-webkit-details-marker { display: none; }
+  .summary::after {
+    width: 0.45em;
+    height: 0.45em;
+    flex: 0 0 auto;
+    border-inline-end: 1.5px solid currentColor;
+    border-block-end: 1.5px solid currentColor;
+    content: "";
+    transform: rotate(45deg) translateY(-0.12em);
+    transition: transform 120ms ease;
+  }
+
+  .disclosure[open] > .summary::after { transform: rotate(225deg) translateY(-0.12em); }
+  .summary:focus-visible { outline: 2px solid var(--nova-color-focus); outline-offset: 2px; }
+
+  .panel {
+    display: grid;
+    min-width: 0;
+    gap: var(--nova-space-3);
+  }
+
+  .disclosure:not([open]) > .panel { display: none; }
+}
+
+@media (any-pointer: coarse) {
+  .summary { min-height: var(--nova-control-touch-target); }
+}
+
+@media (forced-colors: active) {
+  .summary { border-color: ButtonText; background: ButtonFace; color: ButtonText; }
+  .count { border-color: ButtonText; background: Canvas; color: CanvasText; }
+  .summary::after { border-color: currentColor; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .summary::after { transition: none; }
+}

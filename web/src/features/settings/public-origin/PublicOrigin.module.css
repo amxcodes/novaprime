@@ -1,0 +1,162 @@
+.root {
+  container: public-origin / inline-size;
+  display: grid;
+  gap: var(--nova-space-5);
+  min-width: 0;
+  color: var(--nova-color-text-primary);
+}
+
+.header h2,
+.details h3 {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  line-height: var(--nova-type-line-tight);
+}
+
+.header h2 {
+  font-size: var(--nova-type-size-xl);
+}
+
+.eyebrow {
+  margin: 0 0 var(--nova-space-1);
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.intro {
+  max-width: 58rem;
+  margin: var(--nova-space-2) 0 0;
+  color: var(--nova-color-text-secondary);
+}
+
+.content {
+  display: grid;
+  gap: var(--nova-space-4);
+  min-width: 0;
+}
+
+.details,
+.form {
+  display: grid;
+  align-content: start;
+  gap: var(--nova-space-3);
+  min-width: 0;
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.details h3 {
+  font-size: var(--nova-type-size-md);
+}
+
+.formHint {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.originValues {
+  display: grid;
+  gap: var(--nova-space-3);
+  margin: 0;
+}
+
+.originValues > div {
+  display: grid;
+  gap: var(--nova-space-1);
+  min-width: 0;
+}
+
+.originValues dt {
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-medium);
+}
+
+.originValues dd {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.originValues code {
+  color: var(--nova-color-text-primary);
+  font-family: var(--nova-type-family-mono);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-start;
+  gap: var(--nova-space-2);
+  padding-block-start: var(--nova-space-2);
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.readError {
+  display: grid;
+  justify-items: start;
+  gap: var(--nova-space-3);
+}
+
+.saveFeedback {
+  display: grid;
+  justify-items: start;
+  gap: var(--nova-space-2);
+}
+
+.root button {
+  max-width: 100%;
+}
+
+.root :focus-visible {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+@container public-origin (min-width: 44rem) {
+  .content {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+@container public-origin (min-width: 64rem) {
+  .content {
+    grid-template-columns: minmax(0, 1fr) minmax(22rem, 1fr);
+  }
+}
+
+@container public-origin (max-width: 40rem) {
+  .details,
+  .form {
+    padding: var(--nova-space-3);
+  }
+
+  .actions > button,
+  .readError > button,
+  .saveFeedback > button {
+    width: 100%;
+  }
+}
+
+@media (any-pointer: coarse) {
+  .actions > button,
+  .readError > button,
+  .saveFeedback > button {
+    min-height: var(--nova-control-touch-target);
+  }
+}
+
+@media (forced-colors: active) {
+  .details,
+  .form {
+    border-color: CanvasText;
+  }
+}

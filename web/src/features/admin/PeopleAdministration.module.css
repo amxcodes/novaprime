@@ -1,0 +1,354 @@
+.section {
+  container: people-administration / inline-size;
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-5);
+  color: var(--nova-color-text-primary);
+}
+
+.header,
+.panelHeading,
+.directoryHeading,
+.personHeader {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--nova-space-4);
+}
+
+.header > div,
+.panelHeading > div,
+.directoryHeading > div,
+.personIdentity { min-width: 0; }
+
+.eyebrow {
+  margin: 0 0 var(--nova-space-1);
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--nova-type-size-xl);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: -0.025em;
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.description,
+.panelHeading p,
+.directoryDescription {
+  max-width: 68ch;
+  margin: var(--nova-space-2) 0 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.invitePanel,
+.directory {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+  padding: clamp(var(--nova-space-4), 2vw, var(--nova-space-6));
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.panelHeading h3,
+.directoryTitle {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-lg);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.inviteForm,
+.onboardingForm {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: end;
+  gap: var(--nova-space-4);
+}
+
+.formActions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nova-space-2);
+}
+
+.formActions > button,
+.actions > button,
+.reasonAction button { min-height: var(--nova-control-touch-target); }
+
+.directoryTitle { font-size: var(--nova-type-size-md); }
+
+.peopleList {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.person {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface);
+}
+
+.personHeader { align-items: center; }
+
+.personName {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-md);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.email {
+  display: inline-block;
+  min-height: var(--nova-control-touch-target);
+  padding-block: var(--nova-space-2);
+  color: var(--nova-color-action-text);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.email:focus-visible,
+.section :global(:focus-visible) {
+  outline: 3px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+.meta {
+  margin: 0;
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.status {
+  flex: none;
+  max-width: 100%;
+  padding: var(--nova-space-1) var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-pill);
+  color: var(--nova-color-text-secondary);
+  background: var(--nova-color-surface-subtle);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+  overflow-wrap: anywhere;
+  text-transform: capitalize;
+}
+
+.status[data-status="active"] { color: var(--nova-color-success); background: var(--nova-color-success-surface); }
+.status[data-status="invited"],
+.status[data-status="onboarding"] { color: var(--nova-color-info); background: var(--nova-color-info-surface); }
+.status[data-status="notice"],
+.status[data-status="offboarding"] { color: var(--nova-color-warning); background: var(--nova-color-warning-surface); }
+.status[data-status="frozen"],
+.status[data-status="offboarded"] { color: var(--nova-color-danger); background: var(--nova-color-danger-surface); }
+
+.actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--nova-space-2);
+  padding-block-start: var(--nova-space-3);
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.reasonAction {
+  display: grid;
+  min-width: min(100%, 14rem);
+  gap: var(--nova-space-3);
+}
+
+.reasonAction summary {
+  display: flex;
+  min-height: var(--nova-control-touch-target);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nova-space-3);
+  padding-inline: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+  cursor: pointer;
+  list-style: none;
+}
+
+.reasonAction summary::marker { content: ""; }
+.reasonAction summary::-webkit-details-marker { display: none; }
+.reasonAction summary::after {
+  width: 0.45em;
+  height: 0.45em;
+  flex: 0 0 auto;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(45deg) translateY(-0.12em);
+  transition: transform var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+.reasonAction[open] summary::after {
+  transform: rotate(225deg) translateY(-0.12em);
+}
+.reasonAction summary:hover { background: var(--nova-color-surface-subtle); }
+.reasonAction summary:focus-visible { outline-offset: -3px; }
+
+.reasonAction[open] {
+  flex-basis: 100%;
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+}
+
+.reasonAction form { display: grid; min-width: 0; gap: var(--nova-space-3); }
+.reasonInput {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 6rem;
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-control-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-control-background);
+  font: inherit;
+  line-height: var(--nova-type-line-normal);
+  resize: vertical;
+}
+
+.reasonInput:focus-visible { outline: 3px solid var(--nova-color-focus); outline-offset: 2px; }
+
+.freezeConfirmation {
+  display: grid;
+  min-width: 0;
+  flex-basis: 100%;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+}
+
+.freezeConfirmation[hidden] { display: none; }
+
+.freezeConfirmation h5 {
+  margin: 0;
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.freezeConfirmation p {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+}
+
+.freezeConfirmationActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--nova-space-2);
+}
+
+.freezeConfirmationActions > button { min-height: var(--nova-control-touch-target); }
+
+.onboarding {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+}
+
+.onboarding .panelHeading h5 {
+  margin: 0;
+  font-size: var(--nova-type-size-md);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.onboarding .formActions { grid-column: 1 / -1; }
+.validationSummary { grid-column: 1 / -1; }
+
+.section :is(button, input, select, textarea):focus-visible {
+  outline: 3px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+.section :is(button, input, select) { min-height: var(--nova-control-touch-target); }
+
+@container people-administration (min-width: 42rem) {
+  .inviteForm { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .inviteForm .formActions { grid-column: 1 / -1; }
+  .onboardingForm { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@container people-administration (min-width: 70rem) {
+  .onboardingForm { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@container people-administration (max-width: 36rem) {
+  .section { gap: var(--nova-space-4); }
+  .person { padding: var(--nova-space-3); }
+  .personHeader { align-items: flex-start; flex-direction: column; gap: var(--nova-space-2); }
+  .actions { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .actions > button,
+  .reasonAction,
+  .reasonAction button,
+  .formActions > button { width: 100%; }
+  .reasonAction[open] { min-width: 0; }
+  .freezeConfirmationActions { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .freezeConfirmationActions > button { width: 100%; }
+}
+
+@media (forced-colors: active) {
+  .invitePanel,
+  .directory,
+  .person,
+  .status,
+  .reasonAction[open],
+  .reasonAction summary,
+  .onboarding { border-color: CanvasText; }
+  .reasonAction summary::after { border-color: currentColor; }
+  .freezeConfirmation { border-color: CanvasText; background: Canvas; }
+  .freezeConfirmation p { color: CanvasText; }
+  .status { color: CanvasText; background: Canvas; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reasonAction summary::after { transition: none; }
+}

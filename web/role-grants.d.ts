@@ -47,3 +47,28 @@ export declare function rolePresetDraft(
   presetId: string,
   permissions: readonly Readonly<{ key: string; allowedScopes: readonly string[] }>[] | undefined,
 ): RolePresetDraft | undefined;
+
+export declare function groupRolePermissionGrants(
+  grants: readonly RolePermissionGrant[] | undefined,
+): Map<string, RolePermissionGrant[]>;
+
+export declare function leastPrivilegedRoleScope(allowedScopes: readonly string[]): string;
+
+export declare function uniqueRoleKey(
+  baseKey: string,
+  roles: readonly Readonly<{ key?: string | null }>[] | undefined,
+): string;
+
+export type RolePermissionGrantDraftRow = Readonly<{
+  permissionKey: string;
+  enabled: boolean;
+  grants: readonly Readonly<{ scope: string; targetId?: string }>[];
+}>;
+
+export type RolePermissionGrantCollection =
+  | Readonly<{ grants: readonly RolePermissionGrant[] }>
+  | Readonly<{ error: string }>;
+
+export declare function collectRolePermissionGrants(
+  rows: readonly RolePermissionGrantDraftRow[],
+): RolePermissionGrantCollection;

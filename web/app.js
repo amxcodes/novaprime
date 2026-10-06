@@ -1,37 +1,144 @@
-import {
-  collectRolePermissionGrants,
-  groupRolePermissionGrants,
-  leastPrivilegedRoleScope,
-  rolePresetDraft,
-  rolePresets,
-  uniqueRoleKey,
-} from "./role-grants.js";
+import { createElement } from "react";
+import { resolveApplicationRoute } from "./src/app/route-resolution.ts";
+import { createAdminPageRoute } from "./app/admin-page-route.js";
+import { createMyDayRequestRoute } from "./app/my-day-request-route.js";
+import { mountMyDayPageRoute } from "./app/my-day-page-route.ts";
+import { createWorkSetupRoute } from "./app/work-setup-route.js";
+import { createWorkSetupActionsRoute } from "./app/work-setup-actions-route.ts";
 import {
   adminReadIssue,
-  canShowAdminNavigation,
+  canShowAdminFeature,
   canShowInviteNavigation,
+  canShowPeopleNavigation,
   canViewAuthHandoffs,
-  adminPermissionNoticeMessage,
   hasPermissionGrant,
+  hasAnyPermissionGrant,
+  planAdminReads,
+  planMyDayReads,
+  planOperationsAvailabilitySources,
+  planOperationsReads,
+  planWorkReads,
+  planWorkSetupReads,
+  adminPermissionNoticeMessage,
   readOrError,
+  skippedAdminRead,
 } from "./admin-read-state.js";
-import { deploymentGuide, deploymentSchedulerActions } from "./deployment-guide.js";
+import {
+  canAccessWorkspaceDestination,
+  getVisibleWorkspaceDestinations,
+  resolveWorkspaceDestinationView,
+  resolveWorkspaceHome,
+} from "./workspace-destinations.js";
+import { projectWorkCollaborationReadState } from "./app/work-collaboration-route.js";
+import { createWorkCollaborationResolveAction } from "./app/work-collaboration-actions-route.js";
+import { renameSavedTaskViewFromSettings as renameSavedTaskViewCommand } from "./app/settings-task-view-rename.js";
+import {
+  readFocusedCollaborationRequest,
+  resolveWorkRouteContext,
+  taskDetailUrl as buildTaskDetailUrl,
+  visibleTaskFilters as readVisibleTaskFilters,
+  workAssignmentFilters as readWorkAssignmentFilters,
+} from "./app/work-route.js";
+import { describeInvitationFeedback } from "./src/features/admin/invitation-feedback.ts";
+import { canInviteAdminPeople, canShowOwnerTransfer, canViewAdminPeople } from "./src/features/admin/capabilities.ts";
+import { LegacyRouteShell } from "./src/app-shell/LegacyRouteShell.tsx";
+import { RouteUnavailablePage } from "./src/pages/route-unavailable/RouteUnavailablePage.tsx";
+import { MyDayPage } from "./src/features/my-day/MyDayPage.tsx";
+import {
+  checkDeploymentEndpoint,
+  createDeploymentProbeLifecycle,
+  deploymentProgressStorageKey,
+  normalizeDeploymentProgress,
+} from "./app/deployment-route.js";
+import { canRenderLeaveConflictAction } from "./review-actions.js";
+import { projectWorkTaskDetail } from "./src/features/work/task-detail/projection.ts";
+import { createWorkTaskDetailRoute } from "./app/work-task-detail-route.js";
+import { createWorkReviewActions, mountWorkReviewsRoute, projectWorkReviews } from "./app/work-reviews-route.js";
+import { createReviewFeedbackDraftStore, reconcileReviewFeedbackDraftAccess as reconcileReviewDraftAccess } from "./app/review-feedback-drafts.js";
+import { mountWorkReviewerManagementRoute } from "./app/work-reviewer-management-route.js";
+import { createWorkReviewerManagementSaveAction } from "./app/work-reviewer-management-actions-route.ts";
+import { createMyAssignmentsRoute } from "./app/my-assignments-route.js";
+import { createMyAssignmentActionsRoute } from "./app/my-assignment-actions-route.ts";
+import { mountWorkTaskComposerRoute } from "./app/work-task-composer-route.js";
+import { readWorkRouteData } from "./app/work-read-route.js";
+import { loadWorkRouteFeatures } from "./app/work-route-features.js";
+import { createWorkTimelineCorrectionAction } from "./app/work-timeline-actions-route.ts";
+import { mountWorkContextRoute } from "./app/work-context-route.js";
+import { createWorkContextDepartmentCommandAction } from "./app/work-context-actions-route.ts";
+import { createPeoplePageRoute, isPeopleDirectoryContext } from "./app/people-page-route.js";
+import { getAuthHandoffAccess, mountSettingsAuthHandoffs as mountAuthHandoffsRoute } from "./app/auth-handoffs-route.js";
+import { mountSettingsEmailDeliveryRoute } from "./app/settings-email-delivery-route.js";
+import { mountSettingsPublicOriginRoute } from "./app/settings-public-origin-route.js";
+import { mountPublicLanding as mountPublicLandingRoute } from "./app/public-landing-route.js";
+import { mountPublicSignIn as mountPublicSignInRoute } from "./app/public-sign-in-route.js";
+import { mountPublicPasswordRecovery as mountPublicPasswordRecoveryRoute } from "./app/public-password-recovery-route.js";
+import { mountPublicInvitationAcceptance as mountPublicInvitationAcceptanceRoute } from "./app/public-invitation-acceptance-route.js";
+import { mountPublicPasswordReset as mountPublicPasswordResetRoute } from "./app/public-password-reset-route.js";
+import { createPublicFirstRunSetupRoute } from "./app/public-first-run-setup-route.js";
+import { clearReactIslands, mountReactIsland, unmountReactIslandsWithin } from "./src/app/react-islands.tsx";
+import { applyAppearanceTokens } from "./src/design-system/foundations/appearance.ts";
+import { renderAttendanceRecovery as mountAttendanceRecovery } from "./features/attendance/recovery.js";
+import {
+  DEFAULT_APPEARANCE,
+  DEFAULT_WORKSPACE,
+  UI_PREFERENCE_SCHEMA_VERSION,
+  normalizeAppearance,
+  normalizeWorkspace,
+} from "./ui-preferences.js";
+import {
+  createRequestLifecycle,
+  isCommandContextCurrent,
+  isCommandIdentityCurrent,
+  withPageReadSignal,
+} from "./request-lifecycle.js";
 
 const app = document.querySelector("#app");
+const mountPublicFirstRunSetupRoute = createPublicFirstRunSetupRoute();
 let deploymentProbe = null;
-
+const deploymentProbeLifecycle = createDeploymentProbeLifecycle();
+let appearanceSaveTimer = null;
+let appearanceSaveInFlight = false;
+let appearanceSaveGeneration = 0;
+let appearanceEditorRenderGeneration = 0;
+let workspaceEditorRenderGeneration = 0;
+let savedTaskViewsRenderGeneration = 0;
+// Reviewer notes stay in memory only and are scoped to the actor's current review grants.
+const reviewFeedbackDrafts = createReviewFeedbackDraftStore();
+const pageRequestLifecycle = createRequestLifecycle();
+let pageRequestLifetime = null;
+let activePeopleWorkspace = null;
+// Keep directory selection reversible inside this document, while allowing a
+// reload of a person URL to behave like a direct deep link.
+const peopleWorkspaceSessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 const state = {
   adminData: null,
-  adminRoleId: null,
   actorGrants: null,
+  uiPreferences: { appearance: { ...DEFAULT_APPEARANCE }, workspace: normalizeWorkspace(DEFAULT_WORKSPACE) },
+  savedTaskViews: [],
+  savedTaskViewsLoading: false,
+  savedTaskViewsReadError: false,
+  savedTaskViewsRequestGeneration: 0,
+  uiPreferenceRevision: 0,
+  uiPreferencePersonId: null,
+  identityPersonId: null,
+  uiPreferenceWritable: false,
+  uiPreferenceReadError: false,
+  uiPreferenceSaveStatus: "idle",
+  uiPreferenceConflict: null,
+  identityEpoch: 0,
+  pendingAdminCommandFocus: false,
   message: "",
   messageKind: "success",
   session: null,
   bootstrapToken: "",
+  bootstrapFounderEmail: "",
   publicOriginConfigured: false,
   publicOrigin: "",
+  emailOAuthResult: null,
   taskCreateFingerprint: "",
   taskCreateRequestKey: "",
+  unreadNotificationCount: null,
+  unreadNotificationGeneration: 0,
   deployment: {
     path: "",
     stage: 0,
@@ -39,82 +146,13 @@ const state = {
     completed: {},
   },
   view: null,
+  pendingRouteScrollY: null,
+  pendingRouteFocusTaskId: null,
+  pendingRouteFocusTaskSource: null,
+  pendingWorkAssignmentFocus: false,
+  pendingVisibleTaskFocus: null,
 };
 
-const deploymentPaths = [
-  {
-    id: "cloudflare-supabase",
-    title: "Cloudflare + Supabase Cloud",
-    badge: "Recommended",
-    text: "Cloudflare hosts the NOVA Worker and client; Supabase Cloud provides managed PostgreSQL.",
-  },
-  {
-    id: "netlify-supabase",
-    title: "Netlify + Supabase Cloud",
-    badge: "Hosted",
-    text: "Netlify hosts the NOVA API and client; Supabase Cloud provides managed PostgreSQL.",
-  },
-  {
-    id: "vercel-supabase",
-    title: "Vercel + Supabase Cloud",
-    badge: "Hosted",
-    text: "Vercel hosts the NOVA API and client; Supabase Cloud provides managed PostgreSQL.",
-  },
-  {
-    id: "vps-postgres",
-    title: "Docker / VPS / PostgreSQL",
-    badge: "Self-hosted",
-    text: "Run the same API, migrations and maintenance loop on a server you control.",
-  },
-  {
-    id: "local-docker",
-    title: "Local Docker",
-    badge: "Test",
-    text: "A private laptop setup for evaluation and development with no hosted account required.",
-  },
-];
-
-const deploymentStages = [
-  { title: "Prerequisites", summary: "Choose the host, public URL and scheduler recipe." },
-  { title: "Database readiness", summary: "Create PostgreSQL and apply NOVA migrations." },
-  { title: "Secret handoff", summary: "Copy runtime values into the API host." },
-  { title: "Deploy & runtime readiness", summary: "Publish the configured runtime and check health." },
-  { title: "Scheduler verification", summary: "Create Supabase Cron after readiness, or verify the deploy-created trigger." },
-  { title: "First-run setup", summary: "Create the founding workspace and attendance policy." },
-  { title: "Handoff", summary: "Remove bootstrap material and give the owner the setup URL." },
-];
-
-const deploymentSchedulers = {
-  "cloudflare-supabase": ["cloudflare", "supabase"],
-  "netlify-supabase": ["netlify", "supabase"],
-  "vercel-supabase": ["vercel", "supabase"],
-  "vps-postgres": ["vps"],
-  "local-docker": ["vps"],
-};
-const deploymentSchedulerLabels = {
-  cloudflare: "Cloudflare runs the schedule (inside your Worker)",
-  netlify: "Netlify runs the schedule (with your published app)",
-  vercel: "Vercel runs the schedule (from a production deploy)",
-  supabase: "Supabase runs the schedule (inside your database)",
-  vps: "This server runs the schedule (Docker worker)",
-};
-// Stage 1 and 2 were reordered so runtime values are handed off only after
-// database setup. Never reuse old completion attestations for new stage meanings.
-const deploymentProgressStorageKey = "nova-deployment-progress-v2";
-
-function supportedDeploymentSchedulers(pathId) {
-  return deploymentSchedulers[pathId] || [];
-}
-
-function formatDeploymentText(value) {
-  const escaped = String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-  return escaped.replace(/`([^`]+)`/g, "<code>$1</code>");
-}
 
 function persistDeployment() {
   try {
@@ -127,22 +165,8 @@ function persistDeployment() {
 function restoreDeployment() {
   try {
     const saved = JSON.parse(sessionStorage.getItem(deploymentProgressStorageKey) || "null");
-    if (!saved || typeof saved !== "object") return;
-    const path = deploymentPaths.some((candidate) => candidate.id === saved.path) ? saved.path : "";
-    const completed = {};
-    if (saved.completed && typeof saved.completed === "object" && !Array.isArray(saved.completed)) {
-      deploymentStages.forEach((_, index) => {
-        if (saved.completed[index] === true) completed[index] = true;
-      });
-    }
-    const scheduler = supportedDeploymentSchedulers(path).includes(saved.scheduler) ? saved.scheduler : "";
-    if (saved.scheduler && !scheduler) delete completed[4];
-    state.deployment = {
-      path,
-      stage: Number.isInteger(saved.stage) ? Math.max(0, Math.min(deploymentStages.length - 1, saved.stage)) : 0,
-      scheduler,
-      completed,
-    };
+    const normalized = normalizeDeploymentProgress(saved);
+    if (normalized) state.deployment = normalized;
   } catch {
     // Ignore malformed or unavailable browser storage.
   }
@@ -175,6 +199,10 @@ const errorMessages = {
   AUTH_HANDOFF_NOT_AVAILABLE: "This secure handoff is expired, revoked, or already revealed. Generate a new one.",
   AUTH_HANDOFF_NOT_FOUND: "That secure handoff no longer exists.",
   EMAIL_CONNECTION_NOT_ACTIVE: "Set up and activate an email connection first, or use the secure system handoff in Admin.",
+  EMAIL_CONNECTION_ALREADY_EXISTS: "A connection with these details already exists. Review the saved connections before adding another.",
+  EMAIL_CONNECTION_NOT_FOUND: "This connection is no longer available. Refresh the list and try again.",
+  GMAIL_CONNECTION_NOT_FOUND: "This Google connection is no longer available. Refresh the list and try again.",
+  EMAIL_CONNECTION_CREDENTIALS_INVALID: "The saved Google credentials are incomplete. Update the connection credentials and try again.",
   EMAIL_PROVIDER_UNSUPPORTED_IN_RUNTIME: "This deployment cannot use that provider from its runtime. Choose an HTTPS email provider such as Resend.",
   INVALID_PASSWORD: "The current password is not correct.",
   CALENDAR_ALREADY_EXISTS: "A working calendar with that name already exists.",
@@ -183,6 +211,7 @@ const errorMessages = {
   EMAIL_CONNECTION_NOT_TESTED: "Test this connection successfully before activating it.",
   EMAIL_PROVIDER_DELIVERY_FAILED: "The provider could not send that email. Check its settings and try again.",
   EMAIL_CONNECTION_INPUT_INVALID: "Check the email connection details and try again.",
+  SECRETS_ENCRYPTION_CONFIGURATION_REQUIRED: "NOVA cannot securely store provider credentials in this deployment yet. Contact the deployment operator.",
   PUBLIC_ORIGIN_INPUT_INVALID: "Enter an origin such as https://work.example.com without a path.",
   PUBLIC_ORIGIN_NOT_ALLOWED: "That origin is not approved by the deployment operator yet.",
   PUBLIC_ORIGIN_NOT_CONFIGURED: "Choose and save the public NOVA URL first. New email links and callbacks are blocked until it is set.",
@@ -194,6 +223,12 @@ const errorMessages = {
   HOLIDAY_INPUT_INVALID: "Check the holiday name, office, and date.",
   GMAIL_OAUTH_CALLBACK_FAILED: "Google connection could not be completed. Try connecting it again.",
   GMAIL_OAUTH_CALLBACK_INVALID: "Google did not return a valid authorization result.",
+  GMAIL_AUTHORIZATION_URL_INVALID: "NOVA could not verify Google's authorization address. Try connecting again.",
+  OWNER_TRANSFER_INPUT_INVALID: "Type the exact confirmation phrase before transferring ownership.",
+  OWNER_TRANSFER_TARGET_INVALID: "Choose another eligible person to become the new owner.",
+  TARGET_NOT_FOUND: "That person is no longer available. Refresh Admin and choose an eligible person.",
+  TARGET_NOT_OPERATIONAL: "That person is no longer active or in notice. Refresh Admin and choose another person.",
+  TARGET_ALREADY_OWNER: "That person is already a Super Admin. Choose another eligible person.",
   INVITATION_INVALID_OR_EXPIRED: "This invitation is no longer valid. Ask your administrator for a new one.",
   PERSON_INVITATION_INPUT_INVALID: "Enter a name and valid work email address.",
   PERSON_FREEZE_INPUT_INVALID: "That person could not be frozen with the supplied details.",
@@ -288,6 +323,10 @@ const errorMessages = {
   ASSIGNMENT_NOT_HANDOVERABLE: "This assignment cannot be handed over in its current state.",
   SELF_HANDOVER_NOT_ALLOWED: "Choose another person for the handover.",
   REVIEWER_UNAVAILABLE: "The selected reviewer is no longer eligible; request a replacement.",
+  REVIEW_INPUT_INVALID: "Enter a nonblank explanation of what needs to change, within the character limit.",
+  REVIEW_NOT_OPEN: "This review is no longer open. The queue will refresh and your unsent note will stay in this session.",
+  REVIEW_CYCLE_STALE: "A newer submission arrived. Review the current cycle before sending your preserved feedback.",
+  REVIEW_CYCLE_CONFLICT: "This review changed while you were deciding. The queue will refresh; your unsent note will stay in this session.",
   NOTIFICATION_DELIVERY_NOT_FOUND: "That delivery row is no longer available.",
   ATTENDANCE_REQUIRED: "This correction must be covered by a closed attendance period.",
   TIMELINE_ADJUSTMENT_OVERLAP: "That time overlaps recorded work or another correction.",
@@ -296,7 +335,157 @@ const errorMessages = {
   SECRETS_ENCRYPTION_CONFIGURATION_REQUIRED: "Email delivery needs NOVA_SECRETS_ENCRYPTION_KEY in the server environment.",
   ATTENDANCE_POLICY_INPUT_INVALID: "Choose an attendance mode and a required duration between 1 minute and 24 hours.",
   ATTENDANCE_POLICY_DATE_INVALID: "Attendance policy changes must begin on or after the next available business date.",
+  ATTENDANCE_RECOVERY_INPUT_INVALID: "Use valid past timestamps and provide a correction reason.",
+  ATTENDANCE_RECOVERY_WINDOW_INVALID: "This attendance date is outside the allowed recovery window.",
+  ATTENDANCE_RECOVERY_BOUNDARY_INVALID: "Both timestamps must fall on the selected office business date, and check-out must follow check-in.",
+  ATTENDANCE_RECOVERY_CANDIDATES_INPUT_INVALID: "The recovery list request is invalid. Refresh this page and try again.",
+  OFFICE_ASSIGNMENT_REQUIRED: "This person did not have an office assignment on the selected date, so attendance cannot be recovered.",
+  CLIENT_MEMBERSHIP_INPUT_INVALID: "Choose a person, effective date, and a membership label of 120 characters or fewer.",
+  CLIENT_MEMBERSHIP_END_DATE_INVALID: "Choose an end date on or after the membership start and the current business date.",
+  CLIENT_MEMBERSHIP_END_ALREADY_SET: "This membership already has an end date. Refresh the client list to see the latest record.",
+  CLIENT_MEMBERSHIP_ALREADY_EXISTS: "That person already has a membership for this client.",
+  AVAILABILITY_AGENDA_QUERY_INVALID: "Choose a valid business-date range of no more than 31 days.",
+  TASK_VIEW_INPUT_INVALID: "Check the saved view name and filters.",
+  TASK_VIEW_NOT_FOUND: "That saved view no longer exists. Refresh your settings and try again.",
+  TASK_VIEW_CONFLICT: "This saved view changed in another tab. The list was refreshed; try your change again.",
+  TASK_VIEW_SCHEMA_UNSUPPORTED: "This saved view uses a newer format. Refresh NOVA before changing it.",
+  TASK_VIEW_LIMIT_REACHED: "You can save up to 12 task views. Delete one from Settings to make room.",
+  TASK_VIEW_IDENTITY_CHANGED: "Your account changed while this saved view was being edited. Refresh the page and try again.",
 };
+
+const adminPageRoute = createAdminPageRoute({
+  state,
+  getTarget: () => app.querySelector("#admin-console"),
+  isCurrentPageRequest,
+  mountAdminPage,
+  hasPermissionGrant,
+  captureCommandContext,
+  isCurrentCommand,
+  isCurrentCommandIdentity,
+  recoverProtectedCommandFailure,
+  api,
+  pageApi,
+  requestOptions,
+  errorText,
+  adminCommandUiError,
+  adminFeatureReadError,
+  hasAdminPermission,
+  runAdminProtectedCommand,
+  runAdminRequestReviewCommand,
+  saveAdminRole,
+  setMessage,
+  showFeedback,
+  loadAdmin,
+  render,
+  taskCreateIdempotencyHeaders,
+  clearTaskCreateIdempotency,
+  reflectInvitationDelivery,
+  taskBillingConfirmation,
+  taskCorrectionConfirmation,
+  isWithinApp: (node) => app.contains(node),
+  errorMessages,
+});
+
+const myDayRequestRoute = createMyDayRequestRoute({
+  getPageRequestLifetime: () => pageRequestLifetime,
+  isCurrentPageRequest,
+  mountReactIsland,
+  api,
+  pageApi,
+  requestOptions,
+  errorText,
+  setMessage,
+  render,
+  withSubmitForm,
+  runActionButton,
+  isCurrentCommand,
+  showFeedback,
+});
+
+const myAssignmentsRoute = createMyAssignmentsRoute({
+  isCurrentPageRequest,
+  readIssue: adminReadIssue,
+  mountReactIsland,
+  readAssignmentCandidates: (assignmentId, lifetime) => readOrError(
+    pageApi("/api/task-assignments/" + encodeURIComponent(assignmentId) + "/candidates", lifetime),
+    { reviewers: [], handoverTargets: [] },
+  ),
+});
+
+const workSetupRoute = createWorkSetupRoute({
+  isCurrentPageRequest,
+  mountReactIsland,
+  noticeElement,
+  loadCatalogSection: () => import("./src/features/work-setup/TaskCatalogSection.tsx"),
+  loadBillingPolicySection: () => import("./src/features/work-setup/BillingPolicySection.tsx"),
+  readIssue: adminReadIssue,
+});
+const workSetupActionsRoute = createWorkSetupActionsRoute({
+  can: (permissionKey, target) => workSetupPermission(state.actorGrants, permissionKey, target),
+  api,
+  pageApi,
+  requestOptions,
+  runCommand: runWorkSetupCommand,
+  permissionDenied: () => workSetupSafeError({ code: "PERMISSION_DENIED" }),
+});
+
+const workTaskDetailRoute = createWorkTaskDetailRoute({
+  beginPageRequestLifetime,
+  api,
+  captureCommandContext,
+  errorText,
+  getSubmittedDueDate: (form) => new FormData(form).get("dueDate"),
+  isCurrentCommand,
+  isCurrentCommandIdentity,
+  isCurrentPageRequest,
+  leaveTaskDetail,
+  mountReactIsland,
+  pageApi,
+  projectTaskDetail: projectWorkTaskDetail,
+  recoverProtectedCommandFailure,
+  requestOptions,
+});
+
+const peoplePageRoute = createPeoplePageRoute({
+  getLocationHref: () => window.location.href,
+  getHistoryState: () => window.history.state,
+  getWorkspaceSessionId: () => peopleWorkspaceSessionId,
+  pushHistoryState: (...args) => window.history.pushState(...args),
+  setActiveView: (view) => { state.view = view; },
+  resetPopStateState: () => {
+    state.pendingRouteScrollY = null;
+    state.pendingRouteFocusTaskId = null;
+    state.pendingRouteFocusTaskSource = null;
+  },
+  navigatePersonHistory,
+  isCurrentPageRequest,
+  pageApi,
+  mountReactIsland,
+  showFeedback,
+  noticeElement,
+  readIssue: adminReadIssue,
+  createLifecycleActionProvider: ({ lifecycleHostUi, requestedPersonId, lifetime, pageRoot }) =>
+    lifecycleHostUi.createPeopleLifecyclePageActionProvider({
+      requestedPersonId,
+      lifetime,
+      pageRoot,
+      getActorGrants: () => state.actorGrants,
+      getIdentityEpoch: () => state.identityEpoch,
+      getActorPersonId: () => state.identityPersonId || state.actorGrants?.actorPersonId,
+      isCurrentPageRequest,
+      hasPermissionGrant,
+      api,
+      requestOptions,
+      pageApi,
+      captureCommandContext,
+      isCurrentCommand,
+      recoverProtectedCommandFailure,
+      refreshActorPermissions: (...args) => { void refreshActorPermissions(...args); },
+      setMessage,
+      render,
+      mapError: errorText,
+    }),
+});
 
 function requestOptions(method, body, headers) {
   const options = {
@@ -311,6 +500,27 @@ function requestOptions(method, body, headers) {
   return options;
 }
 
+function beginPageRequestLifetime() {
+  pageRequestLifetime = pageRequestLifecycle.begin(state.identityEpoch);
+  return pageRequestLifetime;
+}
+
+function isCurrentPageRequest(lifetime) {
+  return pageRequestLifecycle.isCurrent(lifetime, state.identityEpoch);
+}
+
+function pageApi(path, lifetime) {
+  return api(path, withPageReadSignal(requestOptions("GET"), lifetime)).catch((error) => {
+    // A page read can be wrapped by readOrError and therefore never reach a
+    // route-level command catch. Expired sessions still need to clear all
+    // protected UI before that read is reduced to its safe feature state.
+    if ((error?.httpStatus === 401 || (error?.httpStatus === 403 && error?.code === "ACCOUNT_NOT_OPERATIONAL")) && isCurrentPageRequest(lifetime)) {
+      recoverProtectedCommandFailure(error);
+    }
+    throw error;
+  });
+}
+
 async function api(path, options) {
   const response = await fetch(path, options || requestOptions("GET"));
   const payload = await response.json().catch(() => ({}));
@@ -322,6 +532,7 @@ async function api(path, options) {
     const error = new Error(errorCode);
     error.code = errorCode;
     error.httpStatus = response.status;
+    error.payload = payload;
     throw error;
   }
   return payload;
@@ -338,14 +549,7 @@ function errorText(error) {
 }
 
 function routeView() {
-  if (window.location.pathname === "/accept-invite" || window.location.pathname.endsWith("/accept-invite/")) {
-    return "accept";
-  }
-  if (window.location.pathname === "/reset-password" || window.location.pathname.endsWith("/reset-password/")) {
-    return "reset";
-  }
-  const view = new URLSearchParams(window.location.search).get("view");
-  return ["setup", "login", "forgot", "deploy", "settings", "invite", "admin", "operations", "today", "work", "notifications"].includes(view) ? view : null;
+  return resolveApplicationRoute(window.location, resolveWorkspaceDestinationView).view;
 }
 
 function go(view) {
@@ -354,809 +558,1165 @@ function go(view) {
   window.history.pushState({}, "", url);
   state.view = view;
   render();
+  window.requestAnimationFrame(focusPageHeading);
 }
 
-function feedback() {
-  return '<p id="feedback" class="notice" role="status" hidden></p>';
+function taskDetailUrl(taskId) {
+  return buildTaskDetailUrl(taskId, new URLSearchParams(window.location.search));
+}
+
+function navigateWorkAssignments(filters, timelineDate) {
+  const url = new URL(window.location.href);
+  url.pathname = "/";
+  url.searchParams.set("view", "work");
+  url.searchParams.delete("task");
+  url.searchParams.delete("review");
+  ["assignmentStatus", "assignmentDue", "assignmentSearch", "assignmentCursor"].forEach((key) => {
+    url.searchParams.delete(key);
+  });
+  if (filters.status !== "all") url.searchParams.set("assignmentStatus", filters.status);
+  if (filters.due !== "any") url.searchParams.set("assignmentDue", filters.due);
+  if (filters.search) url.searchParams.set("assignmentSearch", filters.search);
+  if (filters.cursor) url.searchParams.set("assignmentCursor", filters.cursor);
+  window.history.pushState({ novaWorkAssignmentPage: true }, "", url.pathname + url.search);
+  state.pendingWorkAssignmentFocus = true;
+  renderWork(timelineDate);
+}
+
+function openReviewAssignment(assignmentId) {
+  const url = new URL(window.location.href);
+  url.pathname = "/";
+  url.searchParams.set("view", "work");
+  url.searchParams.set("review", assignmentId);
+  url.searchParams.delete("task");
+  window.history.pushState({ novaReviewDetail: true }, "", url.pathname + url.search);
+  state.view = null;
+  renderWork();
+  window.requestAnimationFrame(focusPageHeading);
+}
+
+function navigateVisibleTasks(filters, timelineDate, focusTarget = "heading") {
+  const url = new URL(window.location.href);
+  url.pathname = "/";
+  url.searchParams.set("view", "work");
+  url.searchParams.delete("task");
+  url.searchParams.delete("review");
+  ["taskStatus", "taskDue", "taskSearch", "taskCursor"].forEach((key) => url.searchParams.delete(key));
+  if (filters.status !== "open") url.searchParams.set("taskStatus", filters.status);
+  if (filters.due !== "any") url.searchParams.set("taskDue", filters.due);
+  if (filters.search) url.searchParams.set("taskSearch", filters.search);
+  if (filters.cursor) url.searchParams.set("taskCursor", filters.cursor);
+  window.history.pushState({ novaVisibleTaskPage: true }, "", url.pathname + url.search);
+  state.pendingVisibleTaskFocus = focusTarget;
+  renderWork(timelineDate);
+}
+
+function openTaskDetail(taskId, taskSource) {
+  const currentState = window.history.state && typeof window.history.state === "object"
+    ? window.history.state
+    : {};
+  window.history.replaceState(
+    { ...currentState, novaReturnScrollY: window.scrollY, novaReturnFocusTaskId: taskId,
+      novaReturnFocusTaskSource: taskSource || null },
+    "",
+    window.location.pathname + window.location.search + window.location.hash,
+  );
+  window.history.pushState({ novaTaskDetail: true }, "", taskDetailUrl(taskId));
+  state.view = "work";
+  window.scrollTo(0, 0);
+  render();
+}
+
+function leaveTaskDetail() {
+  if (window.history.state?.novaTaskDetail && window.history.length > 1) {
+    window.history.back();
+  } else {
+    go("work");
+  }
+}
+
+function restorePendingRouteScroll() {
+  const top = state.pendingRouteScrollY;
+  const taskId = state.pendingRouteFocusTaskId;
+  const taskSource = state.pendingRouteFocusTaskSource;
+  state.pendingRouteScrollY = null;
+  state.pendingRouteFocusTaskId = null;
+  state.pendingRouteFocusTaskSource = null;
+  if (!Number.isFinite(top) && !taskId) return;
+  window.requestAnimationFrame(() => {
+    if (Number.isFinite(top)) window.scrollTo(0, top);
+    if (!taskId) return;
+    window.requestAnimationFrame(() => {
+      const taskLinks = [...app.querySelectorAll("a[data-task-detail-id]")]
+        .filter((link) => link.dataset.taskDetailId === taskId);
+      const returnLink = taskLinks.find((link) => link.dataset.taskDetailSource === taskSource) || taskLinks[0];
+      const target = returnLink || app.querySelector("h1");
+      if (!target) return;
+      if (!returnLink) target.tabIndex = -1;
+      target.focus({ preventScroll: true });
+    });
+  });
+}
+
+function focusPageHeading() {
+  const heading = app.querySelector("h1");
+  if (!heading) return;
+  heading.tabIndex = -1;
+  heading.focus({ preventScroll: true });
 }
 
 function showFeedback() {
   const element = app.querySelector("#feedback");
   if (!element || !state.message) return;
   element.hidden = false;
-  element.className = "notice" + (state.messageKind === "error" ? " error" : state.messageKind === "warning" ? " warning" : "");
+  element.classList.add("notice");
+  element.classList.remove("error", "warning");
+  if (state.messageKind === "error" || state.messageKind === "warning") {
+    element.classList.add(state.messageKind);
+  }
   element.textContent = state.message;
   state.message = "";
 }
 
 function attachNavigation() {
   app.querySelectorAll("[data-nav]").forEach((button) => {
-    button.addEventListener("click", () => go(button.dataset.nav === "home" ? null : button.dataset.nav));
+    button.addEventListener("click", () => go(button.dataset.nav === "home" ? workspaceHomeView() : button.dataset.nav));
   });
-  const logout = app.querySelector("[data-action=logout]");
-  if (logout) logout.addEventListener("click", signOut);
-}
-
-function renderLanding() {
-  app.innerHTML =
-    '<section class="hero">' +
-      '<p class="eyebrow">People operations, built to move</p>' +
-      '<h1>Start with a secure team foundation.</h1>' +
-      '<p class="lede">NOVA keeps organisation rules in PostgreSQL and presents the same workflow on hosted or direct deployments.</p>' +
-      '<div class="actions"><button class="button" type="button" data-nav="setup">Set up NOVA</button>' +
-      '<button class="button secondary" type="button" data-nav="login">Sign in</button></div>' +
-    '</section>' +
-    '<section class="card-grid" aria-label="Available workflows">' +
-      '<article class="card"><h2>First deployment</h2><p>Create the founding account and organisation using the one-time deployment setup token.</p><button class="button secondary" type="button" data-nav="setup">Begin setup</button></article>' +
-      '<article class="card"><h2>Team member</h2><p>Use your invitation link to create your own password. NOVA never gives HR a password to share.</p><a class="button secondary" href="/accept-invite">Accept invitation</a></article>' +
-      '<article class="card"><h2>Already set up</h2><p>Sign in to configure email delivery or invite people when your role permits it.</p><button class="button secondary" type="button" data-nav="login">Sign in</button></article>' +
-      '<article class="card"><h2>Deployment assistant</h2><p>Walk through Cloudflare, Supabase, Netlify, Vercel, VPS, or local Docker without entering secrets in the browser.</p><button class="button secondary" type="button" data-nav="deploy">Open deployment guide</button></article>' +
-    '</section>';
-  attachNavigation();
-}
-
-function deploymentPath() {
-  return deploymentPaths.find((candidate) => candidate.id === state.deployment.path) || null;
-}
-
-function deploymentWiringPanel() {
-  const path = deploymentPath();
-  if (!path) return "";
-  const id = path.id;
-  const hosted = id.endsWith("-supabase");
-  const hostName = hosted ? path.title.split(" + ")[0] : id === "local-docker" ? "this computer" : "your VPS";
-  const row = (part, action, result) => '<tr><th scope="row">' + formatDeploymentText(part) + '</th><td data-label="Your action">' + formatDeploymentText(action) + '</td><td data-label="What happens">' + formatDeploymentText(result) + '</td></tr>';
-
-  const codeAction = hosted
-    ? 'Connect this repository to ' + hostName + ' and keep the repository root as the project root.'
-    : id === "local-docker"
-      ? 'Run the Windows or WSL Docker bootstrap from this repository.'
-      : 'Clone the repository on the VPS and run its Docker bootstrap.';
-  const codeResult = hosted
-    ? 'After connection, a production-branch push builds and publishes NOVA’s UI and API. It does not migrate PostgreSQL or add secrets.'
-    : id === "local-docker"
-      ? 'Compose starts PostgreSQL, the NOVA API, and one maintenance worker locally.'
-      : 'A GitHub push alone does not update the VPS; pull/release the code and run the documented upgrade.';
-  const databaseAction = hosted
-    ? 'On your trusted computer, run `bun run setup:supabase` for the intended project; NOVA displays its project ref and asks you to type it before applying migrations.'
-    : 'Run the Compose bootstrap; for an existing PostgreSQL server, use the external-database setup with separate owner and `nova_app` URLs.';
-  const databaseResult = hosted
-    ? 'NOVA applies migrations and creates the restricted app role, then writes generated values to your private local `.env`. This does not deploy the API.'
-    : 'The same NOVA schema and PostgreSQL rules are installed; Compose also starts the API and one worker.';
-  const runtimeAction = id === "cloudflare-supabase"
-    ? 'In Cloudflare Worker → Variables & Secrets, add runtime settings; create Hyperdrive from Supabase Connect → Direct using `nova_app` and bind its ID.'
-    : hosted
-      ? 'In ' + hostName + ' private Environment Variables, copy only runtime values (including the generated pooler `DATABASE_URL`) from your local `.env`, then redeploy.'
-      : 'Keep the bootstrap-generated `.env` private on the machine running NOVA; Compose supplies it to the API and worker.';
-  const runtimeResult = id === "cloudflare-supabase"
-    ? 'The Worker connects through Hyperdrive. Do not set raw `DATABASE_URL` or place the Supabase token/migration-owner credentials on Cloudflare.'
-    : hosted
-      ? 'The hosted API uses the restricted app connection. The Supabase token and migration-owner URL stay on your setup computer.'
-      : 'The runtime and worker use the restricted app role; keep the migration-owner URL separate.';
-  const originAction = id === "local-docker"
-    ? 'Use `http://localhost:3001` on this computer only.'
-    : 'Map DNS/HTTPS at your host or domain provider; set the same exact public origin in runtime settings and NOVA first-run.';
-  const originResult = id === "local-docker"
-    ? 'Local links work only on this device; use a public HTTPS origin before inviting remote employees.'
-    : 'NOVA uses the canonical origin for sign-in, invitation, verification, reset, and notification links.';
-  const emailAction = 'You do not choose or configure a separate identity provider. After first-run, a permitted Super Admin may configure and activate an email adapter inside NOVA.';
-  const emailResult = id === "cloudflare-supabase"
-    ? 'Better Auth is included. Email starts off; Cloudflare supports Gmail API or Resend, not SMTP/Nodemailer. Credentials are encrypted in PostgreSQL; the encryption key stays in Worker secrets.'
-    : 'Better Auth is included. Email starts off; this Node runtime supports SMTP/Nodemailer, Gmail API, or Resend. Credentials are encrypted in PostgreSQL; the encryption key stays in runtime secrets.';
-  const schedulerOutcome = deploymentSchedulerOutcome(state.deployment.scheduler);
-  const supabaseActivationReady = state.deployment.stage === 4 &&
-    deploymentProbe?.health === true && deploymentProbe?.ready === true && deploymentProbe?.scheduler === "supabase";
-  const schedulerAction = !schedulerOutcome
-    ? "Choose one trigger below. The scheduler card gives the exact place and action; selecting it here changes only this guide."
-    : state.deployment.scheduler === "supabase" && !supabaseActivationReady
-      ? schedulerOutcome.prepare
-      : schedulerOutcome.action;
-  const schedulerResult = !schedulerOutcome
-    ? "Exactly one provider trigger must call NOVA's same protected background endpoint."
-    : state.deployment.scheduler === "supabase" && !supabaseActivationReady
-      ? schedulerOutcome.prepareAutomatic
-      : schedulerOutcome.automatic;
-  const schedulerVerification = !schedulerOutcome
-    ? 'After choosing, use the provider-specific instructions and confirm the job reaches NOVA.'
-    : state.deployment.scheduler === "supabase" && !supabaseActivationReady
-      ? "First pass the live API/database readiness check; the separate Supabase job command is not available yet."
-      : schedulerOutcome.check;
-  const rows = [
-    row("Code + API", codeAction, codeResult),
-    row("PostgreSQL", databaseAction, databaseResult),
-    row("Runtime access", runtimeAction, runtimeResult),
-    row("Domain + links", originAction, originResult),
-    row("Login + email", emailAction, emailResult),
-    row("Background work", schedulerAction, schedulerResult + " Check: " + schedulerVerification),
-  ].join("");
-  const runtimePlace = id === "cloudflare-supabase"
-    ? "Cloudflare Worker → Variables & Secrets + Hyperdrive binding"
-    : hosted
-      ? hostName + " → private server-side Environment Variables"
-      : "Private .env on the computer/server; Docker Compose reads it";
-  const place = (label, title, action, automatic, check) => '<article class="deployment-place"><span>' + formatDeploymentText(label) + '</span><strong>' + formatDeploymentText(title) + '</strong><p><b>You do:</b> ' + formatDeploymentText(action) + '</p><p><b>Then:</b> ' + formatDeploymentText(automatic) + '</p><p><b>Confirm:</b> ' + formatDeploymentText(check) + '</p></article>';
-  return '<section class="deployment-places" aria-label="How deployment services connect"><h3>How your services connect</h3><p class="small">GitHub delivers code; ' + formatDeploymentText(hosted ? hostName + " runs NOVA" : id === "local-docker" ? "this computer runs NOVA" : "your server runs NOVA") + '; PostgreSQL stores the data. NOVA includes login, roles and permissions. Email is optional. One scheduler runs NOVA’s background work.</p><div class="deployment-architecture" aria-label="NOVA deployment connection"><span>' + formatDeploymentText(id === "local-docker" ? "This computer" : id === "vps-postgres" ? "VPS checkout" : "GitHub repository") + '</span><span aria-hidden="true">→</span><span>' + formatDeploymentText(id === "local-docker" ? "NOVA + PostgreSQL + worker" : id === "vps-postgres" ? "VPS runs NOVA + PostgreSQL" : hostName + " runs NOVA UI + API") + '</span><span aria-hidden="true">↔</span><span>' + formatDeploymentText(hosted ? "Supabase PostgreSQL" : id === "local-docker" ? "Local PostgreSQL" : "Your PostgreSQL") + '</span><span class="deployment-architecture-scheduler">' + formatDeploymentText(state.deployment.scheduler ? deploymentSchedulerLabels[state.deployment.scheduler] + " calls NOVA’s same protected background endpoint." : "Choose one scheduler; it calls NOVA’s same protected background endpoint.") + '</span></div><p class="deployment-provider-boundary"><strong>Important:</strong> This checklist does not log in to or change provider accounts. Follow the current step to apply the change there, then use its confirmation instructions.</p><details class="deployment-map-details"><summary>See where each part is configured</summary><div class="deployment-places-grid">' +
-    place("1 · Code + API", hosted ? "GitHub → " + hostName : id === "local-docker" ? "This computer" : "VPS checkout", codeAction, codeResult, hosted ? "The host's production deployment history shows this commit published." : "Open NOVA locally or check the VPS deployment logs.") +
-    place("2 · Database", hosted ? "Supabase Cloud" : id === "local-docker" ? "Local PostgreSQL" : "Your PostgreSQL", databaseAction, databaseResult, hosted ? "The setup command reports migrations and application-role preflight ready." : "The bootstrap reports healthy database/API readiness.") +
-    place("3 · Runtime + secrets", runtimePlace, runtimeAction, runtimeResult, hosted ? "The host has the variables/binding, then NOVA /api/health and /api/ready return 200." : "The private .env is present; NOVA /api/health and /api/ready return 200.") +
-    place("4 · Domain + links", "Host/domain settings, then NOVA", originAction, originResult, id === "local-docker" ? "Open localhost on this computer only." : "The exact HTTPS origin opens NOVA and is the same value used in first-run setup.") +
-    place("5 · Authentication + email", id === "cloudflare-supabase" ? "NOVA Better Auth + optional Gmail API/Resend" : "NOVA Better Auth + optional SMTP/Gmail API/Resend", emailAction, emailResult, "Sign in with the founding account; if email is enabled, send and receive a test message before invitations.") +
-    place("6 · Background scheduler", state.deployment.scheduler ? deploymentSchedulerLabels[state.deployment.scheduler] : "Choose one trigger below", schedulerAction, schedulerResult, schedulerVerification) +
-    '</div><details class="deployment-wiring"><summary>Full action map: what you do and what it changes</summary><h3>Your action → what happens next</h3>' +
-    '<div class="deployment-action-scroll" role="region" aria-label="Deployment action map" tabindex="0"><table class="deployment-action-map"><thead><tr><th scope="col">Part</th><th scope="col">Your action / where</th><th scope="col">What happens</th></tr></thead><tbody>' + rows +
-    '</tbody></table></div></details></details></section>';
-}
-
-function deploymentSchedulerOutcome(scheduler) {
-  const outcomes = {
-    cloudflare: {
-      lives: "Your Cloudflare Worker",
-      where: "Cloudflare Worker → Settings → Build for the deploy command; Triggers shows the resulting Cron Trigger.",
-      action: "In Cloudflare → Workers & Pages → your NOVA Worker → Settings → Build, set the production Deploy command to the Cloudflare Cron Wrangler config shown below, then deploy.",
-      automatic: "That committed config sets the NOVA scheduler selector and five-minute Cron Trigger. Cloudflare registers it when the production deploy runs; do not also create Supabase Cron.",
-      activates: "A production Worker deploy using the Cloudflare Cron Wrangler config registers the five-minute trigger.",
-      check: "Cloudflare Cron Triggers and invocation logs, plus NOVA /api/ready. Allow up to 15 minutes after a config change for the trigger to propagate.",
-    },
-    netlify: {
-      lives: "Your Netlify site",
-      where: "Netlify → Site configuration → Environment variables; the published site’s Functions list shows the result.",
-      action: "In Netlify → Site configuration → Environment variables, set NOVA_BACKGROUND_SCHEDULER=netlify for Builds and Functions, then publish the production branch.",
-      automatic: "The NOVA build plugin selects and publishes the scheduled-function entrypoint. Netlify runs it on its schedule; previews do not get a production schedule.",
-      activates: "The production build reads NOVA_BACKGROUND_SCHEDULER: `netlify` bundles the scheduled function; `supabase` bundles only the API. Preview and branch builds never include a production schedule.",
-      check: "Netlify Functions and run history, plus NOVA /api/ready.",
-    },
-    vercel: {
-      lives: "Your Vercel production project",
-      where: "Vercel → Project Settings → Environment Variables → Production; Cron Jobs shows the result.",
-      action: "In Vercel → Project Settings → Environment Variables → Production, set NOVA_BACKGROUND_SCHEDULER=vercel and CRON_SECRET, then redeploy Production.",
-      automatic: "The deployed vercel.ts registers the five-minute Cron path. Vercel Hobby cannot run this cadence; choose Supabase Cron on Hobby.",
-      activates: "The Production deploy reads NOVA_BACKGROUND_SCHEDULER in vercel.ts: it registers Vercel Cron only when the value is vercel, and registers none when Supabase Cron is selected. Vercel Hobby cannot run the required five-minute cadence.",
-      check: "Vercel Cron Jobs and invocation logs, plus NOVA /api/ready.",
-    },
-    supabase: {
-      lives: "Your Supabase project (not the hosting provider)",
-      where: "The API host’s runtime settings, then your Supabase project (the guarded NOVA command creates the Cron job).",
-      prepare: "In the API host’s private settings, select NOVA_BACKGROUND_SCHEDULER=supabase and deploy the configuration that disables its native schedule. Do not create the Supabase job yet.",
-      prepareAutomatic: "The host deploy prepares the API to receive Supabase Cron and ensures its own schedule is off. NOVA shows the guarded Supabase command only after the live readiness check passes.",
-      action: "Set NOVA_BACKGROUND_SCHEDULER=supabase on the API host and deploy its no-native-Cron config. Once NOVA /api/ready passes, run bun run supabase:scheduler from the trusted repository checkout and confirm the displayed Supabase project ref.",
-      automatic: "That guarded command creates NOVA’s named pg_cron + pg_net job and stores its request URL/secret in Supabase Vault. No host-native schedule should remain enabled.",
-      activates: "After NOVA passes readiness, the trusted-operator command creates the job in Supabase; selecting the radio does not create it.",
-      check: "Check cron.job_run_details, then net._http_response: require HTTP 2xx, timed_out=false, and no error_msg; inspect the tick body/API logs for notification errors. Cron success alone only means pg_net queued the call. NOVA /api/ready must report supabase.",
-    },
-    vps: {
-      lives: "The VPS/local server running NOVA",
-      where: "The server’s private .env and Docker Compose maintenance service.",
-      action: "Run NOVA’s Docker bootstrap/upgrade with NOVA_BACKGROUND_SCHEDULER=vps in the private .env. Do not add a cloud schedule.",
-      automatic: "Compose starts one maintenance worker beside the API; it calls NOVA locally on its normal interval.",
-      activates: "The Docker Compose bootstrap starts one maintenance worker; no separate scheduler account or cloud job is used.",
-      check: "One maintenance service is running and its logs show a successful tick; NOVA /api/ready reports vps.",
-    },
-  };
-  return outcomes[scheduler] || null;
-}
-
-function deploymentInstructions(stage) {
-  const path = deploymentPath();
-  const id = path ? path.id : "";
-  const localOnly = id === "local-docker";
-  const selectedScheduler = state.deployment.scheduler;
-  const guide = deploymentGuide(id, selectedScheduler);
-  const instructions = [
-    {
-      title: localOnly ? "Start NOVA on this computer" : id === "vps-postgres" ? "Prepare the VPS checkout and public address" : "Connect GitHub and choose the public address",
-      where: localOnly ? "This computer / interactive WSL shell and the local Docker setup." : id === "vps-postgres" ? "Your VPS checkout, DNS/domain provider, and one scheduler choice." : "Your GitHub repository and selected hosting account; public DNS/domain settings are applied in the hosting provider or domain registrar.",
-      body: localOnly
-        ? "Choose the local Docker setup. Bootstrap creates PostgreSQL, the NOVA API and one maintenance worker on this computer; no GitHub or public domain is needed."
-        : id === "vps-postgres"
-          ? "Clone the repository on your server and choose the public HTTPS address. A GitHub push does not update the VPS; the operator pulls/releases code and Compose starts one maintenance worker."
-          : selectedScheduler === "supabase"
-            ? "Connect GitHub to the selected host and choose the public HTTPS address. Its production deploy publishes the NOVA API/UI with that host's native schedule disabled; after readiness, a separate operator command creates Supabase Cron."
-            : "Choose the public HTTPS address and scheduler. Connect GitHub to the selected host; its configured production deploy publishes the NOVA API/UI and registers the selected native schedule.",
-      items: [
-        guide?.host.connect ?? "Choose a deployment path first.",
-        `Repository configuration: ${guide?.host.files ?? "select a path first"}.`,
-        selectedScheduler
-          ? `Selected scheduler: ${deploymentSchedulerLabels[selectedScheduler]}. It runs in ${deploymentSchedulerOutcome(selectedScheduler)?.lives ?? "the selected provider"}. The scheduler steps below show where and how to activate it; selecting this option only changes this browser checklist.`
-          : "Choose one scheduler below before deploying; the first production deploy must use the matching provider configuration.",
-        id === "local-docker"
-          ? "No GitHub or hosting account is needed; the local bootstrap starts services on this computer."
-          : id === "vps-postgres"
-            ? "A GitHub push does not update a VPS; the operator pulls/releases code on that server."
-            : "A GitHub push deploys code only after you connect the repository. It does not create the database, set runtime secrets, or configure DNS.",
-      ].filter(Boolean),
-    },
-    {
-      title: "Apply the canonical database",
-      where: id === "cloudflare-supabase" || id === "netlify-supabase" || id === "vercel-supabase"
-        ? "The selected Supabase project plus a trusted operator computer running the setup command."
-        : "The local/VPS PostgreSQL host and its Docker bootstrap or external-database setup.",
-      body: guide?.host.database ?? "Run the documented database setup from a trusted operator computer. A GitHub deploy does not apply PostgreSQL migrations.",
-      items: id.endsWith("-supabase")
-        ? [
-            "Create/select the Supabase Cloud project, then run `bun run setup:supabase` on a trusted computer. It applies migrations, prepares `nova_app`, checks preflight and writes generated values to the private local `.env`.",
-            id === "cloudflare-supabase"
-              ? "Create Cloudflare Hyperdrive from Supabase's Direct connection endpoint using the generated restricted `nova_app` credentials. Do not paste the transaction-pooler `DATABASE_URL` into Hyperdrive; Hyperdrive supplies pooling."
-              : "Use the generated transaction-pooler `DATABASE_URL` for this Node API host. Keep the owner URL and Supabase management token on the trusted setup computer.",
-            "This command prepares the database only. It does not deploy/start the API or create host secrets; use the next stage for runtime settings.",
-            "Keep SUPABASE_ACCESS_TOKEN and migration-owner credentials on the trusted operator computer. Never put them in GitHub, a public build variable, or the runtime host.",
-          ]
-        : id === "local-docker"
-          ? [
-              "Run the local Docker bootstrap. It creates the private `.env`, starts PostgreSQL, applies migrations and starts NOVA with the restricted application role.",
-              "No Supabase project, access token, GitHub account, or hosted secret store is needed for this local-only path.",
-            ]
-          : [
-              "Use Docker Compose with the VPS bootstrap, or point the external setup at the PostgreSQL server you administer. The setup applies migrations using a separate owner connection.",
-              "Keep the migration-owner URL private; the deployed API and worker use only the restricted `nova_app` connection.",
-            ],
-    },
-    {
-      title: id === "local-docker"
-        ? "Keep local runtime settings private"
-        : id === "vps-postgres"
-          ? "Configure private VPS runtime"
-          : "Put runtime settings in the hosting provider",
-      where: id === "local-docker" || id === "vps-postgres"
-        ? "The private `.env` on the computer/server running NOVA."
-        : `${path?.title ?? "Selected host"} server-side Variables & Secrets settings; Cloudflare also needs its Hyperdrive database binding.`,
-      body: id === "local-docker"
-        ? "The local bootstrap creates a private `.env` and Docker Compose passes it to NOVA. Keep it on this computer; no hosted secret store is involved."
-        : id === "vps-postgres"
-          ? "Keep runtime values in the private `.env` on the VPS. Restrict access to the file and let Docker Compose pass the values to NOVA; no third-party secret store is involved."
-          : "The database setup wrote generated values to the operator's private `.env`. Copy only the listed runtime values into the API host's server-side environment settings, marking only credentials as secrets. This browser never collects or transfers them.",
-      items: [
-        ...(guide?.host.runtimeSetup ?? ["Choose a deployment path first."]),
-        id === "local-docker"
-          ? "Docker Compose reads the private `.env` on this computer; no GitHub deployment is involved."
-          : id === "vps-postgres"
-            ? "A GitHub push does not update a VPS. The operator pulls/releases code on the server and restarts the deployment."
-            : "The connected hosting provider deploys code from GitHub; its private Variables/Secrets settings supply runtime credentials. Neither GitHub nor a browser checklist transfers them.",
-        "After saving new host settings, redeploy or restart the runtime. Never add SUPABASE_ACCESS_TOKEN or migration-owner credentials there.",
-        id === "local-docker"
-          ? ""
-          : "Before inviting anyone, replace any `http://localhost:3001` default with your exact public HTTPS URL in `BETTER_AUTH_URL` and `NOVA_ALLOWED_ORIGINS`.",
-        guide?.host.domain ?? "Map HTTPS and allowlist the exact public origin before configuring email.",
-        id === "vps-postgres" ? "Set NOVA_TRUST_PROXY_HEADERS=true only behind a reverse proxy that strips and rewrites forwarded headers." : "",
-      ].filter(Boolean),
-    },
-    {
-      title: "Deploy and prove the runtime",
-      where: "The deployed NOVA public HTTPS origin and its `/api/health` and `/api/ready` checks; domain mapping remains in the host provider.",
-      body: "Now publish/restart the configured production runtime. Host-native schedules take effect as part of this deployment. An early import build is only a bootstrap; do not invite people until this final configured build passes both checks. The live check is read-only.",
-      items: [
-        guide?.host.publish ?? "Choose a deployment path first.",
-        "GET /api/health returns an ordinary liveness response.",
-        "GET /api/ready confirms the nova schema is present and reachable through the application role.",
-        "If using a custom domain, finish DNS/HTTPS and set the exact same HTTPS origin in BETTER_AUTH_URL, NOVA_ALLOWED_ORIGINS, and NOVA first-run before enabling invitations. The host setting is changed in the provider; the canonical application origin is confirmed inside NOVA.",
-      ],
-    },
-    {
-      title: "Verify exactly one scheduler",
-      where: "The selected provider/repository actions shown below. Choosing the radio option only changes this checklist; it does not change a provider account.",
-      body: selectedScheduler === "supabase"
-        ? deploymentProbe?.health === true && deploymentProbe?.ready === true && deploymentProbe?.scheduler === "supabase"
-          ? "The API is live with the Supabase selector and native hosting schedules disabled. The command below now creates the Supabase Cron job; after its first run, verify the pg_net HTTP response as well as Cron history."
-          : "First run the live API/database check. The Supabase Cron creation command appears only after health, readiness, and the selected scheduler all match."
-        : "The host-native trigger is activated by the configured production deploy in the previous step. This stage verifies the provider has exactly one active trigger and that its invocation reached NOVA successfully.",
-      items: [
-        selectedScheduler ? `Selected: ${selectedScheduler}. The radio selected the instructions only; the provider configuration/command below is what applies it.` : "Select a scheduler in Prerequisites before deploying.",
-        "All built-in triggers call the same NOVA background endpoint and runner; exactly one trigger should be active for this database.",
-        selectedScheduler === "supabase"
-          ? "For an existing deployment, disable the old host schedule and deploy the no-native-Cron config before creating the Supabase job."
-          : "When switching from Supabase Cron, run `bun run supabase:scheduler:disable` from a trusted operator checkout before enabling the new trigger. A radio change alone never switches a live schedule.",
-        "Confirm the selected runtime value in /api/ready, then inspect the provider's own schedule and successful invocation. The checkbox is an operator attestation, not remote proof.",
-        "Keep previews/staging on another database or with scheduling disabled.",
-      ],
-    },
-    {
-      title: "Use the existing first-run workflow",
-      where: "NOVA's browser setup after runtime verification; Better Auth is built in, and email providers are configured later inside NOVA by an authorized Super Admin.",
-      body: guide?.host.postSetup ?? "After infrastructure is ready, NOVA guides the owner through first-run setup.",
-      items: [
-        "Choose hour-based or scheduled attendance once; the choice is effective-dated and does not create a second timeline.",
-        "Configure offices, timezone, working calendar and geofence before employee attendance begins.",
-        "Create roles by permission, scope and operational policy before inviting the team.",
-      ],
-    },
-    {
-      title: "Finish with a safe handoff",
-      where: "The one-time setup screen, NOVA's Super Admin settings, and the hosting provider's private secret store.",
-      body: "The deployment operator should leave the owner with only the public setup URL and normal application access. Bootstrap and migration material must not remain in a hosted runtime.",
-      items: [
-        "Rotate or remove the one-time NOVA_BOOTSTRAP_TOKEN after founder setup.",
-        "Remove SUPABASE_ACCESS_TOKEN and migration-owner credentials from the host after migrations and verification.",
-        "Record the selected scheduler, public origin, backup owner and secret-rotation owner.",
-      ],
-    },
-  ];
-  return instructions[stage] || instructions[0];
-}
-
-async function checkDeploymentEndpoint(path, expectedStatus) {
-  try {
-    const response = await fetch(path, {
-      cache: "no-store",
-      credentials: "omit",
-      headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(5000),
+  const openWorkspaceMenu = app.querySelector("[data-action=open-workspace-menu]");
+  const workspaceDialog = app.querySelector("#mobile-workspace-dialog");
+  if (openWorkspaceMenu && workspaceDialog) {
+    openWorkspaceMenu.addEventListener("click", () => {
+      if (!workspaceDialog.open) workspaceDialog.showModal();
     });
-    const result = await response.json().catch(() => null);
-    return response.ok && result?.service === "nova-api" && result.status === expectedStatus
-      ? result
-      : false;
+    workspaceDialog.querySelectorAll("[data-action=close-workspace-menu]").forEach((button) => {
+      button.addEventListener("click", () => workspaceDialog.close());
+    });
+    workspaceDialog.addEventListener("click", (event) => {
+      const bounds = workspaceDialog.getBoundingClientRect();
+      if (event.target === workspaceDialog && event.clientX < bounds.left) workspaceDialog.close();
+    });
+    workspaceDialog.addEventListener("close", () => {
+      if (openWorkspaceMenu.isConnected) openWorkspaceMenu.focus({ preventScroll: true });
+    });
+  }
+  app.querySelectorAll("[data-action=logout]").forEach((logout) => logout.addEventListener("click", signOut));
+}
+
+function renderLanding(lifetime) {
+  app.removeAttribute("role");
+  app.innerHTML = '<div id="public-landing-root"><p class="loading" role="status">Loading NOVA…</p></div>';
+  const target = app.querySelector("#public-landing-root");
+  void mountPublicLandingRoute(target, lifetime, {
+    isCurrentPageRequest,
+    isTargetMounted: (candidate) => app.contains(candidate),
+    mountReactIsland,
+    noticeElement,
+    navigateToSetup: () => go("setup"),
+    navigateToSignIn: () => go("login"),
+    navigateToInvitation: () => {
+      window.history.pushState({}, "", "/accept-invite");
+      state.view = "accept";
+      render();
+    },
+    navigateToDeploymentGuide: () => go("deploy"),
+  });
+}
+
+function invalidateDeploymentProbe() {
+  deploymentProbeLifecycle.invalidate();
+  deploymentProbe = null;
+}
+
+async function renderDeployment(lifetime) {
+  const isCurrentDeployment = () => isCurrentPageRequest(lifetime) &&
+    (state.view || routeView()) === "deploy" && app.isConnected;
+  app.replaceChildren(createElement("p", { className: "loading", role: "status" }, "Loading deployment guide…"));
+  try {
+    const { mountDeploymentPage } = await import("./app/deployment-page-route.js");
+    if (!isCurrentDeployment()) return;
+    await mountDeploymentPage({
+      target: app,
+      getProgress: () => state.deployment,
+      setProgress: (progress) => { state.deployment = progress; },
+      getProbe: () => deploymentProbe,
+      setProbe: (probe) => { deploymentProbe = probe; },
+      invalidateProbe: invalidateDeploymentProbe,
+      probeLifecycle: deploymentProbeLifecycle,
+      persistProgress: persistDeployment,
+      isCurrent: isCurrentDeployment,
+      mountIsland: mountReactIsland,
+      showFeedback,
+      focusCurrentHeading: () => {
+        const heading = app.querySelector("#deployment-current-heading");
+        if (!heading) return;
+        heading.tabIndex = -1;
+        heading.focus({ preventScroll: true });
+      },
+      checkEndpoint: checkDeploymentEndpoint,
+      onOpenSetup: () => go("setup"),
+      onNavigateHome: () => go(workspaceHomeView()),
+    });
   } catch {
-    return false;
+    if (!isCurrentDeployment()) return;
+    app.replaceChildren(noticeElement("Deployment guide could not load. Reload the page to try again.", "error"));
+    showFeedback();
   }
 }
-
-function renderDeployment() {
-  const current = deploymentInstructions(state.deployment.stage);
-  const selected = deploymentPath();
-  const completed = state.deployment.completed[state.deployment.stage] === true;
-  const needsProbe = state.deployment.stage === 3 || state.deployment.stage === 4;
-  const probePassed = state.deployment.stage === 3
-    ? deploymentProbe?.health === true && deploymentProbe?.ready === true
-    : state.deployment.stage === 4
-      ? deploymentProbe?.health === true && deploymentProbe?.ready === true && deploymentProbe?.scheduler === state.deployment.scheduler
-      : true;
-  const stageList = deploymentStages.map((stage, index) =>
-    '<button class="deployment-stage' + (index === state.deployment.stage ? ' active' : '') + (state.deployment.completed[index] ? ' complete' : '') + '" type="button" data-deployment-stage="' + index + '">' +
-      '<span class="deployment-stage-number">' + (state.deployment.completed[index] ? '✓' : String(index + 1)) + '</span>' +
-      '<span><strong>' + stage.title + '</strong><small>' + stage.summary + '</small></span>' +
-    '</button>'
-  ).join('');
-  const pathCards = deploymentPaths.map((path) =>
-    '<button class="deployment-path' + (path.id === state.deployment.path ? ' selected' : '') + '" type="button" data-deployment-path="' + path.id + '">' +
-      '<span class="status">' + path.badge + '</span><strong>' + path.title + '</strong><span>' + path.text + '</span>' +
-    '</button>'
-  ).join('');
-  const availableSchedulers = new Set(supportedDeploymentSchedulers(state.deployment.path));
-  const schedulerChoices = Object.entries(deploymentSchedulerLabels)
-    .filter(([value]) => availableSchedulers.has(value))
-    .map(([value, label]) => '<label class="check deployment-scheduler"><input type="radio" name="deploymentScheduler" value="' + value + '"' + (state.deployment.scheduler === value ? ' checked' : '') + '> ' + label + '</label>')
-    .join('');
-  const schedulerPlan = deploymentGuide(state.deployment.path, state.deployment.scheduler)?.scheduler;
-  const schedulerOutcome = deploymentSchedulerOutcome(state.deployment.scheduler);
-  const schedulerActions = deploymentSchedulerActions(
-    state.deployment.path,
-    state.deployment.scheduler,
-    state.deployment.stage,
-    probePassed,
-  );
-  const schedulerEmptyPhase = state.deployment.stage === 0
-    ? "Select a trigger to see its configuration. Nothing is changed in a provider by selecting it."
-    : state.deployment.path === "vercel-supabase" && state.deployment.scheduler === "supabase"
-      ? probePassed
-        ? "Vercel's Production config is confirmed for the Supabase selector. Run the separate Supabase setup command below, then check Supabase Cron history."
-        : "Set NOVA_BACKGROUND_SCHEDULER=supabase in Vercel Production before deploying; vercel.ts then publishes no Vercel Cron. Run the readiness check before creating Supabase Cron."
-      : state.deployment.scheduler === "supabase"
-      ? probePassed
-        ? "The API is ready with the Supabase scheduler selector."
-        : "First run the live API/database check above. The Supabase Cron creation command stays hidden until health, readiness, and the selected runtime value all pass."
-      : state.deployment.scheduler === "vps"
-        ? probePassed
-          ? "The Compose bootstrap starts one maintenance worker. Verify that exactly one worker is running and that its tick succeeded; do not add a second scheduler."
-          : "First pass the API/database readiness check above; then verify exactly one Compose maintenance worker and a successful tick."
-        : probePassed
-          ? "The selected trigger is registered by the production deployment. Do not create a second schedule; verify the provider shows one active trigger and a successful tick."
-          : "First pass the API/database readiness check above; then verify the deployment-registered trigger and a successful tick.";
-  const schedulerPanel = state.deployment.stage === 0 || state.deployment.stage === 4
-      ? '<section class="deployment-scheduler-grid" aria-label="Choose and apply the selected scheduler"><h3>' + (state.deployment.stage === 0 ? 'Choose one trigger' : 'Activate or verify the trigger') + '</h3><p class="small">' + (state.deployment.stage === 0 ? 'This is a guide choice only; it does not change a provider account. The selected provider action below applies it. Hosted native schedules are registered by the configured production deploy; the VPS worker starts with Compose; Supabase Cron is created later by its protected setup command after readiness.' : !probePassed ? 'Run the live API/database check above first. The guide will show the apply or verify action only after health, readiness, and the runtime selector match.' : state.deployment.scheduler === "supabase" ? 'The Supabase setup command below creates the actual job in the exact Supabase project you confirm. First deploy NOVA with the Supabase selector and the hosting provider’s native schedule disabled.' : state.deployment.scheduler === "vps" ? 'The Docker bootstrap starts the local worker. Verify its process and successful tick; do not add a cloud schedule.' : 'The final configured production deploy applies the host schedule. Verify it in the provider dashboard; this checklist itself does not change the account.') + '</p><div class="deployment-scheduler-choices">' + schedulerChoices + '</div>' +
-      (schedulerPlan
-        ? (schedulerOutcome ? '<div class="deployment-scheduler-outcome" role="note"><h4>How this selection becomes real</h4><dl><div><dt>Where you change it</dt><dd>' + formatDeploymentText(schedulerOutcome.where) + '</dd></div><div><dt>What switches it on</dt><dd>' + formatDeploymentText(schedulerOutcome.activates) + '</dd></div><div><dt>Where you confirm</dt><dd>' + formatDeploymentText(schedulerOutcome.check) + '</dd></div></dl></div>' : '') +
-          '<details class="deployment-scheduler-plan"' + (state.deployment.stage === 4 && schedulerActions.length ? ' open' : '') + '><summary>Show the exact provider settings and steps</summary><div class="deployment-scheduler-plan-body"><p><strong>Repository files:</strong> ' + formatDeploymentText(schedulerPlan.file ?? "Provider configuration") + '</p>' + (schedulerActions.length ? '<p><strong>' + (state.deployment.stage === 0 ? 'Prepare before the final production deploy:' : 'Do this now, after readiness passes:') + '</strong></p><ol>' + schedulerActions.map((action) => '<li><p><strong>Where:</strong> ' + formatDeploymentText(action.where) + '</p><p>' + formatDeploymentText(action.change) + '</p><p><strong>What that does:</strong> ' + formatDeploymentText(action.result) + '</p></li>').join('') + '</ol>' : '<p class="notice" role="note">' + formatDeploymentText(schedulerEmptyPhase) + '</p>') + '<p><strong>How to verify:</strong> ' + formatDeploymentText(schedulerPlan.verify) + '</p>' + (schedulerPlan.warning ? '<p class="notice warning" role="note">' + formatDeploymentText(schedulerPlan.warning) + '</p>' : '') + '</div></details>'
-        : '<p class="small">Select a trigger to see exactly which file/setting activates it and where to verify it.</p>') +
-      '</section>'
-    : '';
-  const probePanel = needsProbe
-    ? '<section class="deployment-scheduler-grid" aria-label="Live deployment checks"><p class="small">Read-only check against this NOVA deployment. It sends no credentials. Rerun after changing runtime or database configuration.</p>' +
-      (deploymentProbe?.checking
-        ? '<p class="notice" role="status" aria-live="polite">Checking API and database readiness…</p>'
-        : deploymentProbe
-          ? '<div class="notice ' + (deploymentProbe.health && deploymentProbe.ready && (state.deployment.stage !== 4 || deploymentProbe.scheduler === state.deployment.scheduler) ? '' : 'warning') + '" role="status" aria-live="polite"><p>API health: ' + (deploymentProbe.health ? 'ready' : 'unavailable') + '</p><p>Database/runtime readiness: ' + (deploymentProbe.ready ? 'ready' : 'not ready') + '</p>' + (state.deployment.stage === 4 ? '<p>Selected scheduler: ' + (state.deployment.scheduler || 'not selected') + '</p><p>Runtime selector: ' + (deploymentProbe.scheduler || 'not configured') + '</p>' : '') + '<p class="small">Checked at ' + deploymentProbe.checkedAt + ' UTC. Readiness checks core tables and a supported scheduler selection; it does not verify the full migration ledger, database-role privileges, or the live provider trigger.</p></div>'
-          : '<p class="small" role="status" aria-live="polite">Not checked in this browser session.</p>') +
-      '<button class="button secondary" type="button" data-deployment-probe' + (deploymentProbe?.checking ? ' disabled' : '') + '>Check API and database</button></section>'
-    : '';
-  const nextDisabled = !selected || !completed || (needsProbe && !probePassed) || ((state.deployment.stage === 0 || state.deployment.stage === 4) && !availableSchedulers.has(state.deployment.scheduler));
-  const completionDisabled = (needsProbe && !probePassed) || (state.deployment.stage === 0 && !availableSchedulers.has(state.deployment.scheduler));
-  app.innerHTML =
-    '<section class="panel deployment-assistant">' +
-      '<div class="panel-header"><div><p class="eyebrow">Guided deployment</p><h1>Follow the exact setup for your host.</h1><p class="lede">This guide will not change your GitHub, hosting, or database accounts. For every part, it shows where you make the change, what happens automatically afterward, and where to confirm it.</p></div><button class="button secondary compact" type="button" data-deployment-reset>Reset checklist</button></div>' +
-      feedback() +
-      (!selected ? '<h2>1. Choose the runtime shape</h2><p class="small">This selects a deployment recipe. It does not change NOVA’s PostgreSQL schema, permissions, authentication, RLS, or domain behaviour.</p><div class="deployment-path-grid">' + pathCards + '</div>' :
-        '<div class="deployment-layout"><aside class="deployment-steps" aria-label="Deployment progress">' + stageList + '</aside><div class="deployment-content"><div class="deployment-selected"><span class="eyebrow">Selected path</span><strong>' + formatDeploymentText(selected.title) + '</strong><span>' + formatDeploymentText(selected.text) + '</span></div>' + deploymentWiringPanel() + '<h2>' + formatDeploymentText(current.title) + '</h2><p class="deployment-location"><strong>Where this happens:</strong> ' + formatDeploymentText(current.where) + '</p><p class="lede">' + formatDeploymentText(current.body) + '</p><ul class="deployment-checklist">' + current.items.map((item) => '<li>' + formatDeploymentText(item) + '</li>').join('') + '</ul>' + probePanel + schedulerPanel + '<label class="check deployment-confirm"><input type="checkbox" data-deployment-complete' + (completed ? ' checked' : '') + (completionDisabled ? ' disabled' : '') + '> I applied these steps and verified them at the provider.</label><div class="form-actions"><button class="button secondary" type="button" data-deployment-back' + (state.deployment.stage === 0 ? ' disabled' : '') + '>Back</button><button class="button" type="button" data-deployment-next' + (nextDisabled ? ' disabled' : '') + '>' + (state.deployment.stage === deploymentStages.length - 1 ? 'Open NOVA setup' : 'Continue') + '</button></div><p class="small"><button class="link-button" type="button" data-nav="home">Return to NOVA home</button></p></div></div>') +
-    '</section>';
-  const probeButton = app.querySelector('[data-deployment-probe]');
-  if (probeButton) probeButton.addEventListener('click', async () => {
-    deploymentProbe = { checking: true };
-    render();
-    const [health, ready] = await Promise.all([
-      checkDeploymentEndpoint('/api/health', 'ok'),
-      checkDeploymentEndpoint('/api/ready', 'ready'),
-    ]);
-      deploymentProbe = { health: Boolean(health), ready: Boolean(ready), scheduler: ready?.scheduler ?? null, checkedAt: new Date().toISOString() };
-    render();
-  });
-  app.querySelectorAll('[data-deployment-path]').forEach((button) => button.addEventListener('click', () => {
-    state.deployment.path = button.dataset.deploymentPath;
-    state.deployment.stage = 0;
-    state.deployment.scheduler = '';
-    state.deployment.completed = {};
-    deploymentProbe = null;
-    persistDeployment();
-    render();
-  }));
-  app.querySelectorAll('[data-deployment-stage]').forEach((button) => button.addEventListener('click', () => {
-    state.deployment.stage = Number(button.dataset.deploymentStage);
-    deploymentProbe = null;
-    persistDeployment();
-    render();
-  }));
-  app.querySelectorAll('[name=deploymentScheduler]').forEach((input) => input.addEventListener('change', () => {
-    if (state.deployment.scheduler !== input.value) state.deployment.completed = {};
-    state.deployment.scheduler = input.value;
-    deploymentProbe = null;
-    persistDeployment();
-    render();
-  }));
-  const completeBox = app.querySelector('[data-deployment-complete]');
-  if (completeBox) completeBox.addEventListener('change', () => {
-    state.deployment.completed[state.deployment.stage] = completeBox.checked;
-    persistDeployment();
-    render();
-  });
-  const next = app.querySelector('[data-deployment-next]');
-  if (next) next.addEventListener('click', () => {
-    if ((state.deployment.stage === 2 || state.deployment.stage === 3) && !probePassed) {
-      deploymentProbe = null;
+function renderLogin(lifetime) {
+  const notice = state.message ? { kind: state.messageKind, message: state.message } : null;
+  app.innerHTML = '<div id="sign-in-root"><p class="loading" role="status">Loading sign-in…</p></div>';
+  const target = app.querySelector("#sign-in-root");
+  void mountPublicSignInRoute(target, lifetime, {
+    state,
+    notice,
+    api,
+    requestOptions,
+    refreshSession,
+    isCurrentPageRequest,
+    isTargetMounted: (candidate) => app.contains(candidate),
+    captureCommandContext,
+    isCurrentCommandIdentity,
+    recoverProtectedCommandFailure,
+    mountReactIsland,
+    noticeElement,
+    consumeNotice: (shownNotice) => {
+      if (shownNotice && state.message === shownNotice.message) state.message = "";
+    },
+    isLoginRoute: () => (state.view || routeView()) === "login",
+    completeSignIn: () => {
+      state.view = "settings";
       render();
-      return;
-    }
-    if (state.deployment.stage === deploymentStages.length - 1) {
-      go('setup');
-      return;
-    }
-    state.deployment.completed[state.deployment.stage] = true;
-    state.deployment.stage += 1;
-    deploymentProbe = null;
-    persistDeployment();
-    render();
+    },
+    renderCurrentRoute: () => render(),
+    navigateToForgotPassword: () => go("forgot"),
+    navigateBack: () => go(null),
   });
-  const back = app.querySelector('[data-deployment-back]');
-  if (back) back.addEventListener('click', () => {
-    state.deployment.stage = Math.max(0, state.deployment.stage - 1);
-    deploymentProbe = null;
-    persistDeployment();
-    render();
+}
+
+function renderSetup(lifetime) {
+  app.innerHTML = '<div id="first-run-setup-root"><p class="loading" role="status">Loading first-run setup…</p></div>';
+  const target = app.querySelector("#first-run-setup-root");
+  const notice = state.message ? { kind: state.messageKind, message: state.message } : null;
+  void mountPublicFirstRunSetupRoute(target, lifetime, {
+    isCurrentPageRequest,
+    isTargetMounted: (candidate) => app.contains(candidate),
+    mountReactIsland,
+    api,
+    requestOptions,
+    publicOrigin: () => window.location.origin,
+    noticeElement,
+    notice,
+    resumeFounder: () => {
+      const email = String(state.session?.email || "").trim().toLowerCase();
+      if (!email || state.session?.emailVerified !== false ||
+        state.actorGrants?.readError !== "ACCOUNT_NOT_OPERATIONAL" || state.actorGrants?.actorPersonId) return null;
+      return { email, displayName: String(state.session?.name || email) };
+    },
+    currentSessionEmail: () => String(state.session?.email || "").trim().toLowerCase(),
+    readCurrentSessionEmail: async () => {
+      const result = await api("/api/auth/get-session", requestOptions("GET"));
+      return String(result?.user?.email || "").trim().toLowerCase();
+    },
+    isResumableFounder: (email) => {
+      const founder = String(state.session?.email || "").trim().toLowerCase();
+      return Boolean(founder) && founder === email && state.session?.emailVerified === false &&
+        state.actorGrants?.readError === "ACCOUNT_NOT_OPERATIONAL" && !state.actorGrants?.actorPersonId;
+    },
+    hasBootstrapCredentials: (email) => Boolean(state.bootstrapToken) && state.bootstrapFounderEmail === email,
+    retainBootstrapCredentials: (token, email) => {
+      state.bootstrapToken = token;
+      state.bootstrapFounderEmail = email;
+    },
+    recordPublicOrigin: (result) => {
+      state.publicOriginConfigured = Boolean(result.configuredOrigin);
+      state.publicOrigin = result.configuredOrigin || result.effectiveOrigin || "";
+    },
+    publicOriginSaveFailed: (error) => {
+      state.publicOriginConfigured = false;
+      setMessage("Workspace created, but the public URL was not saved: " + errorText(error) + " Set it before configuring email.", "warning");
+    },
+    completeSetup: async ({ originSaved }) => {
+      // refreshSession can advance the identity epoch during first-run setup;
+      // the mounted target, rather than its pre-setup lifetime, owns navigation.
+      await refreshSession();
+      if (!app.contains(target)) return;
+      state.view = "settings";
+      if (originSaved) {
+        setMessage("Workspace created. The public URL is set. Configure and test email delivery, then request the founder verification link.");
+      } else if (!state.message) {
+        setMessage("Workspace created. Set the public URL before configuring email.", "warning");
+      }
+      render();
+    },
+    navigateBack: () => go(null),
   });
-  const reset = app.querySelector('[data-deployment-reset]');
-  if (reset) reset.addEventListener('click', () => {
-    state.deployment = { path: '', stage: 0, scheduler: '', completed: {} };
-    deploymentProbe = null;
-    persistDeployment();
-    render();
+}
+
+function renderShell(children, active) {
+  document.body?.classList.add("workspace-mode");
+  app.removeAttribute("role");
+  const publicNavigation = document.querySelector(".site-nav");
+  if (publicNavigation) publicNavigation.hidden = true;
+  const workspace = normalizeWorkspace(state.uiPreferences.workspace);
+  const navigation = getVisibleWorkspaceDestinations(state.actorGrants)
+    .sort((left, right) => workspace.navigationOrder.indexOf(left.view) - workspace.navigationOrder.indexOf(right.view));
+  const pinnedNavigation = navigation.filter((item) => workspace.pinnedDestinations.includes(item.view));
+  const orderedDestinations = [
+    ...pinnedNavigation.map((item) => ({ ...item, group: "Pinned" })),
+    ...navigation.filter((item) => !workspace.pinnedDestinations.includes(item.view)),
+  ].map((item) => {
+    const url = new URL("/", window.location.origin);
+    url.searchParams.set("view", item.view);
+    return { id: item.view, label: item.label, group: item.group, href: url.pathname + url.search };
+  });
+  const activeLabel = navigation.find((item) => item.view === active)?.label || "Workspace";
+  mountReactIsland(app, LegacyRouteShell, {
+    children,
+    destinations: orderedDestinations,
+    activeItemId: active,
+    displayName: String(state.session?.name || state.session?.email || "NOVA account"),
+    currentPageLabel: activeLabel,
+    unreadCount: Number.isSafeInteger(state.unreadNotificationCount) ? state.unreadNotificationCount : null,
+    navigationNotice: adminPermissionNoticeMessage(state.actorGrants, state.session),
+    onNavigate: (item) => go(item.id === "home" ? workspaceHomeView() : item.id),
   });
   attachNavigation();
-  showFeedback();
+  void refreshUnreadNotificationCount();
 }
 
-function renderLogin() {
-  app.innerHTML =
-    '<section class="panel">' +
-      '<p class="eyebrow">Secure sign in</p><h1>Welcome back.</h1>' +
-      '<p class="lede">Use the email and password you set yourself.</p>' + feedback() +
-      '<form id="login-form" class="form-grid one">' +
-        '<label>Email address<input name="email" type="email" autocomplete="email" required></label>' +
-        '<label>Password<input name="password" type="password" autocomplete="current-password" required></label>' +
-        '<div class="form-actions"><button class="button" type="submit">Sign in</button><button class="button secondary" type="button" data-nav="forgot">Forgot password?</button><button class="button secondary" type="button" data-nav="home">Back</button></div>' +
-      '</form>' +
-    '</section>';
-  app.querySelector("#login-form").addEventListener("submit", submitLogin);
-  attachNavigation();
-  showFeedback();
-}
-
-function renderSetup() {
-  app.innerHTML =
-    '<section class="panel">' +
-      '<p class="eyebrow">One-time deployment setup</p><h1>Create the founding workspace.</h1>' +
-      '<p class="lede">This creates the founding account and organisation. First choose the public NOVA URL; it is used for invitations, password links, Google callbacks, and notifications. Then choose attendance. The deployment setup token is used only for these requests and is never saved in this browser.</p>' + feedback() +
-      '<form id="setup-form" class="form-grid">' +
-        '<label>Your name<input name="name" autocomplete="name" required maxlength="180"></label>' +
-        '<label>Organisation name<input name="organisationName" autocomplete="organization" required maxlength="180"></label>' +
-      '<label>Email address<input name="email" type="email" autocomplete="email" required></label>' +
-      '<label>Password<input name="password" type="password" autocomplete="new-password" required minlength="8"></label>' +
-      '<label class="full">Public NOVA URL<input name="publicOrigin" type="url" autocomplete="url" required placeholder="https://work.example.com"></label>' +
-      '<p class="small full">Use the exact address people will open. Hosted deployments need HTTPS; private local testing can use localhost over HTTP. The origin must be mapped to this deployment and approved in NOVA_ALLOWED_ORIGINS.</p>' +
-      '<label>Attendance mode<select name="attendanceMode"><option value="hour_based">Hour-based — measure required duration</option><option value="scheduled">Scheduled — compare against shift times</option></select></label>' +
-        '<label id="required-attendance-minutes-field">Required attendance minutes<input name="requiredAttendanceMinutes" type="number" min="1" max="1440" step="1" value="480" required></label>' +
-        '<p class="small full">Hour-based mode uses this duration and does not invent late/early states. Scheduled mode ignores it and uses each office calendar shift; configure office shifts before attendance begins.</p>' +
-        '<label class="full">Deployment setup token<input name="bootstrapToken" type="password" autocomplete="off" required></label>' +
-        '<div class="form-actions full"><button class="button" type="submit">Create NOVA workspace</button><button class="button secondary" type="button" data-nav="home">Cancel</button></div>' +
-      '</form>' +
-    '</section>';
-  app.querySelector("#setup-form").addEventListener("submit", submitSetup);
-  const attendanceMode = app.querySelector("[name=attendanceMode]");
-  const requiredAttendanceMinutes = app.querySelector("[name=requiredAttendanceMinutes]");
-  const requiredAttendanceMinutesField = app.querySelector("#required-attendance-minutes-field");
-  const updateAttendanceModeFields = () => {
-    const hourBased = attendanceMode.value === "hour_based";
-    requiredAttendanceMinutesField.hidden = !hourBased;
-    requiredAttendanceMinutes.required = hourBased;
-  };
-  attendanceMode.addEventListener("change", updateAttendanceModeFields);
-  updateAttendanceModeFields();
-  app.querySelector("[name=publicOrigin]").value = window.location.origin;
-  attachNavigation();
-  showFeedback();
-}
-
-function renderShell(body, active) {
-  const adminNavigation = canShowAdminNavigation(state.actorGrants)
-    ? '<button type="button" data-nav="admin"' + (active === "admin" ? ' aria-current="page"' : "") + '>Admin console</button>'
-    : "";
-  const inviteNavigation = canShowInviteNavigation(state.actorGrants)
-    ? '<button type="button" data-nav="invite"' + (active === "invite" ? ' aria-current="page"' : "") + '>Invite a person</button>'
-    : "";
-  const permissionMessage = adminPermissionNoticeMessage(state.actorGrants, state.session);
-  const permissionNotice = permissionMessage
-    ? '<p class="small" role="status">' + permissionMessage + '</p>'
-    : "";
-  app.innerHTML =
-    '<div class="shell">' +
-      '<aside class="side-nav" aria-label="NOVA workspace">' +
-        '<button type="button" data-nav="today"' + (active === "today" ? ' aria-current="page"' : "") + '>Today</button>' +
-        '<button type="button" data-nav="work"' + (active === "work" ? ' aria-current="page"' : "") + '>Work</button>' +
-        '<button type="button" data-nav="operations"' + (active === "operations" ? ' aria-current="page"' : "") + '>Operations</button>' +
-        '<button type="button" data-nav="notifications"' + (active === "notifications" ? ' aria-current="page"' : "") + '>Notifications</button>' +
-        adminNavigation +
-        '<button type="button" data-nav="settings"' + (active === "settings" ? ' aria-current="page"' : "") + '>Settings</button>' +
-        inviteNavigation +
-        permissionNotice +
-        '<button type="button" data-nav="home"' + (active === "home" ? ' aria-current="page"' : "") + '>Overview</button>' +
-        '<button type="button" class="logout" data-action="logout">Sign out</button>' +
-      '</aside><section>' + body + '</section></div>';
-  attachNavigation();
-}
-
-function appendAccount() {
-  const target = app.querySelector("#account");
-  const user = state.session || {};
-  const initial = String(user.name || user.email || "?").trim().slice(0, 1).toUpperCase();
-  const avatar = document.createElement("span");
-  avatar.className = "avatar";
-  avatar.setAttribute("aria-hidden", "true");
-  avatar.textContent = initial;
-  const text = document.createElement("div");
-  const name = document.createElement("p");
-  name.textContent = user.name || "NOVA account";
-  const email = document.createElement("p");
-  email.className = "small";
-  email.textContent = user.email || "";
-  text.append(name, email);
-  const status = document.createElement("span");
-  status.className = "status" + (user.emailVerified ? "" : " pending");
-  status.textContent = user.emailVerified ? "Verified" : "Verification pending";
-  target.append(avatar, text, status);
-}
-
-async function renderSettings() {
-  const canManageEmail = state.actorGrants?.isSuperAdmin === true;
-  renderShell(
-    '<section class="panel">' +
-      '<div class="panel-header"><div><p class="eyebrow">Account security</p><h1>Change your password</h1><p>Changing your password does not require email. You must know your current password.</p></div></div>' + feedback() +
-      '<form id="change-password-form" class="form-grid one"><label>Current password<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>New password<input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></label><label>Confirm new password<input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></label><div class="form-actions"><button class="button" type="submit">Change password</button></div></form>' +
-    '</section>' +
-    '<section class="panel">' +
-      '<div class="panel-header"><div><p class="eyebrow">Public links and custom domain</p><h1>Canonical NOVA origin</h1><p>Choose which operator-approved domain NOVA uses in invitations, password links, Gmail callbacks, and notification emails. DNS, HTTPS, and hosting mapping must be completed first.</p></div></div>' +
-      '<div id="public-origin"><p class="small">Loading public origins...</p></div>' +
-    '</section>' +
-    '<section class="panel">' +
-      '<div class="panel-header"><div><p class="eyebrow">Deployment settings</p><h1>Email delivery</h1><p>Choose, test, and explicitly activate the connection NOVA uses for invitations and authentication mail.</p></div></div>' +
-      '<div id="account" class="account"></div>' + feedback() +
-      '<div id="connections"><p class="small">Loading email connections...</p></div>' +
-      '<div class="form-actions"><button class="button secondary" type="button" data-action="send-verification">Request verification link</button></div>' +
-    '</section>' +
-    '<section class="panel"><div class="panel-header"><div><h2>Secure system handoffs</h2><p class="small">When email is unavailable, authorised administrators can reveal each one-time invitation, verification or password-reset link once for secure in-person handoff.</p></div></div><div id="auth-handoffs"><p class="small">Loading secure handoffs...</p></div></section>' +
-    '<section class="panel">' +
-      '<div class="panel-header"><div><h2>Add an email connection</h2><p>Credentials are sent only to NOVA API, encrypted before storage, and never returned to this screen.</p></div></div>' +
-      '<div id="email-runtime-notice"></div>' +
-      '<form id="connection-form" class="form-grid">' +
-        '<label>Connection name<input name="name" required maxlength="180" placeholder="Company SMTP"></label>' +
-        '<label>Provider<select name="provider"><option value="console">Console (local development)</option><option value="smtp">SMTP</option><option value="gmail_oauth2">Gmail OAuth2</option><option value="resend">Resend</option></select></label>' +
-        '<label>Sender email<input name="senderEmail" type="email" required placeholder="people@example.com"></label>' +
-        '<label>Reply-to email <span class="small">(optional)</span><input name="replyToEmail" type="email" placeholder="support@example.com"></label>' +
-        '<div id="provider-fields" class="provider-fields full"></div>' +
-        '<div class="form-actions full"><button class="button" type="submit">Save connection</button></div>' +
-      '</form>' +
-    '</section>',
-    "settings",
-  );
-  appendAccount();
-  showFeedback();
-  app.querySelector("#change-password-form").addEventListener("submit", submitChangePassword);
-  app.querySelector("#connection-form").addEventListener("submit", submitConnection);
-  app.querySelector("[name=provider]").addEventListener("change", renderProviderFields);
-  app.querySelector("[data-action=send-verification]").addEventListener("click", sendVerification);
-  renderProviderFields();
-  await renderPublicOrigin();
-  renderProviderFields();
-  const connectionForm = app.querySelector("#connection-form");
-  const connectionFields = connectionForm ? connectionForm.querySelectorAll("input, select, button") : [];
-  if (!canManageEmail) {
-    connectionForm.hidden = true;
-    connectionForm.closest(".panel").hidden = true;
-    app.querySelector("#connections").replaceChildren(noticeElement(
-      "System email delivery can be managed only by a Super Admin.",
-      "warning",
-    ));
-  } else if (!state.publicOriginConfigured) {
-    connectionFields.forEach((field) => { field.disabled = true; });
-    app.querySelector("#connections").replaceChildren(noticeElement(
-      "Save the public NOVA URL above before configuring email. This prevents invitations and password links from pointing at the wrong deployment.",
-      "warning",
-    ));
-  } else {
-    connectionFields.forEach((field) => { field.disabled = false; });
-    try {
-      const result = await api("/api/email-connections");
-      const providerSelect = app.querySelector("#connection-form [name=provider]");
-      const supportedProviders = Array.isArray(result.supportedProviders)
-        ? result.supportedProviders
-        : Array.from(providerSelect.options, (option) => option.value);
-      configureEmailProviderOptions(supportedProviders);
-      renderConnections(result.connections || [], supportedProviders);
-    } catch (error) {
-      const target = app.querySelector("#connections");
-      target.replaceChildren(noticeElement(errorText(error), "error"));
-      connectionFields.forEach((field) => { field.disabled = true; });
-      app.querySelector("#email-runtime-notice").replaceChildren(noticeElement(
-        "NOVA could not load the email methods available in this deployment. Reload Settings after the connection is restored.",
-        "warning",
-      ));
-    }
-  }
-  await renderAuthHandoffs();
-}
-
-async function renderPublicOrigin() {
-  const target = app.querySelector("#public-origin");
-  if (!target) return;
+async function refreshUnreadNotificationCount() {
+  const actorPersonId = state.actorGrants?.actorPersonId;
+  if (!actorPersonId || !state.session) return;
+  const generation = ++state.unreadNotificationGeneration;
+  const identityEpoch = state.identityEpoch;
   try {
-    const result = await api("/api/organisation/public-origin", state.bootstrapToken
-      ? requestOptions("GET", undefined, { "x-nova-bootstrap-token": state.bootstrapToken })
-      : undefined);
-    state.publicOriginConfigured = Boolean(result.configuredOrigin);
-    state.publicOrigin = result.configuredOrigin || result.effectiveOrigin || "";
-    target.replaceChildren();
-    const form = document.createElement("form");
-    form.className = "form-grid";
-    const label = document.createElement("label");
-    label.className = "full";
-    label.textContent = "Approved origin";
-    const select = document.createElement("select");
-    select.name = "origin";
-    (result.allowedOrigins || []).forEach((origin) => {
-      const option = document.createElement("option");
-      option.value = origin;
-      option.textContent = origin;
-      option.selected = origin === (result.configuredOrigin || result.effectiveOrigin);
-      select.append(option);
+    const result = await api("/api/notifications/unread-count");
+    if (generation !== state.unreadNotificationGeneration || identityEpoch !== state.identityEpoch || actorPersonId !== state.actorGrants?.actorPersonId) return;
+    const previousCount = state.unreadNotificationCount;
+    const count = Number(result.count);
+    state.unreadNotificationCount = Number.isSafeInteger(count) && count >= 0 ? count : null;
+    const label = state.unreadNotificationCount === null ? "" : state.unreadNotificationCount === 1
+      ? "1 unread notification."
+      : state.unreadNotificationCount + " unread notifications.";
+    app.querySelectorAll('[data-nav="notifications"]').forEach((button) => {
+      const badge = button.querySelector(".nav-count");
+      const nextCount = state.unreadNotificationCount ?? 0;
+      if (nextCount > 0) {
+        const countText = nextCount > 99 ? "99+" : String(nextCount);
+        if (badge) badge.textContent = countText;
+        else {
+          const nextBadge = document.createElement("span");
+          nextBadge.className = "nav-count";
+          nextBadge.setAttribute("aria-hidden", "true");
+          nextBadge.textContent = countText;
+          button.append(nextBadge);
+        }
+        button.setAttribute("aria-label", "Notifications, " + nextCount + " unread");
+      } else {
+        badge?.remove();
+        button.removeAttribute("aria-label");
+      }
     });
-    const fallback = document.createElement("option");
-    fallback.value = "";
-    fallback.textContent = "Use deployment fallback";
-    fallback.selected = !result.configuredOrigin;
-    select.append(fallback);
-    label.append(select);
-    const action = document.createElement("div");
-    action.className = "form-actions full";
-    const button = document.createElement("button");
-    button.className = "button";
-    button.type = "submit";
-    button.textContent = "Save public origin";
-    action.append(button);
-    form.append(label, action);
-    const status = document.createElement("p");
-    status.className = "small";
-    status.textContent = "Current link origin: " + result.effectiveOrigin;
-    form.append(status);
-    form.addEventListener("submit", (event) => withSubmit(event, async () => {
-      const saved = await api("/api/organisation/public-origin", requestOptions(
-        "PATCH",
-        { origin: select.value || null },
-        state.bootstrapToken ? { "x-nova-bootstrap-token": state.bootstrapToken } : undefined,
-      ));
-      state.publicOriginConfigured = Boolean(saved.configuredOrigin);
-      state.publicOrigin = saved.configuredOrigin || saved.effectiveOrigin || "";
-      status.textContent = "Current link origin: " + saved.effectiveOrigin;
-      setMessage("Public origin saved. New links use it immediately.");
-      render();
-    }));
-    target.append(form);
+    const status = app.querySelector("#notification-unread-status");
+    if (status && previousCount !== state.unreadNotificationCount) {
+      status.textContent = state.unreadNotificationCount > 0
+        ? label
+        : previousCount === null ? "" : "All notifications are read.";
+    }
   } catch (error) {
-    state.publicOriginConfigured = false;
-    state.publicOrigin = "";
-    if (error && error.code === "PERMISSION_DENIED") {
-      target.replaceChildren(noticeElement("Public origin settings are available only to an authorized role.", "warning"));
+    if (generation !== state.unreadNotificationGeneration || identityEpoch !== state.identityEpoch || actorPersonId !== state.actorGrants?.actorPersonId) return;
+    if (error?.httpStatus === 401 || (error?.httpStatus === 403 && error?.code === "ACCOUNT_NOT_OPERATIONAL")) {
+      state.unreadNotificationCount = null;
+      recoverProtectedCommandFailure(error, { identityEpoch, actorPersonId });
       return;
     }
-    target.replaceChildren(noticeElement(errorText(error), "error"));
+    state.unreadNotificationCount = null;
+    app.querySelectorAll('[data-nav="notifications"]').forEach((button) => {
+      button.querySelector(".nav-count")?.remove();
+      button.removeAttribute("aria-label");
+    });
+    const status = app.querySelector("#notification-unread-status");
+    if (status) status.textContent = "";
   }
 }
 
-async function renderAuthHandoffs() {
-  const target = app.querySelector("#auth-handoffs");
+function currentWorkspaceDestinations(workspace = normalizeWorkspace(state.uiPreferences.workspace)) {
+  return getVisibleWorkspaceDestinations(state.actorGrants)
+    .slice()
+    .sort((left, right) => workspace.navigationOrder.indexOf(left.view) - workspace.navigationOrder.indexOf(right.view));
+}
+
+function currentWorkspaceModules(workspace = normalizeWorkspace(state.uiPreferences.workspace)) {
+  const readPlan = planMyDayReads(state.actorGrants);
+  return [
+    ...(readPlan.attendance || readPlan.attendanceActionContext ? [{ id: "attendance", label: "Attendance" }] : []),
+    ...(readPlan.assignments ? [{ id: "assignments", label: "My work" }] : []),
+    ...(readPlan.timeline ? [{ id: "timeline", label: "Today’s timeline" }] : []),
+    ...(readPlan.leaveRequest ? [{ id: "leave", label: "Leave requests" }] : []),
+    ...(readPlan.wfhRequest ? [{ id: "wfh", label: "Work-from-home requests" }] : []),
+  ].map((module) => ({ ...module, enabled: workspace.myDayModules.includes(module.id) }))
+    .sort((left, right) => workspace.myDayModules.indexOf(left.id) - workspace.myDayModules.indexOf(right.id));
+}
+
+async function updateWorkspaceEditor() {
+  const target = app.querySelector("#workspace-customization-content");
   if (!target) return;
-  if (!state.bootstrapToken && !canViewAuthHandoffs(state.actorGrants)) {
-    target.replaceChildren(noticeElement("Secure system handoffs are available only to authorized roles.", "warning"));
+  const generation = ++workspaceEditorRenderGeneration;
+  const identityEpoch = state.identityEpoch;
+  const workspace = normalizeWorkspace(state.uiPreferences.workspace);
+  let WorkspaceEditor;
+  let updatePinnedDestinations;
+  try {
+    ({ WorkspaceEditor, updatePinnedDestinations } = await import("./src/features/personalization/index.js"));
+  } catch {
+    if (generation === workspaceEditorRenderGeneration && target.isConnected) {
+      target.replaceChildren(noticeElement("Workspace controls could not load. Reload Settings to try again.", "error"));
+    }
     return;
   }
+  if (generation !== workspaceEditorRenderGeneration || identityEpoch !== state.identityEpoch || !target.isConnected) return;
+  const visibleDestinations = currentWorkspaceDestinations(workspace);
+  const destinations = visibleDestinations.map((item) => ({ id: item.view, label: item.label, group: item.group }));
+  const modules = currentWorkspaceModules(workspace);
+  const error = state.uiPreferenceReadError
+    ? "Saved workspace preferences could not be loaded. Changes apply for this session only."
+    : state.uiPreferenceConflict
+      ? "Preferences changed in another session. Resolve the conflict in Appearance before saving workspace changes."
+      : state.uiPreferenceSaveStatus === "error"
+        ? "NOVA could not save the current workspace preferences."
+        : undefined;
+  mountReactIsland(target, WorkspaceEditor, {
+    destinations,
+    homeView: workspace.homeView,
+    pinnedDestinationIds: workspace.pinnedDestinations,
+    modules,
+    writable: state.uiPreferenceWritable,
+    blockedByConflict: Boolean(state.uiPreferenceConflict),
+    saveStatus: state.uiPreferenceSaveStatus,
+    error,
+    onHomeViewChange: (view) => {
+      const allowed = getVisibleWorkspaceDestinations(state.actorGrants).some((item) => item.view === view);
+      if (view !== "auto" && !allowed) return;
+      setWorkspace({ ...normalizeWorkspace(state.uiPreferences.workspace), homeView: view });
+    },
+    onPinChange: (destinationId, pinned) => {
+      const current = normalizeWorkspace(state.uiPreferences.workspace);
+      const authorizedDestinationIds = currentWorkspaceDestinations(current).map((item) => item.view);
+      const pinnedDestinations = updatePinnedDestinations(
+        current.pinnedDestinations,
+        authorizedDestinationIds,
+        destinationId,
+        pinned,
+      );
+      if (pinnedDestinations === current.pinnedDestinations) return;
+      setWorkspace({ ...current, pinnedDestinations });
+    },
+    onMoveDestination: (destinationId, direction) => {
+      const current = normalizeWorkspace(state.uiPreferences.workspace);
+      const visible = currentWorkspaceDestinations(current).map((item) => item.view);
+      if (!visible.includes(destinationId)) return;
+      const navigationOrder = reorderPreferenceList(current.navigationOrder, visible, destinationId, direction < 0 ? "up" : "down");
+      setWorkspace({ ...current, navigationOrder });
+    },
+    onModuleChange: (moduleId, enabled) => {
+      const current = normalizeWorkspace(state.uiPreferences.workspace);
+      const available = new Set(currentWorkspaceModules(current).map((module) => module.id));
+      if (!available.has(moduleId) || current.myDayModules.includes(moduleId) === enabled) return;
+      const myDayModules = enabled
+        ? [...current.myDayModules, moduleId]
+        : current.myDayModules.filter((id) => id !== moduleId);
+      setWorkspace({ ...current, myDayModules });
+    },
+    onMoveModule: (moduleId, direction) => {
+      const current = normalizeWorkspace(state.uiPreferences.workspace);
+      const visible = currentWorkspaceModules(current).filter((module) => module.enabled).map((module) => module.id);
+      if (!visible.includes(moduleId)) return;
+      const myDayModules = reorderPreferenceList(current.myDayModules, visible, moduleId, direction < 0 ? "up" : "down");
+      setWorkspace({ ...current, myDayModules });
+    },
+    onReset: () => setWorkspace({ ...DEFAULT_WORKSPACE }),
+    onRetry: state.uiPreferenceConflict ? undefined : () => {
+      state.uiPreferenceSaveStatus = "pending";
+      void updateWorkspaceEditor();
+      void saveAppearancePreferences();
+    },
+  });
+}
+
+async function updateSavedTaskViewsEditor() {
+  const target = app.querySelector("#saved-task-views-content");
+  if (!target) return;
+  const generation = ++savedTaskViewsRenderGeneration;
+  const identityEpoch = state.identityEpoch;
+  const workPlan = planWorkReads(state.actorGrants);
+  const allowedCollections = [
+    ...(workPlan.assignments ? ["mine"] : []),
+    ...(workPlan.taskCollection ? ["visible"] : []),
+  ];
+  if (!allowedCollections.length && !state.savedTaskViews.length && !state.savedTaskViewsReadError && !state.savedTaskViewsLoading) return;
+  let SettingsSavedTaskViews;
   try {
-    const result = await api("/api/auth-handoffs", state.bootstrapToken
-      ? requestOptions("GET", undefined, { "x-nova-bootstrap-token": state.bootstrapToken })
-      : undefined);
-    target.replaceChildren();
-    if (!result.handoffs.length) {
-      target.append(noticeElement("No pending system handoffs. Email delivery remains optional for normal NOVA activity.", "warning"));
-      return;
+    ({ SettingsSavedTaskViews } = await import("./src/features/work/SettingsSavedTaskViews.tsx"));
+  } catch {
+    if (generation === savedTaskViewsRenderGeneration && identityEpoch === state.identityEpoch && app.contains(target)) {
+      target.replaceChildren(noticeElement("Saved task view controls could not load. Reload Settings to try again.", "error"));
     }
-    result.handoffs.forEach((handoff) => {
-      const card = document.createElement("article");
-      card.className = "connection";
-      const heading = document.createElement("h3");
-      heading.textContent = handoff.purpose + " · " + handoff.targetDisplayName;
-      const detail = document.createElement("p");
-      detail.className = "small";
-      detail.textContent = handoff.targetEmail + " · expires " + new Date(handoff.expiresAt).toLocaleString();
-      const actions = document.createElement("div");
-      actions.className = "connection-actions";
-      actions.append(actionButton("Reveal once", async () => {
-        try {
-          const revealed = await api("/api/auth-handoffs/" + handoff.id + "/reveal", requestOptions(
-            "POST",
-            undefined,
-            state.bootstrapToken ? { "x-nova-bootstrap-token": state.bootstrapToken } : undefined,
-          ));
-          const output = document.createElement("textarea");
-          output.className = "full";
-          output.readOnly = true;
-          output.rows = 3;
-          output.value = revealed.handoff.url;
-          card.append(output);
-          state.bootstrapToken = "";
-          setMessage("Copy this secure link now. It will not be shown again.");
-          actions.replaceChildren(noticeElement("Revealed once", "warning"));
-        } catch (error) {
-          setMessage(errorText(error), "error");
-        }
-      }));
-      card.append(heading, detail, actions);
-      target.append(card);
-    });
+    return;
+  }
+  if (generation !== savedTaskViewsRenderGeneration || identityEpoch !== state.identityEpoch || !app.contains(target)) return;
+  mountReactIsland(target, SettingsSavedTaskViews, {
+    views: state.savedTaskViews,
+    availableCollections: allowedCollections,
+    readStatus: state.savedTaskViewsLoading ? "loading" : state.savedTaskViewsReadError ? "error" : "ready",
+    formatError: errorText,
+    onFailure: (error, source) => recoverProtectedCommandFailure(error, captureCommandContext(source)),
+    onRetry: () => refreshSavedTaskViewsFromSettings(target, generation, identityEpoch),
+    onDelete: (view) => deleteSavedTaskViewFromSettings(view, target, generation, identityEpoch),
+    onRename: (view) => renameSavedTaskViewFromSettings(view, target, generation, identityEpoch),
+  });
+}
+
+async function renderAppearanceEditor() {
+  const target = app.querySelector("#appearance-editor-root");
+  if (!target) return;
+  const renderGeneration = ++appearanceEditorRenderGeneration;
+  let AppearanceEditor;
+  try {
+    ({ AppearanceEditor } = await import("./src/features/personalization/index.js"));
+  } catch {
+    if (renderGeneration === appearanceEditorRenderGeneration && target.isConnected) {
+      target.replaceChildren(noticeElement("Appearance controls could not load. Reload Settings to try again.", "error"));
+    }
+    return;
+  }
+  if (renderGeneration !== appearanceEditorRenderGeneration || !target.isConnected) return;
+  const conflict = state.uiPreferenceConflict
+    ? {
+        submittedRevision: state.uiPreferenceConflict.submittedRevision ?? Math.max(0, state.uiPreferenceRevision - 1),
+        currentRevision: state.uiPreferenceConflict.revision,
+      }
+    : undefined;
+  mountReactIsland(target, AppearanceEditor, {
+    appearance: normalizeAppearance(state.uiPreferences.appearance),
+    writable: state.uiPreferenceWritable,
+    saveStatus: state.uiPreferenceSaveStatus,
+    revision: Number.isSafeInteger(state.uiPreferenceRevision) ? state.uiPreferenceRevision : null,
+    error: state.uiPreferenceReadError
+      ? "Saved appearance preferences could not be loaded. These changes preview for this session only."
+      : state.uiPreferenceSaveStatus === "error" && !state.uiPreferenceConflict
+        ? "The current appearance preview is active, but NOVA could not save it."
+        : undefined,
+    conflict,
+    onChange: setAppearance,
+    onReset: () => setAppearance({ ...DEFAULT_APPEARANCE }),
+    onRetry: () => {
+      state.uiPreferenceSaveStatus = "pending";
+      renderAppearanceEditor();
+      void saveAppearancePreferences();
+    },
+    onResolveConflict: resolveAppearanceConflict,
+  });
+}
+
+function resolveAppearanceConflict(resolution) {
+  const conflict = state.uiPreferenceConflict;
+  if (!conflict) return;
+  if (resolution === "reload") {
+    state.uiPreferences.appearance = normalizeAppearance(conflict.appearance);
+    state.uiPreferences.workspace = normalizeWorkspace(conflict.workspace);
+    state.uiPreferenceRevision = conflict.revision;
+    state.uiPreferenceWritable = conflict.writable;
+    state.uiPreferenceConflict = null;
+    state.uiPreferenceSaveStatus = "saved";
+    applyAppearanceTokens(state.uiPreferences.appearance);
+    updateWorkspaceEditor();
+    renderAppearanceEditor();
+    return;
+  }
+  state.uiPreferenceRevision = conflict.revision;
+  state.uiPreferenceWritable = conflict.writable;
+  state.uiPreferenceConflict = null;
+  setAppearance(state.uiPreferences.appearance);
+}
+
+function setAppearance(appearance) {
+  state.uiPreferences.appearance = normalizeAppearance(appearance);
+  applyAppearanceTokens(state.uiPreferences.appearance);
+  renderAppearanceEditor();
+  scheduleUiPreferenceSave();
+}
+
+function setWorkspace(workspace) {
+  if (!state.uiPreferenceWritable || state.uiPreferenceConflict) return;
+  state.uiPreferences.workspace = normalizeWorkspace(workspace);
+  scheduleUiPreferenceSave();
+}
+
+function orderedSavedTaskViews(views) {
+  return Array.isArray(views)
+    ? views.filter((view) => view && typeof view.id === "string" && typeof view.name === "string")
+      .slice(0, 12)
+      .sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id))
+    : [];
+}
+
+async function loadSavedTaskViews(expectedPersonId, identityEpoch = state.identityEpoch) {
+  const requestGeneration = ++state.savedTaskViewsRequestGeneration;
+  const isCurrent = () => requestGeneration === state.savedTaskViewsRequestGeneration &&
+    identityEpoch === state.identityEpoch && state.identityPersonId === expectedPersonId;
+  state.savedTaskViewsLoading = true;
+  try {
+    const result = await api("/api/me/task-views", requestOptions("GET"));
+    if (!isCurrent()) return false;
+    if (result.personId !== expectedPersonId || result.schemaVersion !== 1 || !Array.isArray(result.views)) {
+      state.savedTaskViews = [];
+      state.savedTaskViewsReadError = true;
+      return false;
+    }
+    state.savedTaskViews = orderedSavedTaskViews(result.views);
+    state.savedTaskViewsReadError = false;
+    return true;
   } catch (error) {
-    target.replaceChildren(noticeElement(errorText(error), "error"));
+    if (isCurrent()) {
+      state.savedTaskViews = [];
+      state.savedTaskViewsReadError = true;
+      if (error?.httpStatus === 401 || error?.httpStatus === 403) {
+        state.savedTaskViewsLoading = false;
+        recoverProtectedCommandFailure(error, { identityEpoch, actorPersonId: expectedPersonId });
+      }
+    }
+    return false;
+  } finally {
+    if (isCurrent()) state.savedTaskViewsLoading = false;
   }
 }
 
-function adminOption(value, label, selected) {
-  const option = document.createElement("option");
-  option.value = value;
-  option.textContent = label;
-  option.selected = selected === value;
-  return option;
+function taskViewIdentityError() {
+  const error = new Error("TASK_VIEW_IDENTITY_CHANGED");
+  error.code = "TASK_VIEW_IDENTITY_CHANGED";
+  return error;
 }
 
-function adminField(labelText, name, type, value, required) {
-  const label = document.createElement("label");
-  label.textContent = labelText;
-  const input = document.createElement("input");
-  input.name = name;
-  input.type = type || "text";
-  input.value = value || "";
-  if (required) input.required = true;
-  label.append(input);
-  return label;
+async function saveTaskView(view, expectedRevision) {
+  const identityEpoch = state.identityEpoch;
+  const personId = state.identityPersonId || state.actorGrants?.actorPersonId;
+  if (!personId) throw taskViewIdentityError();
+  const result = await api("/api/me/task-views", requestOptions("POST", {
+    schemaVersion: 1,
+    expectedPersonId: personId,
+    expectedRevision,
+    view,
+  }));
+  if (identityEpoch !== state.identityEpoch || personId !== (state.identityPersonId || state.actorGrants?.actorPersonId)) return null;
+  if (result.personId !== personId || !result.view?.id) throw taskViewIdentityError();
+  state.savedTaskViews = orderedSavedTaskViews([
+    ...state.savedTaskViews.filter((item) => item.id !== result.view.id),
+    result.view,
+  ]);
+  state.savedTaskViewsReadError = false;
+  return result.view;
+}
+
+async function deleteTaskView(view) {
+  const identityEpoch = state.identityEpoch;
+  const personId = state.identityPersonId || state.actorGrants?.actorPersonId;
+  if (!personId) throw taskViewIdentityError();
+  const result = await api("/api/me/task-views/" + encodeURIComponent(view.id), requestOptions("DELETE", {
+    schemaVersion: 1,
+    expectedPersonId: personId,
+    expectedRevision: view.revision,
+  }));
+  if (identityEpoch !== state.identityEpoch || personId !== (state.identityPersonId || state.actorGrants?.actorPersonId)) return false;
+  if (result.personId !== personId || result.deleted !== view.id) throw taskViewIdentityError();
+  state.savedTaskViews = state.savedTaskViews.filter((item) => item.id !== view.id);
+  state.savedTaskViewsReadError = false;
+  return true;
+}
+
+function isCurrentSavedTaskViewsEditor(target, generation, identityEpoch) {
+  return identityEpoch === state.identityEpoch && generation === savedTaskViewsRenderGeneration &&
+    Boolean(target.isConnected && app.contains(target));
+}
+
+async function refreshSavedTaskViewsFromSettings(target, generation, identityEpoch) {
+  if (!isCurrentSavedTaskViewsEditor(target, generation, identityEpoch)) return;
+  const personId = state.identityPersonId || state.actorGrants?.actorPersonId;
+  if (!personId) return;
+  const refreshed = await loadSavedTaskViews(personId, identityEpoch);
+  if (!isCurrentSavedTaskViewsEditor(target, generation, identityEpoch)) return;
+  setMessage(refreshed ? "Saved task views refreshed." : "Saved task views are still unavailable.", refreshed ? "success" : "warning");
+  updateSavedTaskViewsEditor();
+}
+
+async function deleteSavedTaskViewFromSettings(view, target, generation, identityEpoch) {
+  if (!isCurrentSavedTaskViewsEditor(target, generation, identityEpoch)) return;
+  const personId = state.identityPersonId || state.actorGrants?.actorPersonId;
+  if (!personId) return;
+  try {
+    const deleted = await deleteTaskView(view);
+    if (!deleted || !isCurrentSavedTaskViewsEditor(target, generation, identityEpoch)) return;
+  } catch (error) {
+    if (error?.code !== "TASK_VIEW_CONFLICT" && error?.code !== "TASK_VIEW_NOT_FOUND") throw error;
+    await loadSavedTaskViews(personId, identityEpoch);
+    if (!isCurrentSavedTaskViewsEditor(target, generation, identityEpoch)) return;
+    setMessage(errorText(error), "warning");
+    updateSavedTaskViewsEditor();
+    return;
+  }
+  setMessage("Saved view deleted.");
+  updateSavedTaskViewsEditor();
+}
+
+async function renameSavedTaskViewFromSettings(view, target, generation, identityEpoch) {
+  if (!isCurrentSavedTaskViewsEditor(target, generation, identityEpoch)) return false;
+  const personId = state.identityPersonId || state.actorGrants?.actorPersonId;
+  if (!personId) return false;
+  return renameSavedTaskViewCommand({
+    view,
+    name: view.name,
+    personId,
+    identityEpoch,
+    isCurrent: () => isCurrentSavedTaskViewsEditor(target, generation, identityEpoch),
+    getCurrentView: (viewId) => state.savedTaskViews.find((candidate) => candidate.id === viewId),
+    saveTaskView,
+    reloadTaskViews: loadSavedTaskViews,
+    setMessage,
+    updateEditor: updateSavedTaskViewsEditor,
+    formatError: errorText,
+  });
+}
+
+function reorderPreferenceList(order, visibleIds, id, direction) {
+  const position = visibleIds.indexOf(id);
+  const adjacent = position + (direction === "up" ? -1 : 1);
+  if (position < 0 || adjacent < 0 || adjacent >= visibleIds.length) return order;
+  const next = [...order];
+  const first = next.indexOf(id);
+  const second = next.indexOf(visibleIds[adjacent]);
+  if (first < 0 || second < 0) return order;
+  [next[first], next[second]] = [next[second], next[first]];
+  return next;
+}
+
+function createSavedTaskViewsPanel(SavedTaskViewsPanel, collection, filters, navigate, lifetime) {
+  const workPlan = planWorkReads(state.actorGrants);
+  const availableCollections = [
+    ...(workPlan.assignments ? ["mine"] : []),
+    ...(workPlan.taskCollection ? ["visible"] : []),
+  ];
+  const reconcileConflict = async (error) => {
+    if (!isCurrentPageRequest(lifetime)) return true;
+    const personId = state.identityPersonId || state.actorGrants?.actorPersonId;
+    const identityEpoch = state.identityEpoch;
+    if (!personId) return true;
+    await loadSavedTaskViews(personId, identityEpoch);
+    if (!isCurrentPageRequest(lifetime)) return true;
+    setMessage(errorText(error), "warning");
+    renderWork();
+    return true;
+  };
+  return createElement(SavedTaskViewsPanel, {
+    views: state.savedTaskViews,
+    collection,
+    filters,
+    readStatus: state.savedTaskViewsLoading ? "loading" : state.savedTaskViewsReadError ? "error" : "ready",
+    availableCollections,
+    atLimit: state.savedTaskViews.length >= 12,
+    formatError: errorText,
+    onFailure: (error, source) => recoverProtectedCommandFailure(error, captureCommandContext(source)),
+    onOpen: (view) => navigate({ status: view.status, due: view.due, search: view.search, cursor: "" }),
+    onUpdate: async (view) => {
+      try {
+        const saved = await saveTaskView({
+          id: view.id,
+          name: view.name,
+          collection,
+          status: filters.status,
+          due: filters.due,
+          search: filters.search.trim(),
+        }, view.revision);
+        if (!saved || !isCurrentPageRequest(lifetime)) return;
+      } catch (error) {
+        if (error?.code === "TASK_VIEW_CONFLICT") {
+          await reconcileConflict(error);
+          return;
+        }
+        throw error;
+      }
+      setMessage("Saved view updated.");
+      renderWork();
+    },
+    onCreate: async (name) => {
+      try {
+        const saved = await saveTaskView({
+          name,
+          collection,
+          status: filters.status,
+          due: filters.due,
+          search: filters.search.trim(),
+        }, 0);
+        if (!saved || !isCurrentPageRequest(lifetime)) return;
+      } catch (error) {
+        if (error?.code === "TASK_VIEW_CONFLICT" || error?.code === "TASK_VIEW_LIMIT_REACHED") {
+          await reconcileConflict(error);
+          return;
+        }
+        throw error;
+      }
+      setMessage("Saved view added to your personal workspace.");
+      renderWork();
+    },
+    onRetry: async () => {
+      if (!isCurrentPageRequest(lifetime)) return;
+      const personId = state.identityPersonId || state.actorGrants?.actorPersonId;
+      if (!personId) return;
+      const refreshed = await loadSavedTaskViews(personId, state.identityEpoch);
+      if (!isCurrentPageRequest(lifetime)) return;
+      setMessage(refreshed ? "Saved views refreshed." : "Saved views are still unavailable.", refreshed ? "success" : "warning");
+      renderWork();
+    },
+  });
+}
+
+function scheduleUiPreferenceSave() {
+  state.uiPreferenceSaveStatus = state.uiPreferenceWritable ? "pending" : "idle";
+  renderAppearanceEditor();
+  void updateWorkspaceEditor();
+  if (appearanceSaveTimer) clearTimeout(appearanceSaveTimer);
+  if (state.uiPreferenceWritable && !state.uiPreferenceConflict) {
+    appearanceSaveTimer = setTimeout(() => {
+      appearanceSaveTimer = null;
+      saveAppearancePreferences();
+    }, 450);
+  }
+}
+
+async function saveAppearancePreferences() {
+  if (appearanceSaveInFlight || state.uiPreferenceConflict || !state.uiPreferenceWritable) return;
+  const appearance = normalizeAppearance(state.uiPreferences.appearance);
+  const workspace = normalizeWorkspace(state.uiPreferences.workspace);
+  const expectedRevision = state.uiPreferenceRevision;
+  const identityEpoch = state.identityEpoch;
+  const personId = state.uiPreferencePersonId;
+  const identityContext = { identityEpoch, actorPersonId: personId };
+  const saveGeneration = ++appearanceSaveGeneration;
+  appearanceSaveInFlight = true;
+  state.uiPreferenceSaveStatus = "saving";
+  renderAppearanceEditor();
+  void updateWorkspaceEditor();
+  try {
+    const saved = await api("/api/me/ui-preferences", requestOptions("PATCH", {
+      schemaVersion: UI_PREFERENCE_SCHEMA_VERSION,
+      expectedPersonId: personId,
+      expectedRevision,
+      appearance,
+      workspace,
+    }));
+    if (identityEpoch !== state.identityEpoch || personId !== state.uiPreferencePersonId) return;
+    state.uiPreferenceRevision = saved.revision;
+    state.uiPreferenceWritable = saved.writable === true;
+    state.uiPreferenceReadError = false;
+    state.uiPreferenceSaveStatus = JSON.stringify(normalizeAppearance(state.uiPreferences.appearance)) === JSON.stringify(appearance) &&
+      JSON.stringify(normalizeWorkspace(state.uiPreferences.workspace)) === JSON.stringify(workspace)
+      ? "saved"
+      : "pending";
+  } catch (error) {
+    if (identityEpoch !== state.identityEpoch || personId !== state.uiPreferencePersonId) return;
+    if (error?.httpStatus === 401 || error?.httpStatus === 403) {
+      if (error.httpStatus === 403) {
+        state.uiPreferenceWritable = false;
+        state.uiPreferenceSaveStatus = "error";
+      }
+      if (recoverProtectedCommandFailure(error, identityContext, "Your personal settings access changed. Refresh to check current access.")) return;
+    }
+    if (error.code === "UI_PREFERENCE_IDENTITY_CHANGED") {
+      state.uiPreferenceSaveStatus = "idle";
+      state.uiPreferenceWritable = false;
+      state.uiPreferenceReadError = true;
+      await refreshSession();
+      render();
+      return;
+    }
+    if (error.code === "UI_PREFERENCE_CONFLICT" || error.code === "UI_PREFERENCE_SCHEMA_UNSUPPORTED") {
+      const current = error.payload?.current;
+      if (current) {
+        state.uiPreferenceConflict = {
+          submittedRevision: expectedRevision,
+          revision: current.revision,
+          writable: current.writable === true,
+          appearance: normalizeAppearance(current.appearance),
+          workspace: normalizeWorkspace(current.workspace),
+        };
+      }
+      state.uiPreferenceSaveStatus = "error";
+    } else {
+      state.uiPreferenceSaveStatus = "error";
+    }
+  } finally {
+    if (saveGeneration === appearanceSaveGeneration) {
+      appearanceSaveInFlight = false;
+      renderAppearanceEditor();
+      void updateWorkspaceEditor();
+    }
+    if (saveGeneration === appearanceSaveGeneration && state.uiPreferenceSaveStatus === "pending" && state.uiPreferenceWritable && !state.uiPreferenceConflict) {
+      if (appearanceSaveTimer) clearTimeout(appearanceSaveTimer);
+      appearanceSaveTimer = setTimeout(() => {
+        appearanceSaveTimer = null;
+        saveAppearancePreferences();
+      }, 0);
+    }
+  }
+}
+
+function clearIdentityScopedState() {
+  clearAllReviewFeedbackDrafts();
+  state.identityEpoch += 1;
+  state.pendingAdminCommandFocus = false;
+  pageRequestLifecycle.cancel();
+  pageRequestLifetime = null;
+  state.unreadNotificationGeneration += 1;
+  state.unreadNotificationCount = null;
+  appearanceSaveGeneration += 1;
+  appearanceSaveInFlight = false;
+  if (appearanceSaveTimer) clearTimeout(appearanceSaveTimer);
+  appearanceSaveTimer = null;
+  state.adminData = null;
+  state.taskCreateFingerprint = "";
+  state.taskCreateRequestKey = "";
+  state.uiPreferences = {
+    appearance: { ...DEFAULT_APPEARANCE },
+    workspace: normalizeWorkspace(DEFAULT_WORKSPACE),
+  };
+  state.savedTaskViews = [];
+  state.savedTaskViewsLoading = false;
+  state.savedTaskViewsReadError = false;
+  state.savedTaskViewsRequestGeneration += 1;
+  state.uiPreferenceRevision = 0;
+  state.uiPreferencePersonId = null;
+  state.identityPersonId = null;
+  state.uiPreferenceWritable = false;
+  state.uiPreferenceReadError = false;
+  state.uiPreferenceSaveStatus = "idle";
+  state.uiPreferenceConflict = null;
+  state.bootstrapToken = "";
+  state.bootstrapFounderEmail = "";
+  state.publicOriginConfigured = false;
+  state.publicOrigin = "";
+  state.emailOAuthResult = null;
+}
+
+async function renderSettings(lifetime) {
+  lifetime = lifetime || beginPageRequestLifetime();
+  const canManageEmail = state.actorGrants?.isSuperAdmin === true;
+  if (!canManageEmail && state.emailOAuthResult) {
+    setMessage(
+      "Google returned to NOVA, but this account cannot verify the email connection. Ask a Super Admin to check Email delivery.",
+      "warning",
+    );
+    state.emailOAuthResult = null;
+  }
+  const canManagePublicOrigin = Boolean(state.bootstrapToken) ||
+    hasPermissionGrant(state.actorGrants, "organisation.public_origin.manage");
+  const handoffAccess = getAuthHandoffAccess(state);
+  const canShowAuthHandoffs = handoffAccess.bootstrap || (
+    handoffAccess.canRead && canViewAuthHandoffs(state.actorGrants)
+  );
+  renderShell(createElement("div", { id: "settings-page-root" }), "settings");
+  const settingsPageRoot = app.querySelector("#settings-page-root");
+  const settingsIdentityEpoch = state.identityEpoch;
+  const isCurrentSettings = () => isCurrentPageRequest(lifetime) && state.identityEpoch === settingsIdentityEpoch &&
+    Boolean(settingsPageRoot && app.contains(settingsPageRoot));
+  let settingsRoute;
+  try {
+    settingsRoute = await import("./app/settings-page-route.js");
+  } catch {
+    if (isCurrentSettings()) {
+      settingsPageRoot.replaceChildren(noticeElement("Settings could not load. Reload the page to try again.", "error"));
+    }
+    return;
+  }
+  if (!isCurrentSettings()) return;
+  await settingsRoute.mountSettingsPage({
+    target: settingsPageRoot,
+    capabilities: { canManagePublicOrigin, canManageEmail, canShowAuthHandoffs },
+    isCurrentSettings,
+    mountIsland: mountReactIsland,
+    showFeedback,
+    renderLoadError: (message) => settingsPageRoot.replaceChildren(noticeElement(message, "error")),
+    sections: {
+      mountAccountSecurity: mountSettingsAccountSecurity,
+      mountNotificationPreferences: (target, isCurrent) => mountSettingsNotificationPreferences(target, isCurrent, lifetime),
+      renderAppearance: renderAppearanceEditor,
+      updateWorkspace: () => { void updateWorkspaceEditor(); },
+      updateSavedTaskViews: updateSavedTaskViewsEditor,
+      mountPublicOrigin: mountSettingsPublicOrigin,
+      mountEmailDelivery: ({ target, isCurrentSettings: isCurrent, canReadOrigin, canActWithUnknownPublicOrigin, originBridge }) =>
+        mountSettingsEmailDeliveryRoute({
+          target,
+          isCurrentSettings: isCurrent,
+          canReadOrigin,
+          canActWithUnknownPublicOrigin,
+          originBridge,
+          host: {
+            state,
+            api,
+            requestOptions,
+            captureCommandContext,
+            isCurrentCommand,
+            isCurrentCommandIdentity,
+            recoverProtectedCommandFailure,
+            mountReactIsland,
+            noticeElement,
+            errorText,
+            setMessage,
+            showFeedback,
+            navigateToGoogleAuthorization: (url) => window.location.assign(url),
+          },
+        }),
+      mountAuthHandoffs: mountSettingsAuthHandoffs,
+    },
+  });
+}
+
+async function mountSettingsNotificationPreferences(target, isCurrentSettings, lifetime) {
+  const identityEpoch = state.identityEpoch;
+  let feature;
+  try {
+    feature = await import("./src/features/notifications/preferences/index.ts");
+  } catch {
+    if (identityEpoch === state.identityEpoch && isCurrentSettings() && target.isConnected) {
+      target.replaceChildren(noticeElement("Email preferences could not load. Reload Settings to try again.", "error"));
+    }
+    return;
+  }
+
+  const isCurrent = () => identityEpoch === state.identityEpoch && isCurrentSettings() && target.isConnected;
+  const controller = feature.createNotificationPreferencesController({
+    isCurrent,
+    readPreferences: () => pageApi("/api/notification-preferences", lifetime),
+    savePreference: (eventKey, enabled) => api("/api/notification-preferences", requestOptions("PATCH", {
+      eventKey, channel: "email", enabled,
+    })),
+    runActionButton,
+    isCurrentCommand,
+    errorMessage: errorText,
+    onStateChange: (state, pendingEventKeys) => {
+      mountReactIsland(target, feature.NotificationPreferences, {
+        state,
+        pendingEventKeys,
+        onRetry: () => controller.retry(),
+        onSetEmailPreference: (eventKey, enabled, source) => controller.setEmailPreference(eventKey, enabled, source),
+      });
+    },
+    onSaveConfirmed: () => {
+      setMessage("Email preference saved.");
+      showFeedback();
+    },
+  });
+  controller.start();
+}
+
+async function mountSettingsAccountSecurity(target, isCurrentSettings) {
+  const identityEpoch = state.identityEpoch;
+  let feature;
+  try {
+    feature = await import("./src/features/settings/account-security/index.ts");
+  } catch {
+    if (identityEpoch === state.identityEpoch && isCurrentSettings() && target.isConnected) {
+      target.replaceChildren(noticeElement("Account security could not load. Reload Settings to try again.", "error"));
+    }
+    return;
+  }
+
+  if (identityEpoch !== state.identityEpoch || !isCurrentSettings() || !target.isConnected) return;
+  const accountEmail = state.session?.email;
+  const identity = feature.projectAccountIdentity(state.session);
+  const readState = identity
+    ? { status: "ready", identity }
+    : { status: "error", message: "NOVA could not confirm the current account details. Refresh Settings before continuing." };
+
+  async function runAuthAction(request) {
+    const context = captureCommandContext(target);
+    const contextIsCurrent = () => identityEpoch === state.identityEpoch &&
+      state.session?.email === accountEmail && isCurrentSettings() && target.isConnected && isCurrentCommand(context);
+    if (!identity || typeof accountEmail !== "string" || !contextIsCurrent()) {
+      throw new feature.AccountSecurityActionError("Your account or Settings page changed. Refresh before trying again.");
+    }
+    try {
+      await request();
+    } catch (error) {
+      if (isCurrentCommandIdentity(context) && recoverProtectedCommandFailure(error, context)) {
+        throw new feature.AccountSecurityActionError("Your session or access changed. Refresh Settings before continuing.");
+      }
+      if (!contextIsCurrent()) {
+        throw new feature.AccountSecurityActionError("Your account or Settings page changed. Refresh before trying again.");
+      }
+      throw new feature.AccountSecurityActionError(errorText(error));
+    }
+    if (!contextIsCurrent()) {
+      throw new feature.AccountSecurityActionError("Your account or Settings page changed. Refresh before trying again.");
+    }
+  }
+
+  mountReactIsland(target, feature.AccountSecurity, {
+    readState,
+    onRequestVerification: () => runAuthAction(() => api("/api/auth/send-verification-email", requestOptions("POST", {
+      email: accountEmail,
+    }))),
+    onChangePassword: (currentPassword, newPassword) => runAuthAction(() => api("/api/auth/change-password", requestOptions("POST", {
+      currentPassword,
+      newPassword,
+      revokeOtherSessions: true,
+    }))),
+  });
+}
+
+function mountSettingsPublicOrigin(target, isCurrentSettings, originBridge) {
+  return mountSettingsPublicOriginRoute({
+    target,
+    isCurrentSettings,
+    originBridge,
+    host: {
+      getIdentityEpoch: () => state.identityEpoch,
+      readOrigin: () => api("/api/organisation/public-origin", state.bootstrapToken
+        ? requestOptions("GET", undefined, { "x-nova-bootstrap-token": state.bootstrapToken })
+        : undefined),
+      saveOrigin: (origin) => api("/api/organisation/public-origin", requestOptions(
+        "PATCH",
+        { origin },
+        state.bootstrapToken ? { "x-nova-bootstrap-token": state.bootstrapToken } : undefined,
+      )),
+      captureCommandContext,
+      isCurrentCommand,
+      isCurrentCommandIdentity,
+      recoverProtectedCommandFailure,
+      publishOriginSnapshot(snapshot) {
+        state.publicOriginConfigured = Boolean(snapshot.configuredOrigin);
+        state.publicOrigin = snapshot.configuredOrigin || snapshot.effectiveOrigin;
+      },
+      clearOriginSnapshot() {
+        state.publicOriginConfigured = false;
+        state.publicOrigin = "";
+      },
+      mountReactIsland,
+      noticeElement,
+      errorText,
+    },
+  });
+}
+
+function mountSettingsAuthHandoffs(target, isCurrentSettings) {
+  return mountAuthHandoffsRoute(target, isCurrentSettings, {
+    state,
+    api,
+    requestOptions,
+    captureCommandContext,
+    isCurrentCommand,
+    isCurrentCommandIdentity,
+    recoverProtectedCommandFailure,
+    mountReactIsland,
+    noticeElement,
+  });
 }
 
 function adminReadFailure(result, resource) {
@@ -1166,164 +1726,6 @@ function adminReadFailure(result, resource) {
 
 function hasAdminPermission(data, permissionKey, target = {}) {
   return hasPermissionGrant(data?.actorGrants, permissionKey, target);
-}
-
-function replaceSectionWithReadFailures(section, sources) {
-  const failures = sources.map(([result, resource]) => adminReadFailure(result, resource)).filter(Boolean);
-  if (!failures.length) return false;
-  section.replaceChildren(...failures);
-  return true;
-}
-
-function taskDueDateEditor(task, refresh) {
-  const taskStatus = task.taskStatus || task.status;
-  const taskId = task.id || task.taskId;
-  if (!task.canEditDueDate || ["approved", "done", "cancelled"].includes(taskStatus)) return null;
-  const details = document.createElement("details");
-  const summary = document.createElement("summary");
-  summary.textContent = "Change due date";
-  const form = document.createElement("form");
-  form.className = "form-actions";
-  const date = adminField("Due date (blank removes it)", "dueDate", "date", task.dueDate || "", false);
-  form.append(date, adminSubmit("Save due date", true));
-  const hint = document.createElement("p");
-  hint.className = "small";
-  hint.textContent = "Changes are audited, old due reminders are withdrawn, and active assignees are notified when present.";
-  details.append(summary, form, hint);
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const button = form.querySelector('[type="submit"]');
-    if (button) button.disabled = true;
-    try {
-      const result = await api("/api/tasks/" + taskId + "/due-date", requestOptions("PATCH", {
-        dueDate: date.querySelector("input").value || null,
-        expectedDueDate: task.dueDate || null,
-        expectedDueDateRevision: task.dueDateRevision,
-      }));
-      const notifiedCount = Number(result.notifiedAssigneeCount || 0);
-      const notificationMessage = notifiedCount === 0
-        ? "No active assignees to notify."
-        : `${notifiedCount} active assignee${notifiedCount === 1 ? "" : "s"} notified.`;
-      setMessage(result.changed ? `Due date updated; ${notificationMessage}` : "Due date is unchanged.");
-    } catch (error) {
-      setMessage(errorText(error), "error");
-    }
-    refresh();
-  });
-  return details;
-}
-
-function appendTaskCorrectionFields(form, tasks, workstreamSelect) {
-  const correction = document.createElement("select");
-  correction.name = "correctionOfTaskId";
-  correction.append(adminOption("", "This is not a correction task"));
-  correction.value = "";
-  (tasks || []).filter((task) =>
-    ["approved", "done"].includes(task.status) && !task.isCorrection && task.workstream?.id,
-  ).forEach((task) => {
-    const option = adminOption(task.id, task.title + " · " + task.status);
-    option.dataset.workstream = task.workstream.kind + ":" + task.workstream.id;
-    correction.append(option);
-  });
-  const correctionLabel = document.createElement("label");
-  correctionLabel.textContent = "Create a separate correction task linked to completed work (optional)";
-  correctionLabel.append(correction);
-  form.append(correctionLabel);
-
-  const reasonLabel = document.createElement("label");
-  reasonLabel.className = "full";
-  reasonLabel.textContent = "What needs correcting?";
-  const reason = document.createElement("textarea");
-  reason.name = "correctionReason";
-  reason.maxLength = 2000;
-  reasonLabel.append(reason);
-  form.append(reasonLabel);
-  const hint = document.createElement("p");
-  hint.className = "small full";
-  hint.textContent = "A correction is a separate new work item to repair an approved or completed task; it never reopens or changes the original. NOVA classifies the new task under the current workstream policy, like any other task. The correction link is not a billing category and never chooses the class. Unfinished work should continue through its existing review cycle.";
-  form.append(hint);
-
-  const refresh = () => {
-    const context = workstreamSelect.value;
-    correction.querySelectorAll("option[data-workstream]").forEach((option) => {
-      option.hidden = Boolean(context) && option.dataset.workstream !== context;
-    });
-    if (correction.selectedOptions[0]?.hidden) correction.value = "";
-    const isCorrection = Boolean(correction.value);
-    reasonLabel.hidden = !isCorrection;
-    reason.required = isCorrection;
-    if (!isCorrection) reason.value = "";
-  };
-  workstreamSelect.addEventListener("change", refresh);
-  correction.addEventListener("change", refresh);
-  refresh();
-}
-
-function appendTaskCatalogSelector(form, catalog) {
-  const readFailure = adminReadFailure(catalog, "task definitions");
-  if (readFailure) {
-    form.append(readFailure);
-    return null;
-  }
-  const entries = catalog && catalog.entries || [];
-  if (!entries.length) {
-    const hint = document.createElement("p");
-    hint.className = "small full";
-    hint.textContent = "No approved task definitions are available to this role. You can still create a one-off task. NOVA classifies it from the selected workstream policy.";
-    form.append(hint);
-    return null;
-  }
-  const select = document.createElement("select");
-  select.name = "taskCatalogEntryId";
-  select.append(adminOption("", "One-off task"));
-  entries.forEach((entry) => {
-    const option = adminOption(entry.id, entry.title);
-    option.dataset.revision = String(entry.revision);
-    option.dataset.title = entry.title;
-    option.dataset.description = entry.description || "";
-    option.dataset.priority = entry.priority;
-    select.append(option);
-  });
-  const label = document.createElement("label");
-  label.textContent = "Task definition (optional defaults)";
-  label.append(select);
-  form.append(label);
-  const billingHint = document.createElement("p");
-  billingHint.className = "small full";
-  billingHint.textContent = "You cannot set billing class here. NOVA applies the selected workstream's single automatic policy to free-form, predefined, and correction tasks alike. A correction link is separate from billing classification.";
-  form.append(billingHint);
-  select.addEventListener("change", () => {
-    const old = select.dataset.appliedEntryId
-      ? entries.find((entry) => entry.id === select.dataset.appliedEntryId)
-      : null;
-    const title = form.elements.namedItem("title");
-    const description = form.elements.namedItem("description");
-    const priority = form.elements.namedItem("priority");
-    if (old && title && title.value === old.title) title.value = "";
-    if (old && description && description.value === (old.description || "")) description.value = "";
-    if (old && priority && priority.value === old.priority) priority.value = "normal";
-    const entry = entries.find((candidate) => candidate.id === select.value);
-    if (!entry) {
-      delete select.dataset.appliedEntryId;
-      updateBillingHint();
-      return;
-    }
-    if (title) title.value = entry.title;
-    if (description) description.value = entry.description || "";
-    if (priority) priority.value = entry.priority;
-    select.dataset.appliedEntryId = entry.id;
-    updateBillingHint();
-  });
-  form.addEventListener("change", (event) => {
-  });
-  return select;
-}
-
-function taskCatalogProvenance(select) {
-  const option = select && select.selectedOptions[0];
-  return option && option.value
-    ? { taskCatalogEntryId: option.value, taskCatalogRevision: Number(option.dataset.revision) }
-    : {};
 }
 
 function taskCreateIdempotencyHeaders(payload) {
@@ -1360,386 +1762,10 @@ function taskCorrectionConfirmation(isCorrection) {
   return isCorrection ? " This is a separate correction work item; the original task remains unchanged." : "";
 }
 
-function taskDefinitionProvenance(task) {
-  return task && task.taskDefinition
-    ? "selected definition · revision " + task.taskDefinition.revision
-    : "one-off task path";
-}
-
 function taskDefinitionReference(task) {
   return task && task.taskDefinition
     ? task.taskDefinition.entryId + "@" + task.taskDefinition.revision
     : "one-off task path";
-}
-
-function renderTaskCatalogTools(catalog) {
-  const readFailure = adminReadFailure(catalog, "task definitions");
-  if (readFailure) return readFailure;
-  const permissions = catalog && catalog.permissions || {};
-  if (!permissions.manage && !permissions.propose && !permissions.review && !permissions.view) return null;
-  const section = adminSection(
-    "Reusable task defaults",
-    "Definitions provide reusable task content only. NOVA applies the same automatic policy to every task in a client workstream, whether entered freely, selected from this list, or created as a correction. This list never classifies work; a correction link is separate from billing.",
-  );
-  if (permissions.manage || permissions.propose) {
-    const form = document.createElement("form");
-    form.className = "form-grid";
-    form.append(adminField("Task name", "title", "text", "", true));
-    const descriptionLabel = document.createElement("label");
-    descriptionLabel.textContent = "Description (optional)";
-    const description = document.createElement("textarea");
-    description.name = "description";
-    description.maxLength = 10000;
-    descriptionLabel.append(description);
-    const priority = document.createElement("select");
-    priority.name = "priority";
-    [["low", "Low"], ["normal", "Normal"], ["high", "High"], ["urgent", "Urgent"]]
-      .forEach(([value, label]) => priority.append(adminOption(value, label, "normal")));
-    const priorityLabel = document.createElement("label");
-    priorityLabel.textContent = "Default priority";
-    priorityLabel.append(priority);
-    form.append(descriptionLabel, priorityLabel, adminField("Reason", "reason", "text", "", true));
-    const reason = form.elements.namedItem("reason");
-    reason.maxLength = 2000;
-    form.append(adminSubmit(permissions.manage ? "Add approved default" : "Suggest a reusable task", true));
-    form.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-      const result = await api("/api/task-catalog", requestOptions("POST", formValues(form)));
-      setMessage(result.status === "pending" ? "Suggestion sent for review." : "Reusable task default added.");
-    }));
-    section.append(form);
-  }
-
-  const entries = catalog && catalog.entries || [];
-  if (permissions.view || permissions.manage) {
-    const list = document.createElement("div");
-    list.className = "stack";
-    if (!entries.length) list.append(noticeElement("No approved task defaults yet. You can still create one-off tasks; NOVA applies the selected workstream policy.", "warning"));
-    entries.forEach((entry) => {
-      const item = document.createElement("article");
-      item.className = "list-item";
-      const heading = document.createElement("strong");
-      heading.textContent = entry.title;
-      const meta = document.createElement("span");
-      meta.className = "small";
-      meta.textContent = entry.priority + " priority · revision " + entry.revision +
-        (entry.createdByName ? " · added by " + entry.createdByName : "");
-      item.append(heading, meta);
-      if (entry.description) {
-        const details = document.createElement("p");
-        details.className = "small";
-        details.textContent = entry.description;
-        item.append(details);
-      }
-      if (permissions.manage || permissions.propose) {
-        const edit = document.createElement("form");
-        edit.className = "form-grid";
-        edit.append(adminField("Task name", "title", "text", entry.title, true));
-        const editDescriptionLabel = document.createElement("label");
-        editDescriptionLabel.textContent = "Description (optional)";
-        const editDescription = document.createElement("textarea");
-        editDescription.name = "description";
-        editDescription.maxLength = 10000;
-        editDescription.value = entry.description || "";
-        editDescriptionLabel.append(editDescription);
-        const editPriority = document.createElement("select");
-        editPriority.name = "priority";
-        [["low", "Low"], ["normal", "Normal"], ["high", "High"], ["urgent", "Urgent"]]
-          .forEach(([value, label]) => editPriority.append(adminOption(value, label, entry.priority)));
-        const editPriorityLabel = document.createElement("label");
-        editPriorityLabel.textContent = "Default priority";
-        editPriorityLabel.append(editPriority);
-        edit.append(editDescriptionLabel, editPriorityLabel, adminField("Reason", "reason", "text", "", true));
-        edit.elements.namedItem("reason").maxLength = 2000;
-        edit.append(adminSubmit(permissions.manage ? "Save changes" : "Suggest changes", true));
-        edit.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-          const values = formValues(edit);
-          const result = await api("/api/task-catalog/" + entry.id, requestOptions("PATCH", {
-            ...values, expectedRevision: entry.revision,
-          }));
-          setMessage(result.status === "pending" ? "Change suggestion sent for review." : "Reusable task default updated.");
-        }));
-        const archive = document.createElement("form");
-        archive.className = "form-actions";
-        const archiveReason = adminField("Archive reason", "reason", "text", "", true);
-        archiveReason.querySelector("input").maxLength = 2000;
-        archive.append(archiveReason, adminSubmit(permissions.manage ? "Archive default" : "Suggest archive", true));
-        archive.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-          const values = formValues(archive);
-          const result = await api("/api/task-catalog/" + entry.id + "/archive", requestOptions("POST", {
-            ...values, expectedRevision: entry.revision,
-          }));
-          setMessage(result.status === "pending" ? "Archive suggestion sent for review." : "Reusable task default archived.");
-        }));
-        item.append(edit, archive);
-      }
-      list.append(item);
-    });
-    section.append(list);
-  }
-
-  const proposals = catalog && catalog.proposals || [];
-  if (permissions.propose || permissions.review) {
-    const list = document.createElement("div");
-    list.className = "stack";
-    if (!proposals.length) list.append(noticeElement("No task catalogue proposals to show.", "warning"));
-    proposals.forEach((proposal) => {
-      const item = document.createElement("article");
-      item.className = "list-item";
-      const heading = document.createElement("strong");
-      heading.textContent = proposal.action + " · " + proposal.title;
-      const meta = document.createElement("span");
-      meta.className = "small";
-      meta.textContent = proposal.status + " · proposed by " + (proposal.proposerName || "colleague") + " · " + proposal.reason;
-      item.append(heading, meta);
-      if (permissions.review && proposal.status === "pending") {
-        const reviewForm = document.createElement("form");
-        reviewForm.className = "form-actions";
-        const note = adminField("Review note (required to reject)", "reviewNote", "text", "", false);
-        note.querySelector("input").maxLength = 2000;
-        reviewForm.append(note);
-        const approve = adminSubmit("Approve", true);
-        approve.dataset.decision = "approved";
-        const reject = adminSubmit("Reject", true);
-        reject.dataset.decision = "rejected";
-        reviewForm.append(approve, reject);
-        reviewForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-          const values = formValues(reviewForm);
-          const decision = event.submitter && event.submitter.dataset.decision;
-          const result = await api("/api/task-catalog/proposals/" + proposal.id + "/review", requestOptions("POST", {
-            decision, reviewNote: values.reviewNote || null,
-          }));
-          setMessage(result.status === "stale" ? "Proposal was stale and needs a fresh request." : "Proposal " + result.status + ".");
-        }));
-        item.append(reviewForm);
-      }
-      list.append(item);
-    });
-    section.append(list);
-  }
-  return section;
-}
-
-function renderBillingPolicyTools(clientWorkstreams, taskCatalogData) {
-  const manageable = (clientWorkstreams || []).filter((workstream) => workstream.canManageBillingPolicy);
-  if (!manageable.length) return null;
-  const section = adminSection(
-    "Client workstream billing policies",
-    "An authorized policy manager sets the default for one-off tasks and may set a separate rule for each reusable task in each client workstream. Workers never choose a billing class. Changes affect future tasks only; corrections remain linked work items, not billing adjustments.",
-  );
-  manageable.forEach((workstream) => {
-    const form = document.createElement("form");
-    form.className = "form-grid";
-    const heading = document.createElement("strong");
-    heading.className = "full";
-    heading.textContent = (workstream.client_name || "Client") + " · " + workstream.name;
-    const current = document.createElement("p");
-    current.className = "small full";
-    const updateCurrentPolicy = () => {
-      current.textContent = workstream.billingPolicyClass
-        ? "Default for one-off tasks: " + (workstream.billingPolicyClass === "billable" ? "Billable" : "Non-billable") +
-          " · revision " + workstream.billingPolicyRevision + " · applies to future tasks only."
-      : "No policy yet. Task creation in this workstream is blocked until one is set.";
-    };
-    updateCurrentPolicy();
-    const select = document.createElement("select");
-    select.name = "policyClass";
-    select.required = true;
-    select.append(adminOption("", "Choose automatic policy"));
-    select.append(adminOption("billable", "Billable"));
-    select.append(adminOption("non_billable", "Non-billable"));
-    select.value = workstream.billingPolicyClass || "";
-    const label = document.createElement("label");
-    label.textContent = "Automatic policy for this workstream";
-    label.append(select);
-    const reason = document.createElement("textarea");
-    reason.name = "reason";
-    reason.maxLength = 2000;
-    reason.required = true;
-    const reasonLabel = document.createElement("label");
-    reasonLabel.className = "full";
-    reasonLabel.textContent = "Why is this policy being set or changed?";
-    reasonLabel.append(reason);
-    form.append(heading, current, label, reasonLabel, adminSubmit("Save policy", true));
-    form.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-      const values = formValues(form);
-      const saved = await api("/api/workstreams/client/" + workstream.id + "/billing-policy", requestOptions("PATCH", {
-        policyClass: values.policyClass,
-        expectedRevision: workstream.billingPolicyRevision,
-        reason: values.reason,
-      }));
-      workstream.billingPolicyClass = saved.policyClass;
-      workstream.billingPolicyRevision = saved.revision;
-      select.value = saved.policyClass;
-      updateCurrentPolicy();
-      setMessage("Default saved for future one-off tasks. Existing tasks and timers were not changed.");
-    }));
-    section.append(form);
-  });
-
-  const catalogPermissions = taskCatalogData && taskCatalogData.permissions || {};
-  const catalogReadFailure = adminReadFailure(taskCatalogData, "task definitions");
-  if (catalogReadFailure) {
-    section.append(catalogReadFailure);
-    return section;
-  }
-  const catalogVisible = catalogPermissions.view === true || catalogPermissions.manage === true;
-  const entries = catalogVisible && Array.isArray(taskCatalogData.entries) ? taskCatalogData.entries : [];
-  if (!catalogVisible) {
-    const note = document.createElement("p");
-    note.className = "notice warning";
-    note.textContent = "To configure per-task defaults, this role also needs task-catalog view or manage permission. Catalog editing alone never grants billing-policy authority.";
-    section.append(note);
-    return section;
-  }
-  if (!entries.length) {
-    const note = document.createElement("p");
-    note.className = "small";
-    note.textContent = "Create or approve reusable task definitions first. One-off tasks will use the workstream default.";
-    section.append(note);
-    return section;
-  }
-
-  const definitionHeading = document.createElement("h3");
-  definitionHeading.textContent = "Predefined-task rules";
-  const definitionHelp = document.createElement("p");
-  definitionHelp.className = "small";
-  definitionHelp.textContent = "Choose a predefined task and set its class for this workstream, or use the one-off default. The selected task name determines the rule; users never submit a class. You need task-catalog visibility plus workstream billing-policy permission.";
-  const definitionForm = document.createElement("form");
-  definitionForm.className = "form-grid";
-  const workstreamSelect = document.createElement("select");
-  workstreamSelect.name = "workstreamId";
-  workstreamSelect.required = true;
-  manageable.forEach((workstream) => workstreamSelect.append(adminOption(
-    workstream.id, (workstream.client_name || "Client") + " · " + workstream.name,
-  )));
-  const workstreamLabel = document.createElement("label");
-  workstreamLabel.textContent = "Client workstream";
-  workstreamLabel.append(workstreamSelect);
-  const entrySelect = document.createElement("select");
-  entrySelect.name = "entryId";
-  entrySelect.required = true;
-  entries.forEach((entry) => entrySelect.append(adminOption(entry.id, entry.title)));
-  const entryLabel = document.createElement("label");
-  entryLabel.textContent = "Predefined task";
-  entryLabel.append(entrySelect);
-  const classSelect = document.createElement("select");
-  classSelect.name = "policyClass";
-  classSelect.required = true;
-  classSelect.append(adminOption("inherit", "Use workstream default"));
-  classSelect.append(adminOption("billable", "Billable"));
-  classSelect.append(adminOption("non_billable", "Non-billable"));
-  const classLabel = document.createElement("label");
-  classLabel.textContent = "Automatic class for this predefined task";
-  classLabel.append(classSelect);
-  const definitionReason = document.createElement("textarea");
-  definitionReason.name = "reason";
-  definitionReason.maxLength = 2000;
-  definitionReason.required = true;
-  const definitionReasonLabel = document.createElement("label");
-  definitionReasonLabel.className = "full";
-  definitionReasonLabel.textContent = "Why is this task rule being set or changed?";
-  definitionReasonLabel.append(definitionReason);
-  const currentDefinitionRule = document.createElement("p");
-  currentDefinitionRule.className = "small full";
-  const saveDefinitionRule = adminSubmit("Save task rule", true);
-  let currentRules = new Map();
-  let ruleLoadGeneration = 0;
-  let definitionRulesLoaded = false;
-  const selectedWorkstream = () => manageable.find((item) => item.id === workstreamSelect.value);
-  const updateDefinitionRule = () => {
-    const rule = currentRules.get(entrySelect.value);
-    classSelect.value = rule && rule.billingClass
-      ? rule.billingClass : "inherit";
-    definitionReason.value = "";
-    const workstream = selectedWorkstream();
-    const fallback = workstream && workstream.billingPolicyClass;
-    currentDefinitionRule.textContent = rule && rule.billingClass
-      ? "Current classification: " + (rule.billingClass === "billable" ? "Billable" : "Non-billable") +
-        " · task-rule revision " + rule.ruleRevision + " · existing tasks are unchanged."
-      : "No separate rule. Future tasks use the workstream default" + (fallback
-        ? " (" + (fallback === "billable" ? "billable" : "non-billable") + ")."
-        : "; task creation is blocked until the default is configured.");
-    classSelect.disabled = !fallback || !definitionRulesLoaded;
-    saveDefinitionRule.disabled = !fallback || !definitionRulesLoaded;
-  };
-  const loadDefinitionRules = async () => {
-    const generation = ++ruleLoadGeneration;
-    definitionRulesLoaded = false;
-    currentRules = new Map();
-    updateDefinitionRule();
-    if (!workstreamSelect.value) return;
-    try {
-      const result = await api("/api/workstreams/client/" + workstreamSelect.value + "/billing-policy/definitions");
-      if (generation !== ruleLoadGeneration) return;
-      currentRules = new Map((result.entries || []).map((rule) => [rule.entryId, rule]));
-      definitionRulesLoaded = true;
-      const workstream = selectedWorkstream();
-      if (workstream && result.defaultClass) {
-        workstream.billingPolicyClass = result.defaultClass;
-        workstream.billingPolicyRevision = result.defaultRevision;
-      }
-      updateDefinitionRule();
-    } catch (error) {
-      if (generation === ruleLoadGeneration) {
-        definitionRulesLoaded = false;
-        updateDefinitionRule();
-        currentDefinitionRule.textContent = error && error.code === "PERMISSION_DENIED"
-          ? "Catalog access is required to inspect or edit these rules."
-          : "Could not load the current task rules. Nothing has been changed.";
-      }
-    }
-  };
-  workstreamSelect.addEventListener("change", loadDefinitionRules);
-  entrySelect.addEventListener("change", updateDefinitionRule);
-  definitionForm.append(workstreamLabel, entryLabel, classLabel, definitionReasonLabel, currentDefinitionRule, saveDefinitionRule);
-  definitionForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    const workstream = selectedWorkstream();
-    const rule = currentRules.get(entrySelect.value);
-    if (!workstream || !entrySelect.value) throw Object.assign(new Error("TASK_BILLING_RULE_INPUT_INVALID"), { code: "TASK_BILLING_RULE_INPUT_INVALID" });
-    const saved = await api(
-      "/api/workstreams/client/" + workstream.id + "/billing-policy/definitions/" + entrySelect.value,
-      requestOptions("PATCH", {
-        policyClass: classSelect.value === "inherit" ? null : classSelect.value,
-        expectedRevision: rule ? rule.ruleRevision : 0,
-        reason: formValues(definitionForm).reason,
-      }),
-    );
-    currentRules.set(entrySelect.value, {
-      ...(rule || {}), entryId: entrySelect.value,
-      billingClass: saved.policyClass, ruleRevision: saved.revision,
-    });
-    updateDefinitionRule();
-    setMessage("Predefined-task rule saved for future tasks in this workstream. Existing tasks and timers were not changed.");
-  }));
-  section.append(definitionHeading, definitionHelp, definitionForm);
-  if (workstreamSelect.value) void loadDefinitionRules();
-  return section;
-}
-
-function adminSection(title, description) {
-  const section = document.createElement("section");
-  section.className = "panel";
-  const header = document.createElement("div");
-  header.className = "panel-header";
-  const heading = document.createElement("div");
-  const h2 = document.createElement("h2");
-  h2.textContent = title;
-  const p = document.createElement("p");
-  p.className = "small";
-  p.textContent = description;
-  heading.append(h2, p);
-  header.append(heading);
-  section.append(header);
-  return section;
-}
-
-function adminButton(text, handler, secondary) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "button compact" + (secondary ? " secondary" : "");
-  button.textContent = text;
-  button.addEventListener("click", handler);
-  return button;
 }
 
 function csvCell(value) {
@@ -1758,1545 +1784,172 @@ function downloadCsv(filename, headers, rows) {
   setTimeout(() => URL.revokeObjectURL(link.href), 0);
 }
 
-function adminFormSubmit(event, work) {
-  return withSubmit(event, async () => {
-    await work();
-    render();
-  });
-}
-
-function renderAdmin() {
-  renderShell(
-    '<div id="admin-console"><section class="panel"><p class="eyebrow">Organisation administration</p><h1>Admin console</h1><p class="lede">Manage the real NOVA organisation, role, people, onboarding, and audit records.</p>' + feedback() + '<div id="admin-content"><p class="small">Loading organisation data...</p></div></section></div>',
-    "admin",
-  );
+function renderAdmin(lifetime) {
+  lifetime = lifetime || beginPageRequestLifetime();
+  renderShell(createElement("div", { id: "admin-console" }), "admin");
+  const target = app.querySelector("#admin-console");
+  const pageReady = target
+    ? mountAdminPage(target, lifetime, { state: { status: "loading" }, sections: [] })
+    : Promise.resolve(false);
   showFeedback();
-  loadAdmin();
+  void loadAdmin(lifetime, pageReady);
 }
 
-async function loadAdmin() {
+async function mountAdminPage(target, lifetime, props) {
+  const identityEpoch = state.identityEpoch;
+  let AdminPage;
   try {
-    const [organisation, offices, departments, permissions, roles, people, audit, availability, wfhPolicies, leavePending, wfhPending, exceptions, workContext, tasks, taskCatalog, actorGrants] = await Promise.all([
-      readOrError(api("/api/organisation"), { organisation: null }),
-      readOrError(api("/api/offices"), { offices: [] }),
-      readOrError(api("/api/organisation-departments"), { departments: [] }),
-      readOrError(api("/api/permissions"), { permissions: [] }),
-      readOrError(api("/api/roles"), { roles: [] }),
-      readOrError(api("/api/people"), { people: [] }),
-      readOrError(api("/api/audit-events?limit=50"), { events: [] }),
-      readOrError(api("/api/availability/config"), { shifts: [], calendars: [], holidays: [] }),
-      readOrError(api("/api/availability/wfh-policies"), { policies: [] }),
-      readOrError(api("/api/leave/pending"), { requests: [] }),
-      readOrError(api("/api/availability/wfh/pending"), { requests: [] }),
-      readOrError(api("/api/historical-exceptions"), { exceptions: [] }),
-      readOrError(api("/api/work-context"), { clients: [], clientWorkstreams: [], organisationWorkstreams: [], groups: [] }),
-      readOrError(api("/api/tasks"), { tasks: [] }),
-      readOrError(api("/api/task-catalog"), { entries: [], proposals: [], permissions: {} }),
-      readOrError(api("/api/me/permission-grants"), { grants: [], isSuperAdmin: false, actorPersonId: null }),
-    ]);
-    state.adminData = { organisation, offices, departments, permissions, roles, people, audit, availability, wfhPolicies, leavePending, wfhPending, exceptions, workContext, tasks, taskCatalog, actorGrants };
-    renderAdminContent(state.adminData);
-  } catch (error) {
-    const target = app.querySelector("#admin-content");
-    if (target) target.replaceChildren(noticeElement(errorText(error), "error"));
+    ({ AdminPage } = await import("./src/pages/admin/AdminPage.tsx"));
+  } catch {
+    if (target.isConnected && isCurrentPageRequest(lifetime) && identityEpoch === state.identityEpoch) {
+      target.replaceChildren(noticeElement("Admin page could not load. Reload Admin to try again.", "error"));
+    }
+    return false;
   }
+  if (!target.isConnected || !isCurrentPageRequest(lifetime) || identityEpoch !== state.identityEpoch) return false;
+  mountReactIsland(target, AdminPage, props);
+  if (props.state?.status !== "loading" && state.pendingAdminCommandFocus) {
+    state.pendingAdminCommandFocus = false;
+    window.requestAnimationFrame(() => {
+      if (!target.isConnected || !isCurrentPageRequest(lifetime)) return;
+      target.querySelector("#admin-page-title")?.focus({ preventScroll: true });
+    });
+  }
+  showFeedback();
+  return true;
 }
 
-function renderAdminContent(data) {
-  const target = app.querySelector("#admin-content");
-  if (!target) return;
-  target.replaceChildren();
-  const organisation = data.organisation.organisation;
-  const summary = document.createElement("p");
-  summary.className = "small";
-  summary.textContent = organisation
-    ? organisation.name + " · " + (data.people.readError ? "people list unavailable" : data.people.people.length + " people")
-    : "Organisation unavailable";
-  target.append(summary);
-  const actorPermissionFailure = adminReadFailure(data.actorGrants, "your current action permissions");
-  if (actorPermissionFailure) {
-    actorPermissionFailure.textContent += " Write controls are hidden until this can be refreshed.";
-    target.append(actorPermissionFailure);
-  }
-
-  const structure = adminSection("Organisation structure", "Create the offices and departments used by onboarding and future availability rules.");
-  const structureGrid = document.createElement("div");
-  structureGrid.className = "split";
-  const officeForm = document.createElement("form");
-  officeForm.className = "form-grid";
-  officeForm.append(adminField("Office name", "name", "text", "", true));
-  officeForm.append(adminField("Location anchor", "location", "text", "", true));
-  officeForm.append(adminField("IANA timezone", "timezone", "text", "UTC", true));
-  officeForm.append(adminField("Latitude", "latitude", "number", "", true));
-  officeForm.append(adminField("Longitude", "longitude", "number", "", true));
-  officeForm.append(adminField("Attendance radius (metres)", "geofenceRadiusMeters", "number", "150", true));
-  const officeActions = document.createElement("div");
-  officeActions.className = "form-actions full";
-  const officeSubmit = document.createElement("button");
-  officeSubmit.className = "button";
-  officeSubmit.type = "submit";
-  officeSubmit.textContent = "Create office";
-  officeActions.append(officeSubmit);
-  officeForm.append(officeActions);
-  officeForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    const values = formValues(event.currentTarget);
-    values.latitude = Number(values.latitude);
-    values.longitude = Number(values.longitude);
-    values.geofenceRadiusMeters = Number(values.geofenceRadiusMeters);
-    await api("/api/offices", requestOptions("POST", values));
-    setMessage("Office created.");
-  }));
-  const departmentForm = document.createElement("form");
-  departmentForm.className = "form-grid";
-  departmentForm.append(adminField("Department name", "name", "text", "", true));
-  const departmentActions = document.createElement("div");
-  departmentActions.className = "form-actions full";
-  const departmentSubmit = document.createElement("button");
-  departmentSubmit.className = "button";
-  departmentSubmit.type = "submit";
-  departmentSubmit.textContent = "Create department";
-  departmentActions.append(departmentSubmit);
-  departmentForm.append(departmentActions);
-  departmentForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    const values = formValues(event.currentTarget);
-    await api("/api/organisation-departments", requestOptions("POST", values));
-    setMessage("Department created.");
-  }));
-  const structureForms = document.createElement("div");
-  if (hasAdminPermission(data, "organisation.settings.manage")) {
-    structureForms.append(officeForm, departmentForm);
-  }
-  const structureList = document.createElement("div");
-  structureList.className = "stack";
-  const officeHeading = document.createElement("h3");
-  officeHeading.textContent = "Offices";
-  structureList.append(officeHeading);
-  data.offices.offices.forEach((office) => {
-    const item = document.createElement("article");
-    item.className = "list-item";
-    const summary = document.createElement("strong");
-    summary.textContent = office.name + " · " + office.location + " · " + office.timezone +
-      " · geofence " + (office.latitude === null ? "not configured" : office.geofenceRadiusMeters + "m");
-    const geofenceForm = document.createElement("form");
-    geofenceForm.className = "form-grid";
-    geofenceForm.innerHTML = '<label>Latitude<input name="latitude" type="number" step="0.00001" required></label>' +
-      '<label>Longitude<input name="longitude" type="number" step="0.00001" required></label>' +
-      '<label>Radius (m)<input name="geofenceRadiusMeters" type="number" min="10" max="100000" required></label>' +
-      '<div class="form-actions"><button class="button secondary" type="submit">Save geofence</button></div>';
-    geofenceForm.elements.latitude.value = office.latitude === null ? "" : office.latitude;
-    geofenceForm.elements.longitude.value = office.longitude === null ? "" : office.longitude;
-    geofenceForm.elements.geofenceRadiusMeters.value = office.geofenceRadiusMeters || 150;
-    geofenceForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-      const values = formValues(event.currentTarget);
-      await api("/api/offices/" + office.id + "/geofence", requestOptions("PATCH", {
-        latitude: Number(values.latitude), longitude: Number(values.longitude),
-        geofenceRadiusMeters: Number(values.geofenceRadiusMeters),
-      }));
-      setMessage("Office geofence updated.");
-    }));
-    item.append(summary);
-    if (hasAdminPermission(data, "attendance.geofence.manage", { officeId: office.id })) {
-      item.append(geofenceForm);
-    }
-    structureList.append(item);
-  });
-  const departmentHeading = document.createElement("h3");
-  departmentHeading.textContent = "Departments";
-  structureList.append(departmentHeading);
-  data.departments.departments.forEach((department) => {
-    const item = document.createElement("p");
-    item.className = "list-item";
-    item.textContent = department.name;
-    structureList.append(item);
-  });
-  if (structureForms.childElementCount) structureGrid.append(structureForms);
-  structureGrid.append(structureList);
-  structure.append(structureGrid);
-  replaceSectionWithReadFailures(structure, [
-    [data.organisation, "organisation settings"],
-    [data.offices, "offices"],
-    [data.departments, "departments"],
-  ]);
-  target.append(structure);
-
-  const attendancePolicy = adminSection("Attendance interpretation", "Choose whether the organisation measures required duration or schedule-relative attendance. Changes are effective-dated so historical timelines keep their meaning.");
-  const attendancePolicyForm = document.createElement("form");
-  attendancePolicyForm.className = "form-grid";
-  attendancePolicyForm.innerHTML = '<label>Mode<select name="mode"><option value="hour_based">Hour-based</option><option value="scheduled">Scheduled</option></select></label>' +
-    '<label>Effective from<input name="effectiveOn" type="date" required></label>' +
-    '<label>Required attendance minutes<input name="requiredAttendanceMinutes" type="number" min="1" max="1440" step="1" required></label>' +
-    '<p class="small full">Hour-based mode does not derive late/early states. Scheduled mode uses the shift attached to each working calendar day.</p>' +
-    '<div class="form-actions full"><button class="button" type="submit">Schedule attendance policy</button></div>';
-  const currentPolicy = organisation?.attendancePolicy;
-  attendancePolicyForm.elements.mode.value = currentPolicy?.mode || "hour_based";
-  const policyAnchor = currentPolicy?.effectiveOn
-    ? new Date(currentPolicy.effectiveOn + "T00:00:00Z")
-    : new Date();
-  policyAnchor.setUTCDate(policyAnchor.getUTCDate() + 1);
-  attendancePolicyForm.elements.effectiveOn.value = policyAnchor.toISOString().slice(0, 10);
-  attendancePolicyForm.elements.requiredAttendanceMinutes.value = currentPolicy?.requiredAttendanceMinutes || 480;
-  attendancePolicyForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    const values = formValues(event.currentTarget);
-    await api("/api/organisation/attendance-policy", requestOptions("PATCH", {
-      mode: values.mode,
-      effectiveOn: values.effectiveOn,
-      requiredAttendanceMinutes: Number(values.requiredAttendanceMinutes),
-    }));
-    setMessage("Attendance policy scheduled.");
-  }));
-  if (hasAdminPermission(data, "organisation.settings.manage")) {
-    attendancePolicy.append(attendancePolicyForm);
-  } else if (organisation?.attendancePolicy) {
-    const currentPolicySummary = document.createElement("p");
-    currentPolicySummary.className = "small";
-    currentPolicySummary.textContent = "Current policy: " + organisation.attendancePolicy.mode.replaceAll("_", " ") +
-      " · " + organisation.attendancePolicy.requiredAttendanceMinutes + " required minutes · effective " +
-      organisation.attendancePolicy.effectiveOn;
-    attendancePolicy.append(currentPolicySummary);
-  }
-  replaceSectionWithReadFailures(attendancePolicy, [[data.organisation, "attendance policy"]]);
-  target.append(attendancePolicy);
-
-  target.append(renderAvailabilitySection(data));
-
-  const rolesSection = adminSection("Roles and permissions", "Build configurable roles from the canonical permission catalogue. Protected Super Admin cannot be edited.");
-  const roleForm = document.createElement("form");
-  roleForm.id = "admin-role-form";
-  roleForm.className = "form-grid";
-  const roleTitle = document.createElement("h3");
-  roleTitle.id = "admin-role-form-title";
-  roleTitle.textContent = "Create custom role";
-  roleForm.append(roleTitle);
-  const rolePresetBox = document.createElement("div");
-  rolePresetBox.className = "role-preset-box full";
-  const rolePresetLabel = document.createElement("label");
-  rolePresetLabel.textContent = "Starter profile (optional)";
-  const rolePresetSelect = document.createElement("select");
-  rolePresetSelect.name = "rolePreset";
-  rolePresetSelect.append(adminOption("", "Choose a profile"));
-  rolePresets.forEach((preset) => rolePresetSelect.append(adminOption(preset.id, preset.name)));
-  rolePresetLabel.append(rolePresetSelect);
-  const rolePresetHelp = document.createElement("p");
-  rolePresetHelp.className = "small";
-  rolePresetHelp.textContent = "Profiles are editable starting points, not built-in roles. Applying one replaces the draft below and suggests an unused role key. Review every grant and operational setting; scoped grants need an explicit target. Saving still uses normal role permissions.";
-  const rolePresetStatus = document.createElement("p");
-  rolePresetStatus.className = "small";
-  rolePresetStatus.setAttribute("aria-live", "polite");
-  rolePresetSelect.addEventListener("change", () => {
-    const draft = rolePresetDraft(rolePresetSelect.value, data.permissions.permissions);
-    if (!draft) {
-      rolePresetStatus.textContent = "Choose a profile to preview it. Your current draft is unchanged.";
-      return;
-    }
-    rolePresetStatus.textContent = "Preview: " + draft.description + " It contains " + draft.grants.length +
-      " available grants and " + draft.targetGrantCount + " target-specific grants. Applying replaces the role draft." +
-      (draft.omitted.length ? " Some profile permissions/scopes are unavailable in this installed catalogue." : "");
-  });
-  const applyRolePresetButton = adminButton("Apply profile to draft", () => {
-    const draft = rolePresetDraft(rolePresetSelect.value, data.permissions.permissions);
-    if (!draft) {
-      setMessage("Choose a starter profile first.", "error");
-      return;
-    }
-    roleForm.querySelector("[name=key]").value = uniqueRoleKey(draft.key, data.roles.roles);
-    roleForm.querySelector("[name=name]").value = draft.name;
-    policyNames.forEach(([name]) => {
-      roleForm.querySelector("[name=" + name + "]").checked = draft.operationalPolicy[name] === true;
-    });
-    const grantsByPermission = groupRolePermissionGrants(draft.grants);
-    roleForm.querySelectorAll(".permission-row").forEach((row) => {
-      const grants = grantsByPermission.get(row.dataset.permission) || [];
-      const check = row.querySelector(".permission-check");
-      const addGrant = row.querySelector(".role-add-grant");
-      const grantList = row.querySelector(".role-grant-list");
-      check.checked = grants.length > 0;
-      grantList.replaceChildren();
-      addGrant.hidden = grants.length === 0;
-      grants.forEach((grant) => row.createGrantEditor(grant));
-    });
-    const targetText = draft.targetGrantCount
-      ? " " + draft.targetGrantCount + " scoped grants still need exact targets."
-      : "";
-    const omittedText = draft.omitted.length
-      ? " " + draft.omitted.length + " unavailable permission/scope entries were omitted; review the installed catalogue."
-      : "";
-    rolePresetStatus.textContent = draft.description + " Applied " + draft.grants.length + " grants." + targetText + omittedText;
-    setMessage("Starter profile applied as an editable draft. Review before saving.");
-  }, true);
-  rolePresetBox.append(rolePresetLabel, rolePresetHelp, applyRolePresetButton, rolePresetStatus);
-  roleForm.append(rolePresetBox);
-  const roleRevision = document.createElement("input");
-  roleRevision.type = "hidden";
-  roleRevision.name = "expectedRevision";
-  roleForm.append(roleRevision);
-  roleForm.append(adminField("Role key", "key", "text", "", true));
-  roleForm.append(adminField("Display name", "name", "text", "", true));
-  const policyHeading = document.createElement("h3");
-  policyHeading.textContent = "Operational policy";
-  roleForm.append(policyHeading);
-  const policyNames = [
-    ["workEnabled", "Work enabled"],
-    ["canReceiveAssignments", "Can receive assignments"],
-    ["attendanceRequired", "Attendance required"],
-    ["wfhAllowed", "WFH allowed"],
-    ["canWorkWithoutAttendance", "Can work without attendance"],
-    ["payrollApplicable", "Payroll applicable"],
-    ["payrollAttendanceContributes", "Attendance contributes to payroll"],
-    ["payrollOvertimeApplicable", "Overtime applicable"],
-  ];
-  const policyGrid = document.createElement("div");
-  policyGrid.className = "check-grid";
-  policyNames.forEach(([name, labelText]) => {
-    const label = document.createElement("label");
-    label.className = "check";
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.name = name;
-    label.append(input, document.createTextNode(labelText));
-    policyGrid.append(label);
-  });
-  roleForm.append(policyGrid);
-  const permissionHeading = document.createElement("h3");
-  permissionHeading.textContent = "Permission grants";
-  roleForm.append(permissionHeading);
-  const permissionHelp = document.createElement("p");
-  permissionHelp.className = "small full";
-  permissionHelp.textContent = "A permission may have multiple independent scopes or targets. New grants start at the narrowest supported scope; select every target explicitly. Role edits preserve all grants.";
-  roleForm.append(permissionHelp);
-  const permissionGrid = document.createElement("div");
-  permissionGrid.className = "permission-grid";
-  data.permissions.permissions.forEach((permission) => {
-    const row = document.createElement("div");
-    row.className = "permission-row";
-    row.dataset.permission = permission.key;
-    const label = document.createElement("label");
-    label.className = "check";
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.className = "permission-check";
-    label.append(checkbox, document.createTextNode(permission.key));
-    const description = document.createElement("span");
-    description.className = "small";
-    description.textContent = permission.description;
-    const heading = document.createElement("div");
-    heading.className = "permission-heading";
-    heading.append(label, description);
-    const grantList = document.createElement("div");
-    grantList.className = "role-grant-list";
-    const scopeLabels = [
-      ["organisation", "Organisation"],
-      ["own_record", "Own record"],
-      ["office", "Office"],
-      ["organisation_department", "Department"],
-      ["client", "Client"],
-      ["client_workstream", "Client workstream"],
-      ["group", "Group"],
-      ["assigned_work", "Assigned work"],
-    ];
-    const allowedScopes = Array.isArray(permission.allowedScopes) && permission.allowedScopes.length
-      ? permission.allowedScopes : ["organisation"];
-    const targetOptions = [
-      ...data.offices.offices.map((item) => ({ id: item.id, name: item.name, scope: "office" })),
-      ...data.departments.departments.map((item) => ({ id: item.id, name: item.name, scope: "organisation_department" })),
-      ...data.workContext.clients.map((item) => ({ id: item.id, name: item.name, scope: "client" })),
-      ...data.workContext.clientWorkstreams.map((item) => ({ id: item.id, name: item.name, scope: "client_workstream" })),
-      ...data.workContext.groups.map((item) => ({ id: item.id, name: item.name, scope: "group" })),
-    ];
-    const addGrantEditor = (initialGrant = {}) => {
-      const entry = document.createElement("div");
-      entry.className = "role-grant-entry";
-      const scope = document.createElement("select");
-      scope.className = "role-scope";
-      scope.setAttribute("aria-label", permission.key + " scope");
-      scopeLabels.filter(([value]) => allowedScopes.includes(value)).forEach(([value, labelText]) => {
-        scope.append(adminOption(value, labelText));
-      });
-      if (initialGrant.scope && !allowedScopes.includes(initialGrant.scope)) {
-        scope.append(adminOption(initialGrant.scope, "Saved scope — review"));
-      }
-      scope.value = initialGrant.scope || leastPrivilegedRoleScope(allowedScopes);
-      const targetSelect = document.createElement("select");
-      targetSelect.className = "role-target";
-      targetSelect.setAttribute("aria-label", permission.key + " scope target");
-      targetSelect.append(adminOption("", "Choose scope target"));
-      targetOptions.forEach((target) => {
-        const option = adminOption(target.id, target.name);
-        option.dataset.targetScope = target.scope;
-        targetSelect.append(option);
-      });
-      const initialTargetId = initialGrant.officeId || initialGrant.organisationDepartmentId || initialGrant.clientId ||
-        initialGrant.clientWorkstreamId || initialGrant.groupId || "";
-      if (initialTargetId && !targetOptions.some((target) => target.id === initialTargetId)) {
-        const option = adminOption(initialTargetId, "Saved target — review");
-        option.dataset.targetScope = initialGrant.scope;
-        targetSelect.append(option);
-      }
-      const updateTarget = () => {
-        targetSelect.hidden = !["office", "organisation_department", "client", "client_workstream", "group"].includes(scope.value);
-        targetSelect.required = !targetSelect.hidden;
-        targetSelect.querySelectorAll("option[data-target-scope]").forEach((option) => {
-          option.hidden = option.dataset.targetScope !== scope.value;
-        });
-        if (targetSelect.hidden) targetSelect.value = "";
-      };
-      scope.addEventListener("change", () => {
-        targetSelect.value = "";
-        updateTarget();
-      });
-      const removeGrant = adminButton("Remove scope", () => {
-        entry.remove();
-        if (!grantList.children.length) {
-          checkbox.checked = false;
-          addGrantButton.hidden = true;
-        }
-      }, true);
-      updateTarget();
-      targetSelect.value = initialTargetId;
-      entry.append(scope, targetSelect, removeGrant);
-      grantList.append(entry);
-    };
-    const addGrantButton = adminButton("Add scope or target", () => {
-      const previousScope = grantList.lastElementChild?.querySelector(".role-scope")?.value;
-      addGrantEditor({ scope: previousScope || leastPrivilegedRoleScope(allowedScopes) });
-    }, true);
-    addGrantButton.classList.add("role-add-grant");
-    addGrantButton.hidden = true;
-    row.createGrantEditor = addGrantEditor;
-    checkbox.addEventListener("change", () => {
-      if (checkbox.checked) {
-        if (!grantList.children.length) addGrantEditor();
-        addGrantButton.hidden = false;
-      } else {
-        grantList.replaceChildren();
-        addGrantButton.hidden = true;
-      }
-    });
-    const grantControls = document.createElement("div");
-    grantControls.className = "role-grant-controls";
-    grantControls.append(grantList, addGrantButton);
-    row.append(heading, grantControls);
-    permissionGrid.append(row);
-  });
-  roleForm.append(permissionGrid);
-  const roleActions = document.createElement("div");
-  roleActions.className = "form-actions full";
-  const roleSubmit = document.createElement("button");
-  roleSubmit.className = "button";
-  roleSubmit.type = "submit";
-  roleSubmit.textContent = "Create role";
-  const roleCancel = adminButton("Clear", () => clearAdminRoleForm(), true);
-  roleActions.append(roleSubmit, roleCancel);
-  roleForm.append(roleActions);
-  roleForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    const form = event.currentTarget;
-    const roleGrantResult = collectRolePermissionGrants([...form.querySelectorAll(".permission-row")].map((row) => ({
-      permissionKey: row.dataset.permission,
-      enabled: row.querySelector(".permission-check").checked,
-      grants: [...row.querySelectorAll(".role-grant-entry")].map((entry) => ({
-        scope: entry.querySelector(".role-scope").value,
-        targetId: entry.querySelector(".role-target").value,
-      })),
-    })));
-    if (roleGrantResult.error) {
-      setMessage(errorMessages[roleGrantResult.error] || errorMessages.ROLE_INPUT_INVALID, "error");
-      return;
-    }
-    const grants = roleGrantResult.grants;
-    const values = formValues(form);
-    const policy = Object.fromEntries(policyNames.map(([name]) => [name, values[name] === "on"]));
-    const body = {
-      key: values.key,
-      name: values.name,
-      permissionGrants: grants,
-      operationalPolicy: policy,
-      ...(state.adminRoleId ? { expectedRevision: Number(values.expectedRevision) } : {}),
-    };
-    if (state.adminRoleId) {
-      try {
-        await api("/api/roles/" + state.adminRoleId, requestOptions("PATCH", body));
-      } catch (error) {
-        if (error?.code === "ROLE_VERSION_CONFLICT") state.adminRoleId = null;
-        throw error;
-      }
-      clearAdminRoleForm();
-      setMessage("Role updated.");
-    } else {
-      await api("/api/roles", requestOptions("POST", body));
-      setMessage("Role created.");
-    }
-  }));
-  roleForm.hidden = !hasAdminPermission(data, "roles.create");
-  rolesSection.append(roleForm);
-  const rolesList = document.createElement("div");
-  rolesList.className = "stack";
-  data.roles.roles.forEach((role) => {
-    const item = document.createElement("article");
-    item.className = "list-item";
-    const title = document.createElement("strong");
-    title.textContent = role.name + " (" + role.key + ")";
-    const meta = document.createElement("span");
-    meta.className = "small";
-    meta.textContent = role.isProtected ? "Protected role" : (role.archivedAt ? "Archived" : "Custom role");
-    item.append(title, meta);
-    if (!role.isProtected && !role.archivedAt && hasAdminPermission(data, "roles.edit")) {
-      item.append(adminButton("Edit", () => editAdminRole(role), true));
-    }
-    rolesList.append(item);
-  });
-  rolesSection.append(rolesList);
-  const roleReadFailed = replaceSectionWithReadFailures(rolesSection, [
-    [data.roles, "roles"],
-    [data.permissions, "the role permission catalogue"],
-  ]);
-  if (!roleReadFailed) {
-    const scopeTargetFailures = [
-      [data.offices, "office scope targets"],
-      [data.departments, "department scope targets"],
-      [data.workContext, "client and workstream scope targets"],
-    ].map(([result, resource]) => adminReadFailure(result, resource)).filter(Boolean);
-    if (scopeTargetFailures.length) roleForm.replaceChildren(...scopeTargetFailures);
-  }
-  target.append(rolesSection);
-
-  target.append(renderWorkAdminSection(data));
-  const taskCatalogTools = renderTaskCatalogTools(data.taskCatalog);
-  if (taskCatalogTools) target.append(taskCatalogTools);
-
-  const peopleSection = adminSection("People and onboarding", "Invite people, complete their operational setup, and freeze access without rewriting history.");
-  const inviteForm = document.createElement("form");
-  inviteForm.className = "form-grid";
-  inviteForm.append(adminField("Full name", "displayName", "text", "", true));
-  inviteForm.append(adminField("Work email", "email", "email", "", true));
-  const inviteActions = document.createElement("div");
-  inviteActions.className = "form-actions full";
-  const inviteSubmit = document.createElement("button");
-  inviteSubmit.className = "button";
-  inviteSubmit.type = "submit";
-  inviteSubmit.textContent = "Send invitation";
-  inviteActions.append(inviteSubmit);
-  inviteForm.append(inviteActions);
-  inviteForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    const result = await api("/api/people/invitations", requestOptions("POST", formValues(event.currentTarget)));
-    reflectInvitationDelivery(result);
-  }));
-  if (hasAdminPermission(data, "people.invite")) peopleSection.append(inviteForm);
-  else peopleSection.append(noticeElement("You do not have permission to invite people.", "warning"));
-  const peopleList = document.createElement("div");
-  peopleList.className = "stack";
-  data.people.people.forEach((person) => peopleList.append(renderAdminPerson(person, data)));
-  peopleSection.append(peopleList);
-  const peopleReadFailure = adminReadFailure(data.people, "people");
-  if (peopleReadFailure) peopleList.append(peopleReadFailure);
-  else if (!peopleList.children.length) peopleList.append(noticeElement("No people are available.", "warning"));
-  target.append(peopleSection);
-
-  const ownerSection = adminSection("Ownership transfer", "Transfer the protected Super Admin role to an active or notice person. The current owner's sessions are revoked and the action is audited.");
-  const ownerForm = document.createElement("form");
-  ownerForm.className = "form-grid";
-  const ownerTarget = document.createElement("select");
-  ownerTarget.name = "targetPersonId";
-  ownerTarget.required = true;
-  ownerTarget.append(adminOption("", "Choose new owner"));
-  data.people.people.filter((person) => ["active", "notice"].includes(person.status)).forEach((person) => ownerTarget.append(adminOption(person.id, person.displayName || person.email)));
-  const ownerLabel = document.createElement("label");
-  ownerLabel.textContent = "New owner";
-  ownerLabel.append(ownerTarget);
-  ownerForm.append(ownerLabel, adminField("Type confirmation", "confirmation", "text", "", true), adminSubmit("Transfer ownership", true));
-  ownerForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    await api("/api/organisation/owner-transfer", requestOptions("POST", formValues(event.currentTarget)));
-    setMessage("Ownership transferred. Your current sessions may now be revoked.");
-  }));
-  if (peopleReadFailure) ownerSection.append(adminReadFailure(data.people, "people needed for ownership transfer"));
-  else ownerSection.append(ownerForm);
-  if (data.actorGrants.isSuperAdmin === true) target.append(ownerSection);
-
-  const leaveSection = adminSection("Leave review", "Approve or reject pending requests. Attendance conflicts are returned for explicit recovery instead of being changed silently.");
-  const leaveList = document.createElement("div");
-  leaveList.className = "stack";
-  const pending = data.leavePending && data.leavePending.requests || [];
-  const leaveReadFailure = adminReadFailure(data.leavePending, "pending leave requests");
-  if (leaveReadFailure) leaveList.append(leaveReadFailure);
-  else if (!pending.length) leaveList.append(noticeElement("No pending leave requests.", "warning"));
-  pending.forEach((leave) => {
-    const item = document.createElement("article");
-    item.className = "list-item";
-    const title = document.createElement("strong");
-    title.textContent = leave.leaveType + " · " + leave.startDate + "–" + leave.endDate;
-    const meta = document.createElement("span");
-    meta.className = "small";
-    meta.textContent = (leave.reason || "No reason supplied") + " · " + leave.status;
-    const actions = document.createElement("div");
-    actions.className = "form-actions";
-    actions.append(
-      adminButton("Approve", async () => {
-        try { await api("/api/leave/" + leave.id + "/review", requestOptions("POST", { decision: "approved" })); setMessage("Leave approved."); }
-        catch (error) { setMessage(errorText(error), "error"); }
-        render();
-      }),
-      adminButton("Reject", async () => {
-        try { await api("/api/leave/" + leave.id + "/review", requestOptions("POST", { decision: "rejected" })); setMessage("Leave rejected."); }
-        catch (error) { setMessage(errorText(error), "error"); }
-        render();
-      }, true),
-    );
-    if (leave.hasConflict) {
-      actions.append(
-        adminButton("Approve, preserve attendance", () => resolveLeaveConflict(leave.id, "approved")),
-        adminButton("Reject after conflict", () => resolveLeaveConflict(leave.id, "rejected"), true),
-      );
-    }
-    item.append(title, meta, actions);
-    leaveList.append(item);
-  });
-  leaveSection.append(leaveList);
-  target.append(leaveSection);
-
-  const wfhReviewSection = adminSection("WFH review", "Review requests using the configurable availability.wfh.review permission. Approval is rechecked against current policy and assignment rules.");
-  const wfhReviewList = document.createElement("div");
-  wfhReviewList.className = "stack";
-  const pendingWfh = data.wfhPending && data.wfhPending.requests || [];
-  const wfhReadFailure = adminReadFailure(data.wfhPending, "pending WFH requests");
-  if (wfhReadFailure) wfhReviewList.append(wfhReadFailure);
-  else if (!pendingWfh.length) wfhReviewList.append(noticeElement("No pending WFH requests.", "warning"));
-  pendingWfh.forEach((item) => {
-    const row = document.createElement("article");
-    row.className = "list-item";
-    const title = document.createElement("strong");
-    title.textContent = item.startDate + "–" + item.endDate;
-    const meta = document.createElement("span");
-    meta.className = "small";
-    meta.textContent = (item.reason || "No reason supplied") + " · " + item.status;
-    const actions = document.createElement("div");
-    actions.className = "form-actions";
-    actions.append(
-      adminButton("Approve", async () => {
-        try { await api("/api/availability/wfh/" + item.id + "/review", requestOptions("POST", { decision: "approved" })); setMessage("WFH approved."); }
-        catch (error) { setMessage(errorText(error), "error"); }
-        render();
-      }),
-      adminButton("Reject", async () => {
-        try { await api("/api/availability/wfh/" + item.id + "/review", requestOptions("POST", { decision: "rejected" })); setMessage("WFH rejected."); }
-        catch (error) { setMessage(errorText(error), "error"); }
-        render();
-      }, true),
-    );
-    row.append(title, meta, actions);
-    wfhReviewList.append(row);
-  });
-  wfhReviewSection.append(wfhReviewList);
-  target.append(wfhReviewSection);
-
-  const exceptionSection = adminSection("Historical exceptions", "Availability changes never delete attendance. Review and close the preserved exception explicitly.");
-  const exceptionList = document.createElement("div");
-  exceptionList.className = "stack";
-  const exceptions = data.exceptions && data.exceptions.exceptions || [];
-  const exceptionReadFailure = adminReadFailure(data.exceptions, "historical exceptions");
-  if (exceptionReadFailure) exceptionList.append(exceptionReadFailure);
-  else if (!exceptions.length) exceptionList.append(noticeElement("No historical exceptions.", "warning"));
-  exceptions.forEach((exception) => {
-    const item = document.createElement("article");
-    item.className = "list-item";
-    const title = document.createElement("strong");
-    title.textContent = exception.code + " · " + (exception.businessDate || "undated") + " · " + exception.status;
-    const meta = document.createElement("span");
-    meta.className = "small";
-    meta.textContent = exception.sourceType + " · " + exception.sourceId;
-    item.append(title, meta);
-    if (exception.status === "open" && exception.code === "availability.leave_attendance_conflict") {
-      const note = document.createElement("p");
-      note.className = "small";
-      note.textContent = "Resolve this from the linked pending leave request; generic exception dismissal is blocked.";
-      item.append(note);
-    } else if (exception.status === "open" && hasAdminPermission(data, "availability.exception.resolve")) {
-      const form = document.createElement("form");
-      form.className = "form-grid";
-      form.innerHTML = '<label>Resolution note<input name="note" required maxlength="2000"></label>' +
-        '<label>Outcome<select name="status"><option value="resolved">Resolved</option><option value="dismissed">Dismissed</option></select></label>' +
-        '<div class="form-actions"><button class="button" type="submit">Close exception</button></div>';
-      form.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-        const values = formValues(event.currentTarget);
-        await api("/api/historical-exceptions/" + exception.id + "/resolve", requestOptions("POST", values));
-        setMessage("Historical exception closed.");
-      }));
-      item.append(form);
-    }
-    exceptionList.append(item);
-  });
-  exceptionSection.append(exceptionList);
-  target.append(exceptionSection);
-
-  const auditSection = adminSection("Audit history", "Immutable organisation actions are shown newest first.");
-  const auditList = document.createElement("div");
-  auditList.className = "stack";
-  data.audit.events.forEach((event) => {
-    const item = document.createElement("p");
-    item.className = "list-item";
-    item.textContent = new Date(event.occurredAt).toLocaleString() + " · " + event.action + " · " + (event.actorName || "System");
-    auditList.append(item);
-  });
-  const auditReadFailure = adminReadFailure(data.audit, "audit history");
-  if (auditReadFailure) auditList.append(auditReadFailure);
-  else if (!data.audit.events.length) {
-    auditList.append(noticeElement("No audit events yet.", "warning"));
-  }
-  auditSection.append(auditList);
-  target.append(auditSection);
-}
-
-function renderWorkAdminSection(data) {
-  const context = data.workContext || { clients: [], clientWorkstreams: [], organisationWorkstreams: [], groups: [] };
-  const people = (data.people && data.people.people || []).filter((person) => ["active", "notice"].includes(person.status));
-  const assignablePeople = people.filter((person) => person.canReceiveAssignments === true);
-  const section = adminSection("Client work and task operations", "Create portable work context, assign work, and preserve task history. Every command is checked again by the API.");
-  const contextReadFailure = adminReadFailure(data.workContext, "work context");
-  if (contextReadFailure) {
-    section.append(contextReadFailure);
-    return section;
-  }
-  const peopleReadFailure = adminReadFailure(data.people, "people choices for task assignment");
-  const forms = document.createElement("div");
-  forms.className = "split";
-
-  const clientForm = document.createElement("form");
-  clientForm.className = "form-grid";
-  clientForm.append(adminField("Client name", "name", "text", "", true));
-  clientForm.append(adminSubmit("Create client"));
-  clientForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    await api("/api/clients", requestOptions("POST", formValues(event.currentTarget)));
-    setMessage("Client created.");
-  }));
-
-  const clientWorkstreamForm = document.createElement("form");
-  clientWorkstreamForm.className = "form-grid";
-  clientWorkstreamForm.append(adminField("Client workstream", "name", "text", "", true));
-  const clientSelect = document.createElement("select");
-  clientSelect.name = "clientId";
-  clientSelect.required = true;
-  clientSelect.append(adminOption("", "Choose client"));
-  const creatableClients = context.clients.filter((client) =>
-    hasAdminPermission(data, "workstreams.create", { clientId: client.id }));
-  creatableClients.forEach((client) => clientSelect.append(adminOption(client.id, client.name)));
-  const clientLabel = document.createElement("label");
-  clientLabel.textContent = "Client";
-  clientLabel.append(clientSelect);
-  clientWorkstreamForm.append(clientLabel, adminSubmit("Create client workstream"));
-  clientWorkstreamForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    await api("/api/workstreams/client", requestOptions("POST", formValues(event.currentTarget)));
-    setMessage("Client workstream created.");
-  }));
-
-  const organisationWorkstreamForm = document.createElement("form");
-  organisationWorkstreamForm.className = "form-grid";
-  organisationWorkstreamForm.append(adminField("Organisation workstream", "name", "text", "", true));
-  organisationWorkstreamForm.append(adminSubmit("Create organisation workstream"));
-  organisationWorkstreamForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    await api("/api/workstreams/organisation", requestOptions("POST", formValues(event.currentTarget)));
-    setMessage("Organisation workstream created.");
-  }));
-
-  const groupForm = document.createElement("form");
-  groupForm.className = "form-grid";
-  groupForm.append(adminField("Group name", "name", "text", "", true));
-  const groupContext = document.createElement("select");
-  groupContext.name = "contextId";
-  groupContext.required = true;
-  groupContext.append(adminOption("", "Choose workstream"));
-  context.clientWorkstreams.forEach((workstream) => {
-    if (!hasAdminPermission(data, "groups.create", { clientWorkstreamId: workstream.id })) return;
-    const option = adminOption("client:" + workstream.id, "Client · " + workstream.name);
-    option.dataset.contextType = "client";
-    groupContext.append(option);
-  });
-  context.organisationWorkstreams.forEach((workstream) => {
-    if (!hasAdminPermission(data, "groups.create")) return;
-    const option = adminOption("organisation:" + workstream.id, "Organisation · " + workstream.name);
-    option.dataset.contextType = "organisation";
-    groupContext.append(option);
-  });
-  const groupContextLabel = document.createElement("label");
-  groupContextLabel.textContent = "Workstream";
-  groupContextLabel.append(groupContext);
-  groupForm.append(groupContextLabel, adminSubmit("Create group"));
-  groupForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    const values = formValues(event.currentTarget);
-    const [kind, id] = values.contextId.split(":");
-    await api("/api/work-groups", requestOptions("POST", {
-      name: values.name,
-      ...(kind === "client" ? { clientWorkstreamId: id } : { organisationWorkstreamId: id }),
-    }));
-    setMessage("Work group created.");
-  }));
-
-  const workstreamHeading = document.createElement("h3");
-  workstreamHeading.className = "full";
-  workstreamHeading.textContent = "Context setup";
-  if (hasAdminPermission(data, "clients.create")) forms.append(clientForm);
-  if (creatableClients.length) forms.append(clientWorkstreamForm);
-  if (hasAdminPermission(data, "workstreams.create")) forms.append(organisationWorkstreamForm);
-  if (groupContext.options.length > 1) forms.append(groupForm);
-  if (forms.childElementCount) forms.prepend(workstreamHeading);
-  else forms.append(noticeElement("You do not have permission to create clients, workstreams, or groups in the visible scope.", "warning"));
-  section.append(forms);
-  const billingPolicyTools = renderBillingPolicyTools(context.clientWorkstreams, data.taskCatalog);
-  if (billingPolicyTools) section.append(billingPolicyTools);
-  const taskCatalogReadFailure = adminReadFailure(data.taskCatalog, "reusable task defaults");
-  if (taskCatalogReadFailure) section.append(taskCatalogReadFailure);
-
-  const taskForm = document.createElement("form");
-  taskForm.className = "form-grid";
-  taskForm.append(adminField("Task title", "title", "text", "", true));
-  const taskContext = document.createElement("select");
-  taskContext.name = "contextId";
-  taskContext.required = true;
-  taskContext.append(adminOption("", "Choose workstream"));
-  const taskCreationTargets = context.taskCreationTargets || [];
-  taskCreationTargets.forEach((workstream) => taskContext.append(adminOption(
-    workstream.kind + ":" + workstream.id,
-    (workstream.kind === "client" ? "Client · " + workstream.clientName + " / " : "Organisation · ") +
-      workstream.name + (workstream.billingPolicyClass
-        ? " · " + (workstream.billingPolicyClass === "billable" ? "billable policy" : "non-billable policy")
-        : " · policy setup required"),
-  )));
-  const taskContextLabel = document.createElement("label");
-  taskContextLabel.textContent = "Workstream";
-  taskContextLabel.append(taskContext);
-  taskForm.append(taskContextLabel);
-  const taskCatalogSelect = appendTaskCatalogSelector(taskForm, data.taskCatalog);
-  const correctionReadFailure = adminReadFailure(data.tasks, "existing tasks for correction links");
-  if (correctionReadFailure) taskForm.append(correctionReadFailure);
-  else appendTaskCorrectionFields(taskForm, data.tasks && data.tasks.tasks || [], taskContext);
-  const taskGroup = document.createElement("select");
-  taskGroup.name = "workGroupId";
-  taskGroup.append(adminOption("", "No group"));
-  context.groups.forEach((group) => {
-    const option = adminOption(group.id, group.name);
-    option.dataset.clientWorkstreamId = group.clientWorkstreamId || "";
-    option.dataset.organisationWorkstreamId = group.organisationWorkstreamId || "";
-    taskGroup.append(option);
-  });
-  const taskGroupLabel = document.createElement("label");
-  taskGroupLabel.textContent = "Group (optional)";
-  taskGroupLabel.append(taskGroup);
-  taskForm.append(taskGroupLabel);
-  const department = document.createElement("select");
-  department.name = "organisationDepartmentId";
-  department.append(adminOption("", "No department"));
-  (data.departments && data.departments.departments || []).forEach((entry) => department.append(adminOption(entry.id, entry.name)));
-  const departmentLabel = document.createElement("label");
-  departmentLabel.textContent = "Department (optional)";
-  departmentLabel.append(department);
-  const departmentReadFailure = adminReadFailure(data.departments, "department choices");
-  if (departmentReadFailure) taskForm.append(departmentReadFailure);
-  else taskForm.append(departmentLabel);
-  const priority = document.createElement("select");
-  priority.name = "priority";
-  [["low", "Low"], ["normal", "Normal"], ["high", "High"], ["urgent", "Urgent"]].forEach(([value, label]) => priority.append(adminOption(value, label, "normal")));
-  const priorityLabel = document.createElement("label");
-  priorityLabel.textContent = "Priority";
-  priorityLabel.append(priority);
-  taskForm.append(priorityLabel);
-  taskForm.append(adminField("Due date", "dueDate", "date", "", false));
-  const description = document.createElement("label");
-  description.className = "full";
-  description.textContent = "Description";
-  const descriptionInput = document.createElement("textarea");
-  descriptionInput.name = "description";
-  descriptionInput.maxLength = 10000;
-  description.append(descriptionInput);
-  const selfAssignLabel = document.createElement("label");
-  selfAssignLabel.className = "check full";
-  const selfAssign = document.createElement("input");
-  selfAssign.type = "checkbox";
-  selfAssign.name = "assignToSelf";
-  selfAssign.disabled = context.canReceiveAssignments !== true;
-  selfAssignLabel.append(selfAssign, document.createTextNode("Assign this task to me now (client work will still require review)"));
-  taskForm.append(description, selfAssignLabel);
-  if (context.canReceiveAssignments !== true) {
-    const assignmentPolicyHint = document.createElement("p");
-    assignmentPolicyHint.className = "small full";
-    assignmentPolicyHint.textContent = "Your current role or status cannot receive assignments. You can still create the task without assigning it to yourself.";
-    taskForm.append(assignmentPolicyHint);
-  }
-  taskForm.append(adminSubmit("Create task", true));
-  const refreshTaskGroups = () => {
-    const [kind, id] = taskContext.value.split(":");
-    taskGroup.querySelectorAll("option[data-client-workstream-id]").forEach((option) => {
-      const matches = kind === "client" ? option.dataset.clientWorkstreamId === id : option.dataset.organisationWorkstreamId === id;
-      option.hidden = !matches;
-    });
-    if (taskGroup.selectedOptions[0]?.hidden) taskGroup.value = "";
-  };
-  taskContext.addEventListener("change", refreshTaskGroups);
-  taskForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    const values = formValues(event.currentTarget);
-    const [kind, id] = values.contextId.split(":");
-    const payload = {
-      title: values.title,
-      ...(kind === "client" ? { clientWorkstreamId: id } : { organisationWorkstreamId: id }),
-      ...taskCatalogProvenance(taskCatalogSelect),
-      ...(values.workGroupId ? { workGroupId: values.workGroupId } : {}),
-      ...(values.organisationDepartmentId ? { organisationDepartmentId: values.organisationDepartmentId } : {}),
-      description: values.description || null,
-      priority: values.priority,
-      dueDate: values.dueDate || null,
-      correctionOfTaskId: values.correctionOfTaskId || null,
-      correctionReason: values.correctionReason || null,
-      assignToSelf: values.assignToSelf === "on",
-    };
-    const createdTask = await api("/api/tasks", requestOptions(
-      "POST", payload, taskCreateIdempotencyHeaders(payload),
-    ));
-    clearTaskCreateIdempotency(payload);
-    setMessage("Task created · " + taskBillingConfirmation(createdTask) + taskCorrectionConfirmation(Boolean(values.correctionOfTaskId)));
-  }));
-  const taskSection = adminSection("Create task", "Tasks belong to exactly one organisation or client workstream. Assignment and review are separate records.");
-  if (taskCreationTargets.length) taskSection.append(taskForm);
-  else taskSection.append(noticeElement("You do not have permission to create tasks in a visible workstream.", "warning"));
-  section.append(taskSection);
-
-  const taskListSection = adminSection("Tasks and assignments", "Visible tasks are listed with their assignment history. Cancel closes future work and preserves recorded history.");
-  const taskList = document.createElement("div");
-  taskList.className = "stack";
-  if (peopleReadFailure) taskListSection.append(peopleReadFailure);
-  const tasks = data.tasks && data.tasks.tasks || [];
-  const taskReadFailure = adminReadFailure(data.tasks, "tasks");
-  if (taskReadFailure) taskList.append(taskReadFailure);
-  else if (!tasks.length) taskList.append(noticeElement("No visible tasks yet.", "warning"));
-  tasks.forEach((task) => {
-    const item = document.createElement("article");
-    item.className = "list-item";
-    const title = document.createElement("strong");
-    title.textContent = task.title;
-    const contextText = task.client ? task.client.name + " / " : "Organisation / ";
-    const meta = document.createElement("p");
-    meta.className = "small";
-    meta.textContent = contextText + (task.workstream && task.workstream.name || "workstream") + " · " + task.status + " · " + task.priority +
-      " · " + taskBillingConfirmation(task) + " · " + taskDefinitionProvenance(task) +
-      (task.dueDate ? " · due " + task.dueDate : "");
-    item.append(title, meta);
-    const dueDateEditor = taskDueDateEditor(task, () => render());
-    if (dueDateEditor) item.append(dueDateEditor);
-    if (task.isCorrection) {
-      const correction = document.createElement("p");
-      correction.className = "small";
-      correction.textContent = "Correction task" + (task.correctionOf ? " for “" + task.correctionOf.title + "”" : "") +
-        (task.correctionReason ? " · " + task.correctionReason : "");
-      item.append(correction);
-    }
-    if (task.description) {
-      const detail = document.createElement("p");
-      detail.className = "small";
-      detail.textContent = task.description;
-      item.append(detail);
-    }
-    const assignmentList = document.createElement("div");
-    assignmentList.className = "stack";
-    (task.assignments || []).forEach((assignment) => {
-      const assignmentRow = document.createElement("div");
-      assignmentRow.className = "list-item";
-      const assignmentText = document.createElement("span");
-      assignmentText.textContent = assignment.personName + " · " + assignment.status +
-        (assignment.reviewerName ? " · reviewer " + assignment.reviewerName : "") +
-        (assignment.reviewRequired ? " · review required" : "") +
-        (assignment.resolutionSource === "policy" ? " · completed without review" : "") +
-        (assignment.reviewBlockedReason ? " · review blocked: no eligible reviewer" : "");
-      assignmentRow.append(assignmentText);
-      if (!peopleReadFailure && !["cancelled", "approved"].includes(assignment.status)) {
-        const reassignForm = document.createElement("form");
-        reassignForm.className = "form-actions";
-        const reassignPerson = document.createElement("select");
-        reassignPerson.name = "personId";
-        reassignPerson.required = true;
-        reassignPerson.append(adminOption("", "Choose replacement"));
-        assignablePeople.filter((person) => person.id !== assignment.personId).forEach((person) => reassignPerson.append(adminOption(person.id, person.displayName)));
-        reassignForm.append(reassignPerson, adminSubmit("Reassign", true));
-        reassignForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-          const values = formValues(event.currentTarget);
-          await api("/api/task-assignments/" + assignment.id + "/reassign", requestOptions("POST", { personId: values.personId }));
-          setMessage("Assignment reassigned; recorded history was preserved.");
-        }));
-        assignmentRow.append(reassignForm);
-      }
-      assignmentList.append(assignmentRow);
-    });
-    item.append(assignmentList);
-    if (!["cancelled", "done"].includes(task.status)) {
-      const actions = document.createElement("div");
-      actions.className = "form-actions";
-      actions.append(adminButton("Cancel task", async () => {
-        if (!window.confirm("Cancel this task? Recorded work remains preserved.")) return;
-        try { await api("/api/tasks/" + task.id + "/cancel", requestOptions("POST")); setMessage("Task cancelled; recorded history was preserved."); }
-        catch (error) { setMessage(errorText(error), "error"); }
-        render();
-      }, true));
-      if (!peopleReadFailure) item.append(actions);
-      const assignmentForm = document.createElement("form");
-      assignmentForm.className = "form-grid";
-      const assignee = document.createElement("select");
-      assignee.name = "personId";
-      assignee.required = true;
-      assignee.append(adminOption("", "Choose assignee"));
-      assignablePeople.forEach((person) => assignee.append(adminOption(person.id, person.displayName)));
-      const assigneeLabel = document.createElement("label");
-      assigneeLabel.textContent = "Assignee";
-      assigneeLabel.append(assignee);
-      assignmentForm.append(assigneeLabel);
-      const reviewer = document.createElement("select");
-      reviewer.name = "reviewerPersonId";
-      reviewer.append(adminOption("", "No reviewer"));
-      people.forEach((person) => reviewer.append(adminOption(person.id, person.displayName)));
-      const reviewerLabel = document.createElement("label");
-      reviewerLabel.textContent = "Reviewer";
-      reviewerLabel.append(reviewer);
-      assignmentForm.append(reviewerLabel);
-      const reviewRequiredLabel = document.createElement("label");
-      reviewRequiredLabel.className = "check";
-      const reviewRequired = document.createElement("input");
-      reviewRequired.type = "checkbox";
-      reviewRequired.name = "reviewRequired";
-      reviewRequired.checked = true;
-      reviewRequiredLabel.append(reviewRequired, document.createTextNode("Review required"));
-      assignmentForm.append(reviewRequiredLabel, adminSubmit("Assign task", true));
-      assignmentForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-        const values = formValues(event.currentTarget);
-        await api("/api/tasks/" + task.id + "/assignments", requestOptions("POST", {
-          personId: values.personId,
-          reviewerPersonId: values.reviewerPersonId || null,
-          reviewRequired: values.reviewRequired === "on",
-        }));
-        setMessage("Task assigned.");
-      }));
-      if (!peopleReadFailure) item.append(assignmentForm);
-    }
-    taskList.append(item);
-  });
-  taskListSection.append(taskList);
-  section.append(taskListSection);
-  return section;
-}
-
-function adminSubmit(text, secondary) {
-  const actions = document.createElement("div");
-  actions.className = "form-actions full";
-  const button = document.createElement("button");
-  button.className = "button" + (secondary ? " secondary" : "");
-  button.type = "submit";
-  button.textContent = text;
-  actions.append(button);
-  return actions;
-}
-
-async function resolveLeaveConflict(leaveId, decision) {
-  const note = window.prompt("Explain the attendance recovery decision:");
-  if (!note || !note.trim()) return;
+async function loadAdmin(lifetime, pageReady) {
   try {
-    await api("/api/leave/" + leaveId + "/resolve-conflict", requestOptions("POST", { decision, note }));
-    setMessage(decision === "approved" ? "Leave approved; attendance was preserved." : "Leave rejected; attendance was preserved.");
+    const { loadAdminPageData } = await import("./src/pages/admin/admin-page-loader.ts");
+    const adminData = await loadAdminPageData(lifetime, pageReady, {
+      pageApi,
+      readOrError,
+      skippedAdminRead,
+      isCurrentPageRequest,
+    });
+    if (!adminData || !isCurrentPageRequest(lifetime)) return;
+    state.adminData = adminData;
+    await renderAdminContent(state.adminData, lifetime);
   } catch (error) {
-    setMessage(errorText(error), "error");
+    if (!isCurrentPageRequest(lifetime)) return;
+    const target = app.querySelector("#admin-console");
+    if (target) await mountAdminPage(target, lifetime, {
+      state: { status: "error", message: errorText(error) },
+      sections: [],
+    });
   }
+}
+
+async function renderAdminContent(data, lifetime) {
+  return adminPageRoute(data, lifetime);
+}
+function adminFeatureReadError(result, resource) {
+  if (!result?.readError) return null;
+  const issue = adminReadIssue(result, resource);
+  const unavailable = ["PREREQUISITE_PERMISSION_REQUIRED", "PERMISSION_DENIED"].includes(result.readError);
+  return { status: unavailable ? "unavailable" : "error", message: issue?.message || `Could not load ${resource}.` };
+}
+
+async function runAdminRequestReviewCommand(target, lifetime, data, path, payload, successMessage) {
+  if (!target.isConnected || !isCurrentPageRequest(lifetime) || state.adminData !== data) {
+    throw adminCommandUiError("The Admin page changed before this action could start. Refresh and try again.");
+  }
+  const context = captureCommandContext(target);
+  if (!isCurrentCommand(context)) {
+    throw adminCommandUiError("The Admin page changed before this action could start.");
+  }
+  try {
+    await api(path, requestOptions("POST", payload));
+  } catch (error) {
+    if (!isCurrentCommandIdentity(context)) {
+      throw adminCommandUiError("Your session changed. Sign in again before continuing.");
+    }
+    const accessChangedMessage = "Your review access changed. Available actions have been refreshed.";
+    if (recoverProtectedCommandFailure(error, context, accessChangedMessage)) {
+      throw adminCommandUiError(accessChangedMessage);
+    }
+    if (!isCurrentCommand(context)) {
+      throw adminCommandUiError("The Admin page changed before the action completed.");
+    }
+    throw adminCommandUiError(errorText(error));
+  }
+  if (!isCurrentCommand(context)) {
+    throw adminCommandUiError("The Admin page changed before the action completed.");
+  }
+  setMessage(successMessage);
+  state.pendingAdminCommandFocus = true;
   render();
 }
 
-function renderAvailabilitySection(data) {
-  const availability = data.availability || { shifts: [], calendars: [], holidays: [] };
-  const section = adminSection("Availability configuration", "Define fixed shifts, office working calendars, holidays, and effective WFH eligibility rules.");
-  const availabilityReadFailure = adminReadFailure(data.availability, "availability configuration");
-  if (availabilityReadFailure) {
-    section.append(availabilityReadFailure);
-    return section;
+async function runAdminProtectedCommand(target, lifetime, permission, permissionTarget, method, path, payload, successMessage, afterSuccess, requestHeaders, unknownFailureMessage) {
+  if (!target.isConnected || !isCurrentPageRequest(lifetime)) {
+    throw adminCommandUiError("The Admin page changed before this action could start. Refresh and try again.");
   }
-  const forms = document.createElement("div");
-  forms.className = "split";
+  const requiredPermissions = Array.isArray(permission) ? permission : [permission];
+  const permitted = typeof permission === "function"
+    ? permission(state.adminData)
+    : requiredPermissions.every((key) => hasAdminPermission(state.adminData, key, permissionTarget));
+  if (!permitted) {
+    throw adminCommandUiError("Your current access no longer allows this action. Refresh Admin to check access.");
+  }
+  const context = captureCommandContext(target);
+  if (!isCurrentCommand(context)) throw adminCommandUiError("The Admin page changed before this action could start.");
 
-  const shiftForm = document.createElement("form");
-  shiftForm.className = "form-grid";
-  shiftForm.append(adminField("Shift name", "name", "text", "", true));
-  shiftForm.append(adminField("Start (local time)", "startLocalTime", "time", "09:30", true));
-  shiftForm.append(adminField("End (local time)", "endLocalTime", "time", "18:30", true));
-  shiftForm.append(adminField("Break start", "breakStartLocalTime", "time", "13:00", false));
-  shiftForm.append(adminField("Break end", "breakEndLocalTime", "time", "14:00", false));
-  shiftForm.append(adminField("Grace minutes", "graceMinutes", "number", "0", true));
-  const overtimeLabel = document.createElement("label");
-  overtimeLabel.className = "check full";
-  const overtime = document.createElement("input");
-  overtime.type = "checkbox";
-  overtime.name = "overtimeEnabled";
-  overtimeLabel.append(overtime, document.createTextNode("Overtime may be recorded"));
-  shiftForm.append(overtimeLabel);
-  const shiftActions = document.createElement("div");
-  shiftActions.className = "form-actions full";
-  const shiftSubmit = document.createElement("button");
-  shiftSubmit.className = "button";
-  shiftSubmit.type = "submit";
-  shiftSubmit.textContent = "Create shift";
-  shiftActions.append(shiftSubmit);
-  shiftForm.append(shiftActions);
-  shiftForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    const values = formValues(event.currentTarget);
-    await api("/api/availability/shifts", requestOptions("POST", {
-      ...values,
-      graceMinutes: Number(values.graceMinutes),
-      overtimeEnabled: values.overtimeEnabled === "on",
-      breakStartLocalTime: values.breakStartLocalTime || undefined,
-      breakEndLocalTime: values.breakEndLocalTime || undefined,
-    }));
-    setMessage("Shift created.");
-  }));
-
-  const calendarForm = document.createElement("form");
-  calendarForm.className = "form-grid";
-  calendarForm.append(adminField("Calendar name", "name", "text", "", true));
-  const calendarOffice = document.createElement("select");
-  calendarOffice.name = "officeId";
-  calendarOffice.required = true;
-  calendarOffice.append(adminOption("", "Choose office"));
-  data.offices.offices.forEach((office) => calendarOffice.append(adminOption(office.id, office.name)));
-  const calendarOfficeLabel = document.createElement("label");
-  calendarOfficeLabel.textContent = "Office";
-  calendarOfficeLabel.append(calendarOffice);
-  calendarForm.append(calendarOfficeLabel);
-  calendarForm.append(adminField("Effective from", "effectiveOn", "date", new Date().toISOString().slice(0, 10), true));
-  const weekHeading = document.createElement("h3");
-  weekHeading.className = "full";
-  weekHeading.textContent = "Weekly rules";
-  calendarForm.append(weekHeading);
-  const weekGrid = document.createElement("div");
-  weekGrid.className = "availability-week-grid full";
-  const weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  weekdayNames.forEach((weekdayName, weekday) => {
-    const row = document.createElement("div");
-    row.className = "availability-rule-row";
-    row.dataset.weekday = String(weekday);
-    const title = document.createElement("strong");
-    title.textContent = weekdayName;
-    const workingLabel = document.createElement("label");
-    workingLabel.className = "check";
-    const working = document.createElement("input");
-    working.type = "checkbox";
-    working.className = "availability-working";
-    working.checked = weekday > 0 && weekday < 6;
-    workingLabel.append(working, document.createTextNode("Working"));
-    const shift = document.createElement("select");
-    shift.className = "availability-shift";
-    shift.append(adminOption("", "Choose shift"));
-    availability.shifts.forEach((entry) => shift.append(adminOption(entry.id, entry.name)));
-    shift.disabled = !working.checked;
-    working.addEventListener("change", () => {
-      shift.disabled = !working.checked;
-      if (!working.checked) shift.value = "";
-    });
-    row.append(title, workingLabel, shift);
-    weekGrid.append(row);
-  });
-  calendarForm.append(weekGrid);
-  const calendarActions = document.createElement("div");
-  calendarActions.className = "form-actions full";
-  const calendarSubmit = document.createElement("button");
-  calendarSubmit.className = "button";
-  calendarSubmit.type = "submit";
-  calendarSubmit.textContent = "Create calendar";
-  calendarActions.append(calendarSubmit);
-  calendarForm.append(calendarActions);
-  calendarForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    const values = formValues(event.currentTarget);
-    const rules = [...event.currentTarget.querySelectorAll(".availability-rule-row")].map((row) => {
-      const working = row.querySelector(".availability-working");
-      const shift = row.querySelector(".availability-shift");
-      const isWorking = working.checked;
-      return {
-        weekday: Number(row.dataset.weekday),
-        ordinal: 0,
-        isWorking,
-        ...(isWorking ? { shiftId: shift.value } : {}),
-      };
-    });
-    await api("/api/availability/calendars", requestOptions("POST", {
-      name: values.name,
-      officeId: values.officeId,
-      effectiveOn: values.effectiveOn,
-      rules,
-    }));
-    setMessage("Working calendar created and assigned to the office.");
-  }));
-
-  const holidayForm = document.createElement("form");
-  holidayForm.className = "form-grid";
-  holidayForm.append(adminField("Holiday name", "name", "text", "", true));
-  holidayForm.append(adminField("Date", "date", "date", "", true));
-  const holidayOffice = document.createElement("select");
-  holidayOffice.name = "officeId";
-  holidayOffice.required = true;
-  holidayOffice.append(adminOption("", "Choose office"));
-  data.offices.offices.forEach((office) => holidayOffice.append(adminOption(office.id, office.name)));
-  const holidayOfficeLabel = document.createElement("label");
-  holidayOfficeLabel.textContent = "Office";
-  holidayOfficeLabel.append(holidayOffice);
-  holidayForm.append(holidayOfficeLabel);
-  const holidayActions = document.createElement("div");
-  holidayActions.className = "form-actions full";
-  const holidaySubmit = document.createElement("button");
-  holidaySubmit.className = "button";
-  holidaySubmit.type = "submit";
-  holidaySubmit.textContent = "Add holiday";
-  holidayActions.append(holidaySubmit);
-  holidayForm.append(holidayActions);
-  holidayForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    await api("/api/availability/holidays", requestOptions("POST", formValues(event.currentTarget)));
-    setMessage("Holiday added.");
-  }));
-
-  const formPanels = document.createElement("div");
-  formPanels.className = "stack";
-  const shiftHeading = document.createElement("h3");
-  shiftHeading.textContent = "Shifts";
-  if (hasAdminPermission(data, "availability.shift.manage")) {
-    formPanels.append(shiftHeading, shiftForm);
-  }
-  const calendarHeading = document.createElement("h3");
-  calendarHeading.textContent = "Working calendar";
-  const officeReadFailure = adminReadFailure(data.offices, "offices for calendar and holiday setup");
-  if (hasAdminPermission(data, "availability.calendar.manage")) {
-    if (officeReadFailure) formPanels.append(officeReadFailure);
-    else formPanels.append(calendarHeading, calendarForm);
-  }
-  const holidayHeading = document.createElement("h3");
-  holidayHeading.textContent = "Office holiday";
-  if (hasAdminPermission(data, "availability.holiday.manage")) {
-    if (officeReadFailure) formPanels.append(officeReadFailure);
-    else formPanels.append(holidayHeading, holidayForm);
-  }
-
-  const lists = document.createElement("div");
-  lists.className = "stack";
-  const shiftsHeading = document.createElement("h3");
-  shiftsHeading.textContent = "Configured shifts";
-  lists.append(shiftsHeading);
-  availability.shifts.forEach((shift) => {
-    const item = document.createElement("p");
-    item.className = "list-item";
-    item.textContent = shift.name + " · " + shift.startLocalTime + "–" + shift.endLocalTime + " · grace " + shift.graceMinutes + "m";
-    lists.append(item);
-  });
-  const calendarsHeading = document.createElement("h3");
-  calendarsHeading.textContent = "Assigned calendars";
-  lists.append(calendarsHeading);
-  availability.calendars.forEach((calendar) => {
-    const item = document.createElement("p");
-    item.className = "list-item";
-    item.textContent = calendar.name + " · " + calendar.office.name + " · from " + calendar.effectiveOn;
-    lists.append(item);
-  });
-  const holidaysHeading = document.createElement("h3");
-  holidaysHeading.textContent = "Upcoming holidays";
-  lists.append(holidaysHeading);
-  availability.holidays.forEach((holiday) => {
-    const item = document.createElement("p");
-    item.className = "list-item";
-    item.textContent = holiday.date + " · " + holiday.name + " · " + holiday.office.name;
-    lists.append(item);
-  });
-  forms.append(formPanels, lists);
-  section.append(forms);
-
-  const wfh = data.wfhPolicies || { policies: [] };
-  const wfhSection = adminSection("WFH eligibility overrides", "Most-specific effective rule wins: person, then department, then office, then role policy.");
-  const wfhReadFailure = adminReadFailure(data.wfhPolicies, "WFH eligibility overrides");
-  if (wfhReadFailure) {
-    wfhSection.append(wfhReadFailure);
-    section.append(wfhSection);
-    return section;
-  }
-  const wfhForm = document.createElement("form");
-  wfhForm.className = "form-grid";
-  const targetType = document.createElement("select");
-  targetType.name = "targetType";
-  if (!data.offices.readError) targetType.append(adminOption("office", "Office"));
-  if (!data.departments.readError) targetType.append(adminOption("organisation_department", "Department"));
-  if (!data.people.readError) targetType.append(adminOption("person", "Person"));
-  const targetId = document.createElement("select");
-  targetId.name = "targetId";
-  targetId.required = true;
-  const targetLabel = document.createElement("label");
-  targetLabel.textContent = "Target";
-  targetLabel.append(targetId);
-  const targetTypeLabel = document.createElement("label");
-  targetTypeLabel.textContent = "Target type";
-  targetTypeLabel.append(targetType);
-  const refreshWfhTargets = () => {
-    targetId.replaceChildren(adminOption("", "Choose target"));
-    const source = targetType.value === "office" ? data.offices.offices
-      : targetType.value === "organisation_department" ? data.departments.departments
-        : targetType.value === "person" ? data.people.people : [];
-    source.forEach((entry) => targetId.append(adminOption(entry.id, entry.name || entry.displayName || entry.email)));
-  };
-  targetType.addEventListener("change", refreshWfhTargets);
-  refreshWfhTargets();
-  wfhForm.append(targetTypeLabel, targetLabel);
-  wfhForm.append(adminField("Effective from", "effectiveOn", "date", new Date().toISOString().slice(0, 10), true));
-  wfhForm.append(adminField("Effective until (optional)", "effectiveUntil", "date", "", false));
-  const allowedLabel = document.createElement("label");
-  allowedLabel.className = "check";
-  const allowed = document.createElement("input");
-  allowed.type = "checkbox";
-  allowed.name = "allowed";
-  allowed.checked = true;
-  allowedLabel.append(allowed, document.createTextNode("WFH allowed"));
-  wfhForm.append(allowedLabel);
-  wfhForm.append(adminField("Reason (optional)", "reason", "text", "", false));
-  const wfhActions = document.createElement("div");
-  wfhActions.className = "form-actions full";
-  const wfhSubmit = document.createElement("button");
-  wfhSubmit.className = "button";
-  wfhSubmit.type = "submit";
-  wfhSubmit.textContent = "Add WFH override";
-  wfhActions.append(wfhSubmit);
-  wfhForm.append(wfhActions);
-  wfhForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-    const values = formValues(event.currentTarget);
-    await api("/api/availability/wfh-policies", requestOptions("POST", {
-      targetType: values.targetType,
-      targetId: values.targetId,
-      allowed: values.allowed === "on",
-      effectiveOn: values.effectiveOn,
-      effectiveUntil: values.effectiveUntil || undefined,
-      reason: values.reason || undefined,
-    }));
-    setMessage("WFH eligibility override added.");
-  }));
-  const wfhList = document.createElement("div");
-  wfhList.className = "stack";
-  if (!wfh.policies.length) wfhList.append(noticeElement("No WFH overrides configured; role policy applies.", "warning"));
-  wfh.policies.forEach((policy) => {
-    const item = document.createElement("p");
-    item.className = "list-item";
-    item.textContent = (policy.targetName || policy.targetType) + " · " + (policy.allowed ? "allowed" : "not allowed") +
-      " · from " + policy.effectiveOn + (policy.effectiveUntil ? " to " + policy.effectiveUntil : "") +
-      (policy.reason ? " · " + policy.reason : "");
-    wfhList.append(item);
-  });
-  const targetReadFailures = [
-    [data.offices, "office override targets"],
-    [data.departments, "department override targets"],
-    [data.people, "person override targets"],
-  ].map(([result, resource]) => adminReadFailure(result, resource)).filter(Boolean);
-  if (hasAdminPermission(data, "availability.wfh_policy.manage") && targetType.options.length) {
-    wfhSection.append(wfhForm);
-  } else if (hasAdminPermission(data, "availability.wfh_policy.manage")) {
-    wfhSection.append(...targetReadFailures);
-  }
-  wfhSection.append(wfhList);
-  if (targetType.options.length && targetReadFailures.length) wfhSection.append(...targetReadFailures);
-  section.append(wfhSection);
-  return section;
-}
-
-function clearAdminRoleForm() {
-  state.adminRoleId = null;
-  const form = app.querySelector("#admin-role-form");
-  if (!form) return;
-  form.hidden = !hasPermissionGrant(state.adminData?.actorGrants, "roles.create");
-  form.reset();
-  form.querySelector("#admin-role-form-title").textContent = "Create custom role";
-  form.querySelector(".role-preset-box").hidden = false;
-  form.querySelector("[name=rolePreset]").value = "";
-  form.querySelector(".role-preset-box [aria-live]").textContent = "";
-  form.querySelector("[type=submit]").textContent = "Create role";
-  form.querySelectorAll(".role-target").forEach((target) => {
-    target.hidden = true;
-    target.value = "";
-  });
-  form.querySelectorAll(".permission-row").forEach((row) => {
-    row.querySelector(".permission-check").checked = false;
-    row.querySelector(".role-grant-list").replaceChildren();
-    row.querySelector(".role-add-grant").hidden = true;
-  });
-}
-
-function editAdminRole(role) {
-  if (!hasPermissionGrant(state.adminData?.actorGrants, "roles.edit")) return;
-  const form = app.querySelector("#admin-role-form");
-  if (!form) return;
-  clearAdminRoleForm();
-  form.hidden = false;
-  form.querySelector(".role-preset-box").hidden = true;
-  state.adminRoleId = role.id;
-  form.querySelector("[name=expectedRevision]").value = String(role.revision);
-  form.querySelector("[name=key]").value = role.key;
-  form.querySelector("[name=name]").value = role.name;
-  Object.entries(role.operationalPolicy).forEach(([name, value]) => {
-    form.querySelector("[name=" + name + "]").checked = value === true;
-  });
-  const grantsByPermission = groupRolePermissionGrants(role.permissionGrants);
-  form.querySelectorAll(".permission-row").forEach((row) => {
-    const grants = grantsByPermission.get(row.dataset.permission) || [];
-    const check = row.querySelector(".permission-check");
-    check.checked = grants.length > 0;
-    row.querySelector(".role-add-grant").hidden = grants.length === 0;
-    grants.forEach((grant) => row.createGrantEditor(grant));
-  });
-  form.querySelector("#admin-role-form-title").textContent = "Edit custom role";
-  form.querySelector("[type=submit]").textContent = "Save role";
-  form.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function renderAdminPerson(person, data) {
-  const item = document.createElement("article");
-  item.className = "list-item";
-  const heading = document.createElement("strong");
-  heading.textContent = person.displayName + " · " + person.email;
-  const status = document.createElement("span");
-  status.className = "small";
-  status.textContent = (person.status || "unknown") + " · " +
-    [person.office && person.office.name, person.department && person.department.name, person.role && person.role.name]
-      .filter(Boolean).join(" · ");
-  item.append(heading, status);
-  const actions = document.createElement("div");
-  actions.className = "form-actions";
-  if (person.status === "invited" && hasAdminPermission(data, "people.invite")) {
-    actions.append(adminButton("Resend invitation", async () => {
-      try {
-        await api("/api/people/" + person.id + "/invitations/resend", requestOptions("POST"));
-        setMessage("Invitation resent.");
-      } catch (error) {
-        setMessage(errorText(error), "error");
-      }
-      render();
-    }, true));
-  }
-  if (hasAdminPermission(data, "people.freeze") &&
-    (person.status === "active" || person.status === "notice" || person.status === "onboarding")) {
-    actions.append(adminButton("Freeze", async () => {
-      try {
-        await api("/api/people/" + person.id + "/freeze", requestOptions("POST", { reason: "Frozen by administrator" }));
-        setMessage("Person frozen and existing sessions revoked.");
-      } catch (error) {
-        setMessage(errorText(error), "error");
-      }
-      render();
-    }, true));
-  }
-  const personPermissionTarget = {
-    personId: person.id,
-    officeId: person.office?.id,
-    organisationDepartmentId: person.department?.id,
-  };
-  if (hasAdminPermission(data, "people.offboard", personPermissionTarget) &&
-    (person.status === "active" || person.status === "notice")) {
-    actions.append(adminButton("Start offboarding", async () => {
-      const reason = window.prompt("Reason for starting offboarding:");
-      if (!reason || !reason.trim()) return;
-      try {
-        await api("/api/people/" + person.id + "/offboard", requestOptions("POST", { reason: reason.trim() }));
-        setMessage("Offboarding started. Reassignments and review handover remain audited.");
-      } catch (error) { setMessage(errorText(error), "error"); }
-      render();
-    }, true));
-  }
-  if (person.status === "offboarding" && hasAdminPermission(data, "people.offboard", personPermissionTarget)) {
-    actions.append(adminButton("Complete exit", async () => {
-      const reason = window.prompt("Reason for completing exit:");
-      if (!reason || !reason.trim()) return;
-      try {
-        await api("/api/people/" + person.id + "/offboard", requestOptions("POST", { final: true, reason: reason.trim() }));
-        setMessage("Exit completed; history was preserved.");
-      } catch (error) { setMessage(errorText(error), "error"); }
-      render();
-    }, true));
-  }
-  item.append(actions);
-  if (person.status === "onboarding") {
-    if (![
-      "people.edit",
-      "people.activate",
-      "roles.assign",
-    ].every((permission) => hasAdminPermission(data, permission))) {
-      item.append(noticeElement("You do not have all permissions required to complete onboarding.", "warning"));
-      return item;
+  let result;
+  try {
+    result = await api(path, requestOptions(method, payload, requestHeaders));
+  } catch (error) {
+    if (!isCurrentCommandIdentity(context)) throw adminCommandUiError("Your session changed. Sign in again before continuing.");
+    const accessChangedMessage = "Your access changed while saving. Refresh Admin and check the current permissions.";
+    if (recoverProtectedCommandFailure(error, context, accessChangedMessage)) {
+      throw adminCommandUiError(accessChangedMessage);
     }
-    const onboardingReadFailures = [
-      [data.offices, "offices needed to complete onboarding"],
-      [data.departments, "departments needed to complete onboarding"],
-      [data.roles, "roles needed to complete onboarding"],
-    ].map(([result, resource]) => adminReadFailure(result, resource)).filter(Boolean);
-    if (onboardingReadFailures.length) {
-      item.append(...onboardingReadFailures);
-      return item;
-    }
-    const form = document.createElement("form");
-    form.className = "form-grid onboarding-form";
-    form.append(adminField("Designation", "designation", "text", "", true));
-    const office = document.createElement("select");
-    office.name = "officeId";
-    office.required = true;
-    office.append(adminOption("", "Choose office"));
-    data.offices.offices.forEach((entry) => office.append(adminOption(entry.id, entry.name)));
-    const officeLabel = document.createElement("label");
-    officeLabel.textContent = "Office";
-    officeLabel.append(office);
-    form.append(officeLabel);
-    form.append(adminField("Employment start (office local date)", "employmentStartsOn", "date", "", true));
-    const employmentStartNote = document.createElement("p");
-    employmentStartNote.className = "small full";
-    employmentStartNote.textContent = "Choose an office; NOVA validates this date using that office's timezone.";
-    office.addEventListener("change", () => {
-      const selectedOffice = data.offices.offices.find((entry) => entry.id === office.value);
-      employmentStartNote.textContent = selectedOffice
-        ? `Date is evaluated in ${selectedOffice.timezone}.`
-        : "Choose an office; NOVA validates this date using that office's timezone.";
-    });
-    form.append(employmentStartNote);
-    const department = document.createElement("select");
-    department.name = "organisationDepartmentId";
-    department.required = true;
-    department.append(adminOption("", "Choose department"));
-    data.departments.departments.forEach((entry) => department.append(adminOption(entry.id, entry.name)));
-    const departmentLabel = document.createElement("label");
-    departmentLabel.textContent = "Department";
-    departmentLabel.append(department);
-    form.append(departmentLabel);
-    const role = document.createElement("select");
-    role.name = "roleId";
-    role.required = true;
-    role.append(adminOption("", "Choose role"));
-    data.roles.roles.filter((entry) => !entry.isProtected && !entry.archivedAt).forEach((entry) => role.append(adminOption(entry.id, entry.name)));
-    const roleLabel = document.createElement("label");
-    roleLabel.textContent = "Role";
-    roleLabel.append(role);
-    form.append(roleLabel);
-    const manager = document.createElement("select");
-    manager.name = "managerPersonId";
-    manager.append(adminOption("", "No manager"));
-    data.people.people.filter((entry) => entry.id !== person.id && ["active", "notice"].includes(entry.status)).forEach((entry) => manager.append(adminOption(entry.id, entry.displayName)));
-    const managerLabel = document.createElement("label");
-    managerLabel.textContent = "Manager";
-    managerLabel.append(manager);
-    form.append(managerLabel);
-    const submit = document.createElement("button");
-    submit.className = "button compact";
-    submit.type = "submit";
-    submit.textContent = "Complete onboarding";
-    form.append(submit);
-    form.addEventListener("submit", (event) => adminFormSubmit(event, async () => {
-      const values = formValues(event.currentTarget);
-      await api("/api/people/" + person.id + "/complete-onboarding", requestOptions("POST", values));
-      setMessage("Onboarding completed.");
-    }));
-    item.append(form);
+    if (!isCurrentCommand(context)) throw adminCommandUiError("The Admin page changed before the action completed.");
+    const message = unknownFailureMessage && !errorMessages[error?.code]
+      ? unknownFailureMessage
+      : errorText(error);
+    throw adminCommandUiError(message);
   }
-  return item;
+  if (!isCurrentCommand(context)) throw adminCommandUiError("The Admin page changed before the action completed.");
+  if (afterSuccess) afterSuccess(result);
+  else setMessage(successMessage);
+  state.pendingAdminCommandFocus = true;
+  render();
+  return result;
 }
 
-function renderProviderFields() {
-  const provider = app.querySelector("[name=provider]").value;
-  const target = app.querySelector("#provider-fields");
-  const templates = {
-    console: '<p class="small full">Console output is for local development only. It has no provider credentials.</p>',
-    smtp: '<label>SMTP host<input name="smtpHost" required placeholder="smtp.example.com"></label><label>SMTP port<input name="smtpPort" type="number" required min="1" max="65535" value="587"></label><label>SMTP username<input name="smtpUsername" required autocomplete="username"></label><label>SMTP password<input name="smtpPassword" type="password" required autocomplete="new-password"></label><label class="check full"><input name="smtpSecure" type="checkbox">Use TLS from the first connection (usually port 465)</label>',
-    gmail_oauth2: '<p class="small full">Use a customer-owned Google OAuth web client and enable the Gmail API. NOVA sends through Google HTTPS using the send-only <code>gmail.send</code> permission, including on Cloudflare Workers. Google classifies this as a sensitive scope, so public Google OAuth apps may need Google verification.</p>' + (state.publicOrigin ? '<p class="small full">In Google Cloud, add this authorised redirect URI: <code>' + state.publicOrigin + '/api/email-connections/gmail/callback</code></p>' : '<p class="small full">Save the public NOVA URL first; it determines the Google redirect URI.</p>') + '<label>Google OAuth client ID<input name="gmailClientId" required autocomplete="off"></label><label>Google OAuth client secret<input name="gmailClientSecret" type="password" required autocomplete="new-password"></label>',
-    resend: '<p class="small full">Create an API key in your Resend account with permission to send from this sender domain.</p><label class="full">Resend API key<input name="resendApiKey" type="password" required autocomplete="new-password"></label>',
-  };
-  target.innerHTML = templates[provider];
+function adminCommandUiError(message) {
+  const error = new Error(message);
+  error.uiMessage = true;
+  return error;
+}
+
+async function saveAdminRole(target, lifetime, currentData, action, roleId, payload) {
+  if (!target.isConnected || !isCurrentPageRequest(lifetime)) return;
+  if (state.adminData !== currentData) {
+    throw new Error("The Admin data changed before this role update could start. Refresh Admin and try again.");
+  }
+  const permission = action === "create" ? "roles.create" : "roles.edit";
+  if (!hasAdminPermission(state.adminData, permission)) {
+    throw new Error("Your current access no longer allows this role change. Refresh Admin to check access.");
+  }
+
+  const context = captureCommandContext(target);
+  const update = action === "update";
+  const path = update ? "/api/roles/" + encodeURIComponent(roleId) : "/api/roles";
+  try {
+    await api(path, requestOptions(update ? "PATCH" : "POST", payload));
+  } catch (error) {
+    if (state.adminData !== currentData) return;
+    if (!isCurrentCommandIdentity(context)) return;
+    if (recoverProtectedCommandFailure(error, context) || !isCurrentCommand(context)) return;
+    throw new Error(errorText(error));
+  }
+  if (state.adminData !== currentData || !isCurrentCommand(context)) return;
+  setMessage(update ? "Role updated." : "Role created.");
+  showFeedback();
+  render();
 }
 
 function noticeElement(text, kind) {
@@ -3307,1259 +1960,1233 @@ function noticeElement(text, kind) {
   return element;
 }
 
-function connectionCard(connection, supportedProviders) {
-  const supported = supportedProviders.includes(connection.provider);
-  const item = document.createElement("article");
-  item.className = "connection";
-  item.innerHTML =
-    '<div><h3></h3><p class="connection-description"></p><p class="connection-tested"></p></div>' +
-    '<div class="connection-actions"></div>' +
-    '<form class="test-form"><label>Send test email to<input name="recipientEmail" type="email" autocomplete="email" required></label><button class="button compact" type="submit">Send test</button></form>';
-  item.querySelector("h3").textContent = connection.name;
-  item.querySelector(".connection-description").textContent =
-    providerLabel(connection.provider) + " · " + connection.senderEmail +
-    (connection.replyToEmail ? " · reply-to " + connection.replyToEmail : "");
-  if (!supported) {
-    item.querySelector(".connection-description").after(noticeElement(
-      "This saved provider cannot send from the current runtime. Deactivate it or configure a provider supported here.",
-      "warning",
-    ));
-  }
-  item.querySelector(".connection-tested").textContent = connection.lastTestedAt
-    ? connection.lastTestErrorCode ? "Last test failed: " + connection.lastTestErrorCode : "Tested " + new Date(connection.lastTestedAt).toLocaleString()
-    : "Not tested yet";
-  const actions = item.querySelector(".connection-actions");
-  const testForm = item.querySelector(".test-form");
-  if (!supported) testForm.remove();
-  if (connection.isActive) {
-    const active = document.createElement("span");
-    active.className = "status" + (supported ? "" : " pending");
-    active.textContent = supported ? "Active" : "Active, unavailable here";
-    actions.append(active);
-    actions.append(actionButton("Deactivate", () => deactivateConnection(connection.id)));
-  } else if (supported) {
-    actions.append(actionButton("Activate", () => activateConnection(connection.id)));
-  }
-  if (supported) {
-    actions.append(actionButton("Send test", () => {
-      testForm.classList.toggle("open");
-      testForm.querySelector("input").focus();
-    }));
-    if (connection.provider === "gmail_oauth2") {
-      actions.append(actionButton("Connect Google", () => connectGmail(connection.id)));
+async function renderInvite(lifetime) {
+  renderShell(createElement("div", { id: "invite-page-root" }), "invite");
+  const root = app.querySelector("#invite-page-root");
+  if (!root) return;
+
+  let inviteUi;
+  try {
+    inviteUi = await import("./src/pages/invite/InvitePage.tsx");
+  } catch {
+    if (isCurrentPageRequest(lifetime) && root.isConnected) {
+      root.replaceChildren(noticeElement("Invitations could not be displayed. Refresh the page to try again.", "error"));
     }
-  }
-  if (supported) testForm.addEventListener("submit", (event) => submitTest(event, connection.id));
-  return item;
-}
-
-function actionButton(text, handler) {
-  const button = document.createElement("button");
-  button.className = "button secondary compact";
-  button.type = "button";
-  button.textContent = text;
-  button.addEventListener("click", handler);
-  return button;
-}
-
-function providerLabel(provider) {
-  return { console: "Console", smtp: "SMTP", gmail_oauth2: "Gmail API (OAuth)", resend: "Resend" }[provider] || provider;
-}
-
-function configureEmailProviderOptions(supportedProviders) {
-  const select = app.querySelector("#connection-form [name=provider]");
-  const supported = new Set(supportedProviders);
-  const options = Array.from(select.options);
-  options.forEach((option) => { if (!supported.has(option.value)) option.remove(); });
-  const notice = app.querySelector("#email-runtime-notice");
-  notice.replaceChildren();
-  if (!supported.has("smtp")) {
-    notice.append(noticeElement(
-      "SMTP requires a Node.js runtime. Gmail API and Resend use HTTPS and work on this deployment; choose from the methods shown here.",
-      "warning",
-    ));
-  }
-  if (select.options.length > 0 && !Array.from(select.options).some((option) => option.value === select.value)) {
-    select.value = select.options[0].value;
-  }
-  renderProviderFields();
-}
-
-function renderConnections(connections, supportedProviders) {
-  const target = app.querySelector("#connections");
-  target.replaceChildren();
-  if (!connections.length) {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.textContent = "No email connection exists yet. Add one below, test it, then activate it.";
-    target.append(empty);
     return;
   }
-  const list = document.createElement("div");
-  list.className = "connection-list";
-  connections.forEach((connection) => list.append(connectionCard(connection, supportedProviders)));
-  target.append(list);
-}
-
-function renderInvite() {
-  renderShell(
-    '<section class="panel"><p class="eyebrow">People</p><h1>Invite a person.</h1>' +
-      '<p class="lede">NOVA sends a one-time link. The invited person creates their own password; no temporary password is created or shared.</p>' + feedback() +
-      '<form id="invite-form" class="form-grid one"><label>Full name<input name="displayName" autocomplete="name" required maxlength="180"></label><label>Work email<input name="email" type="email" autocomplete="email" required></label><div class="form-actions"><button class="button" type="submit">Send invitation</button></div></form></section>',
-    "invite",
-  );
-  const form = app.querySelector("#invite-form");
-  if (!canShowInviteNavigation(state.actorGrants)) {
-    form.hidden = true;
-    form.insertAdjacentElement("beforebegin", noticeElement("Your role does not include permission to invite people.", "warning"));
-  } else {
-    form.addEventListener("submit", submitInvite);
-  }
-  showFeedback();
-}
-
-async function renderNotifications() {
-  renderShell(
-    '<section class="panel"><div class="panel-header"><div><p class="eyebrow">Inbox</p><h1>Notifications</h1><p class="lede">In-app notifications are always available here. Optional notification email is off until you enable it.</p></div><button class="button secondary compact" type="button" data-action="read-all">Mark all read</button></div>' +
-      feedback() + '<div id="notification-list"><p class="small">Loading notifications...</p></div></section>' +
-    '<section class="panel"><div class="panel-header"><div><h2>Optional email</h2><p class="small">Email is separate from invitation, verification, and password-reset messages. It never blocks NOVA activity.</p></div></div><div id="notification-preferences"><p class="small">Loading preferences...</p></div></section>',
-    "notifications",
-  );
-  showFeedback();
-  app.querySelector("[data-action=read-all]").addEventListener("click", async () => {
-    try { await api("/api/notifications/read-all", requestOptions("POST")); setMessage("Notifications marked as read."); }
-    catch (error) { setMessage(errorText(error), "error"); }
-    render();
+  if (!isCurrentPageRequest(lifetime) || !root.isConnected) return;
+  mountReactIsland(root, inviteUi.InvitePage, {
+    canInvite: canShowInviteNavigation(state.actorGrants),
+    onSubmit: (event) => { void submitInvite(event); },
   });
+  showFeedback();
+}
+
+async function renderNotifications(lifetime) {
+  lifetime = lifetime || beginPageRequestLifetime();
+  renderShell(createElement("div", { id: "notifications-root" }), "notifications");
+  const root = app.querySelector("#notifications-root");
+  if (!root) return;
+  let NotificationsPage;
+  let createNotificationsRoute;
+  let resolveNotificationDeepLink;
   try {
-    const [items, preferences] = await Promise.all([
-      api("/api/notifications?limit=100"),
-      api("/api/notification-preferences"),
+    const [pageUi, routeUi, notificationDestinations] = await Promise.all([
+      import("./src/features/notifications/index.js"),
+      import("./app/notifications-route.js"),
+      import("./notification-destinations.js"),
     ]);
-    const list = app.querySelector("#notification-list");
-    list.replaceChildren();
-    if (!items.notifications.length) {
-      list.append(noticeElement("No notifications yet.", "warning"));
-    } else {
-      items.notifications.forEach((notification) => {
-        const item = document.createElement("article");
-        item.className = "list-item" + (notification.readAt ? "" : " notice");
-        const title = document.createElement("h3");
-        title.textContent = notification.title;
-        const body = document.createElement("p");
-        body.className = "small";
-        body.textContent = notification.body;
-        const meta = document.createElement("p");
-        meta.className = "small";
-        meta.textContent = new Date(notification.createdAt).toLocaleString();
-        item.append(title, body, meta);
-        const actions = document.createElement("div");
-        actions.className = "form-actions";
-        if (notification.deepLink) {
-          const link = document.createElement("a");
-          link.className = "button secondary compact";
-          link.href = notification.deepLink;
-          link.textContent = "Open";
-          actions.append(link);
-        }
-        if (!notification.readAt) {
-          actions.append(actionButton("Mark read", async () => {
-            try { await api("/api/notifications/" + notification.id + "/read", requestOptions("POST")); }
-            catch (error) { setMessage(errorText(error), "error"); }
-            render();
-          }));
-        }
-        item.append(actions);
-        list.append(item);
-      });
+    NotificationsPage = pageUi.NotificationsPage;
+    createNotificationsRoute = routeUi.createNotificationsRoute;
+    resolveNotificationDeepLink = notificationDestinations.resolveNotificationDeepLink;
+  } catch {
+    if (isCurrentPageRequest(lifetime) && root.isConnected) {
+      root.replaceChildren(noticeElement("Notifications could not load. Reload this page to try again.", "error"));
     }
-    const preferencesTarget = app.querySelector("#notification-preferences");
-    preferencesTarget.replaceChildren();
-    (preferences.preferences || []).filter((preference) => preference.channel === "email").forEach((preference) => {
-      const label = document.createElement("label");
-      label.className = "list-item";
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.checked = preference.enabled;
-      input.setAttribute("aria-label", "Email " + preference.label);
-      input.addEventListener("change", async () => {
-        try {
-          await api("/api/notification-preferences", requestOptions("PATCH", {
-            eventKey: preference.eventKey, channel: "email", enabled: input.checked,
-          }));
-          setMessage("Email preference saved.");
-        } catch (error) {
-          input.checked = !input.checked;
-          setMessage(errorText(error), "error");
-        }
-        showFeedback();
-      });
-      label.append(input, document.createTextNode(" Email " + preference.label));
-      preferencesTarget.append(label);
+    return;
+  }
+  if (!isCurrentPageRequest(lifetime) || !root.isConnected) return;
+
+  let notificationsRoute;
+  const mount = () => {
+    if (!notificationsRoute || !isCurrentPageRequest(lifetime) || !root.isConnected) return;
+    mountReactIsland(root, NotificationsPage, {
+      notifications: notificationsRoute.getState(),
+      resolveNotificationDeepLink: (rawDeepLink, eventKey) => resolveNotificationDeepLink(rawDeepLink, {
+        origin: window.location.origin,
+        grants: state.actorGrants,
+        homeView: workspaceHomeView(),
+        eventKey,
+      }),
+      onMarkRead: (id, source) => notificationsRoute.markRead(id, source),
+      onMarkAllRead: (source) => notificationsRoute.markAllRead(source),
+      onRetryNotifications: () => { void notificationsRoute.retry(); },
     });
-  } catch (error) {
-    const list = app.querySelector("#notification-list");
-    if (list) list.replaceChildren(noticeElement(errorText(error), "error"));
+  };
+  notificationsRoute = createNotificationsRoute({
+    readNotifications: () => pageApi("/api/notifications?limit=100", lifetime),
+    markNotificationRead: (id) => api("/api/notifications/" + id + "/read", requestOptions("POST")),
+    markAllNotificationsRead: () => api("/api/notifications/read-all", requestOptions("POST")),
+    runCommand: (source, action) => runActionButton(source, action),
+    isCurrent: () => isCurrentPageRequest(lifetime) && root.isConnected,
+    isCommandCurrent: isCurrentCommand,
+    isCommandIdentityCurrent: isCurrentCommandIdentity,
+    errorMessage: errorText,
+    refreshUnreadCount: () => { void refreshUnreadNotificationCount(); },
+    onSuccess: (kind) => {
+      setMessage(kind === "read" ? "Notification marked as read." : "Notifications marked as read.");
+      showFeedback();
+    },
+    onChange: mount,
+  });
+  mount();
+  showFeedback();
+  void notificationsRoute.load();
+}
+
+async function renderAttendance(lifetime) {
+  lifetime = lifetime || beginPageRequestLifetime();
+  renderShell(createElement("div", { id: "my-day-page-root" }), "today");
+  const pageRoot = app.querySelector("#my-day-page-root");
+  await mountMyDayPageRoute({
+    actorGrants: state.actorGrants,
+    getActorGrants: () => state.actorGrants,
+    workspace: normalizeWorkspace(state.uiPreferences.workspace),
+    lifetime,
+    pageRoot,
+    findModuleTarget: (id) => app.querySelector(`[data-my-day-slot="${id}"]`),
+    MyDayPage,
+    requestRoute: myDayRequestRoute,
+    isCurrentPageRequest,
+    mountReactIsland,
+    pageApi,
+    api,
+    requestOptions,
+    isCurrentCommand,
+    runActionButton,
+    setMessage,
+    render,
+    showFeedback,
+    go,
+    noticeElement,
+  });
+}
+
+function businessTimeLabel(value, timezone) {
+  try {
+    return new Date(value).toLocaleTimeString([], { timeZone: timezone, hour: "numeric", minute: "2-digit" });
+  } catch {
+    return new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   }
 }
 
-async function renderAttendance() {
-  renderShell(
-    '<section class="panel"><p class="eyebrow">Availability</p><h1>Today.</h1><p class="lede">One attendance state for your current office business date. The server resolves the date from the office timezone.</p>' + feedback() + '<div id="attendance-today"><p class="small">Loading today\'s rules...</p></div></section>',
-    "today",
-  );
+function workCollaborationReadState(result, resource, onRetry) {
+  return projectWorkCollaborationReadState(result, resource, onRetry, adminReadIssue);
+}
+
+async function renderWork(date, lifetime) {
+  clearReactIslands();
+  lifetime = lifetime || beginPageRequestLifetime();
+  const requestedActorId = state.identityPersonId || state.actorGrants?.actorPersonId || null;
+  const requestIdentityEpoch = state.identityEpoch;
+  const routeParams = new URLSearchParams(window.location.search);
+  const focusedRouteInput = readFocusedCollaborationRequest(routeParams);
+  const requestedFocus = focusedRouteInput.status === "focused"
+    ? { kind: focusedRouteInput.kind, id: focusedRouteInput.id }
+    : null;
+  const readPlan = planWorkReads(state.actorGrants, {
+    focusedCollaborationRequest: requestedFocus?.kind,
+  });
+  const taskCreateScopes = ["organisation", "client", "client_workstream", "group"];
+  const canCreateTasks = hasAnyPermissionGrant(state.actorGrants, ["tasks.create"], taskCreateScopes);
+  const taskScopes = ["organisation", "client", "client_workstream", "group", "assigned_work"];
+  const canActOnTasks = hasAnyPermissionGrant(state.actorGrants, [
+    "tasks.start", "tasks.edit", "tasks.submit", "tasks.reviewer_request", "tasks.handover_request",
+  ], taskScopes);
+  const workRouteContext = resolveWorkRouteContext({
+    searchParams: routeParams,
+    readPlan,
+    canCreateTasks,
+    canActOnTasks,
+    focusedCollaboration: focusedRouteInput,
+  });
+  const {
+    taskId,
+    focusedCollaboration: focusedRequestRoute,
+    focusRequest,
+    hasFocusedCollaborationRoute,
+    taskDetailRoute,
+    reviewTarget,
+    hasReviewRoute,
+    validReviewTarget,
+    workDescription,
+    workPageTitle,
+    featureImports,
+  } = workRouteContext;
+  const workPageUiPromise = Promise.all([
+    import("./src/features/work/WorkPage.tsx"),
+    import("./src/features/work/page-contracts.ts"),
+  ]).then(([page, composition]) => ({ ...page, ...composition }), (error) => ({ error }));
+  const workRouteFeaturesPromise = loadWorkRouteFeatures(featureImports);
+  renderShell(createElement("div", { id: "work-route-root" }), "work");
+  const workRouteRoot = app.querySelector("#work-route-root");
+  if (!workRouteRoot || !isCurrentPageRequest(lifetime)) return;
+  const loadedWorkPageUi = await workPageUiPromise;
+  if (loadedWorkPageUi.error) {
+    if (!isCurrentPageRequest(lifetime) || !workRouteRoot.isConnected) return;
+    workRouteRoot.append(noticeElement(errorText(loadedWorkPageUi.error), "error"));
+    restorePendingRouteScroll();
+    return;
+  }
+  if (!isCurrentPageRequest(lifetime) || !workRouteRoot.isConnected) return;
+  const workPageUi = loadedWorkPageUi;
+  const mountWorkPage = (sections, stateName = "ready", message, options = {}) => {
+    mountReactIsland(workRouteRoot, workPageUi.WorkPage, {
+      title: workPageTitle,
+      description: taskDetailRoute || hasReviewRoute || hasFocusedCollaborationRoute ? undefined : workDescription,
+      sections,
+      sectionContent: options.sectionContent,
+      state: stateName,
+      message,
+      notices: options.notices || [],
+      timelineDate: options.timelineDate,
+      showTimelineDate: options.showTimelineDate === true,
+      timelineDateUnavailable: options.timelineDateUnavailable === true,
+      onLoadTimelineDate: options.onLoadTimelineDate,
+    });
+  };
+  const workSlot = (id) => workRouteRoot.querySelector(`[data-work-slot="${id}"]`);
+  const showWorkFeatureMessage = (target, title, message) =>
+    mountReactIsland(target, workPageUi.WorkFeatureMessage, { title, message });
+  mountWorkPage([], "loading", taskDetailRoute
+    ? "Loading task details..."
+    : hasReviewRoute
+      ? "Loading review..."
+      : focusRequest
+        ? "Loading collaboration request..."
+        : "Loading work...");
   showFeedback();
-  try {
-    const result = await api("/api/attendance/today");
-    const target = app.querySelector("#attendance-today");
-    target.replaceChildren();
-    const availability = result.availability;
-    const summary = document.createElement("p");
-    summary.className = "small";
-    summary.textContent = availability.businessDate + " · " + availability.officeName + " · " + availability.timezone +
-      " · " + (availability.attendanceMode === "scheduled" ? "scheduled attendance" :
-        "hour-based attendance (" + availability.requiredAttendanceMinutes + " min)");
-    target.append(summary);
-    const durationSummary = document.createElement("p");
-    durationSummary.className = "small";
-    durationSummary.textContent = "Attendance duration: " + result.attendanceSummary.durationMinutes + " min" +
-      (availability.attendanceMode === "hour_based"
-        ? " · required " + result.attendanceSummary.requiredMinutes + " min" +
-          (result.attendanceSummary.requirementSatisfied ? " · satisfied" : " · not yet satisfied")
-        : " · schedule-relative states are shown in Work timeline");
-    target.append(durationSummary);
-    const rule = document.createElement("p");
-    rule.className = "notice" + (availability.isHoliday || !availability.isWorkingDay ? " warning" : "");
-    rule.textContent = result.onApprovedLeave
-      ? "Approved leave — attendance is closed for today."
-      : availability.isHoliday
-      ? "Office holiday — attendance is closed for today."
-      : availability.isWorkingDay
-      ? availability.attendanceMode === "scheduled"
-        ? availability.shiftId ? "Working day — scheduled shift is configured." : "Working day — no shift is attached."
-        : "Working day — measure the required duration; shift times do not create late/early states."
-      : "Non-working day — attendance is closed for today.";
-    target.append(rule);
-    const attendance = result.attendance;
-    if (!attendance) {
-      const provisional = result.provisionalAttendance;
-      if (provisional) {
-        const provisionalNote = document.createElement("p");
-        provisionalNote.className = "notice" + (provisional.status === "pending" ? " warning" : "");
-        provisionalNote.textContent = provisional.status === "pending"
-          ? "WFH check-in is provisional. It is not counted as attendance or payroll time unless the request is approved."
-          : provisional.status === "discarded"
-          ? "This provisional WFH interval was not credited" + (provisional.resolutionReason ? " (" + provisional.resolutionReason.replaceAll("_", " ").toLowerCase() + ")." : ".")
-          : "This WFH interval was approved and added to the attendance record.";
-        target.append(provisionalNote);
-        if (provisional.checkedOutAt) {
-          const interval = document.createElement("p");
-          interval.className = "small";
-          interval.textContent = "Provisional interval: " + new Date(provisional.checkedInAt).toLocaleTimeString() +
-            "–" + new Date(provisional.checkedOutAt).toLocaleTimeString();
-          target.append(interval);
-        } else if (provisional.status === "pending") {
-          target.append(actionButton("Check out provisional WFH", () => attendanceAction("/api/attendance/check-out")));
-        }
-      }
-      const empty = document.createElement("p");
-      empty.className = "empty";
-      empty.textContent = provisional?.status === "pending"
-        ? "Your task work is separate from this provisional attendance record."
-        : "You have not started attendance today.";
-      target.append(empty);
-      if (!result.onApprovedLeave && !availability.isHoliday && availability.isWorkingDay && availability.calendarId &&
-        (availability.attendanceMode !== "scheduled" || availability.shiftId) && provisional?.status !== "pending") {
-        const actions = document.createElement("div");
-        actions.className = "form-actions";
-        const officeCheckIn = actionButton("Check in at office", () => attendanceAction("/api/attendance/check-in", { mode: "office" }));
-        const wfhCheckIn = actionButton(result.wfhPending && !result.wfhApproved ? "Provisional WFH check-in" : "Check in from home", () => attendanceAction("/api/attendance/check-in", { mode: "wfh" }));
-        officeCheckIn.disabled = result.wfhPending;
-        wfhCheckIn.disabled = !availability.wfhAllowed || (!result.wfhApproved && !result.wfhPending);
-        actions.append(officeCheckIn, wfhCheckIn);
-        target.append(actions);
-        if (result.wfhPending) {
-          target.append(noticeElement("To switch to office attendance, cancel the pending WFH request first.", "warning"));
-        }
-      }
-      renderLeaveRequestPanel(target);
-      renderWfhRequestPanel(target);
+  const focusedRequestCanBeRead = focusRequest?.kind === "reviewer"
+    ? readPlan.reviewerRequests
+    : focusRequest?.kind === "handover"
+      ? readPlan.handoverRequests
+      : true;
+  if (focusedRequestRoute.status === "invalid" || (focusRequest && !focusedRequestCanBeRead)) {
+    mountWorkPage([], "error", "This collaboration request is not available to your current role or the link is invalid.");
+    restorePendingRouteScroll();
+    return;
+  }
+  if (hasReviewRoute && (!readPlan.reviews || !validReviewTarget)) {
+    mountWorkPage([], "error", "This review is not available to your current role or the link is invalid.");
+    restorePendingRouteScroll();
+    return;
+  }
+  if (taskDetailRoute) {
+    const workRouteFeatures = await workRouteFeaturesPromise;
+    const taskDetailUi = workRouteFeatures.taskDetail;
+    if (!isCurrentPageRequest(lifetime)) return;
+    if (taskDetailUi.error) {
+      mountWorkPage([], "error", errorText(taskDetailUi.error));
+      restorePendingRouteScroll();
       return;
     }
-    const stateLine = document.createElement("p");
-    stateLine.className = "notice";
-    stateLine.textContent = "Checked in " + new Date(attendance.checkedInAt).toLocaleTimeString() + " · mode: " + attendance.mode +
-      (attendance.checkedOutAt ? " · checked out " + new Date(attendance.checkedOutAt).toLocaleTimeString() : " · open");
-    target.append(stateLine);
-    const actions = document.createElement("div");
-    actions.className = "form-actions";
-    if (!attendance.checkedOutAt) {
-      actions.append(actionButton("Check out", () => attendanceAction("/api/attendance/check-out")));
-      if (attendance.mode === "office" && availability.wfhAllowed && result.wfhApproved) {
-        actions.append(actionButton("Switch to WFH", () => attendanceAction("/api/attendance/change-mode", { mode: "wfh" })));
-      } else if (attendance.mode === "wfh") {
-        actions.append(actionButton("Switch to office", () => attendanceAction("/api/attendance/change-mode", { mode: "office" })));
-      }
-    }
-    target.append(actions);
-    renderLeaveRequestPanel(target);
-    renderWfhRequestPanel(target);
-  } catch (error) {
-    const target = app.querySelector("#attendance-today");
-    if (target) target.replaceChildren(noticeElement(errorText(error), "error"));
+    mountWorkPage(workPageUi.createWorkPageSections(readPlan, {
+      canCreateTasks,
+      hasReviewRoute,
+      taskDetailRoute,
+      focusedCollaborationRequest: hasFocusedCollaborationRoute,
+    }));
+    const taskDetailRoot = workSlot("task-detail");
+    if (!taskDetailRoot) return;
+    await workTaskDetailRoute({ taskId, board: taskDetailRoot, lifetime, Component: taskDetailUi.module.TaskDetail });
+    if (!isCurrentPageRequest(lifetime)) return;
+    restorePendingRouteScroll();
+    return;
   }
-}
-
-function localDateTimeValue(value) {
-  const date = new Date(value);
-  const pad = (number) => String(number).padStart(2, "0");
-  return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate()) + "T" + pad(date.getHours()) + ":" + pad(date.getMinutes());
-}
-
-function timelineLabel(value) {
-  return new Date(value).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
-}
-
-async function renderWork(date) {
-  renderShell(
-    '<section class="panel"><div class="panel-header"><div><p class="eyebrow">Work</p><h1>One clear work timeline.</h1><p class="lede">Start work against an assignment, keep productive time separate from attendance, and correct eligible historical gaps with an audit trail.</p></div></div>' + feedback() + '<div id="work-board"><p class="small">Loading work...</p></div></section>',
-    "work",
-  );
-  showFeedback();
-  const query = date ? "?date=" + encodeURIComponent(date) : "";
   try {
-    const [assignmentsResult, sessionsResult, timeline, reviewsResult, reviewerRequestsResult, handoverRequestsResult, workContext, tasksResult, taskCatalogResult, attendanceResult] = await Promise.all([
-      api("/api/work/assignments/mine"),
-      api("/api/work-sessions/mine"),
-      api("/api/work/timeline" + query),
-      readOrError(api("/api/reviews/pending"), { reviews: [] }),
-      readOrError(api("/api/task-reviewer-requests"), { requests: [] }),
-      readOrError(api("/api/task-handover-requests"), { requests: [] }),
-      api("/api/work-context"),
-      readOrError(api("/api/tasks"), { tasks: [] }),
-      readOrError(api("/api/task-catalog"), { entries: [], proposals: [], permissions: {} }),
-      readOrError(api("/api/attendance/today"), {}),
-    ]);
-    const board = app.querySelector("#work-board");
-    board.replaceChildren();
-    const dateForm = document.createElement("form");
-    dateForm.className = "form-actions";
-    dateForm.innerHTML = '<label>Timeline date<input name="date" type="date" required></label><button class="button secondary compact" type="submit">Load day</button>';
-    dateForm.elements.date.value = timeline.date;
-    dateForm.addEventListener("submit", (event) => {
-      event.preventDefault();
-      renderWork(dateForm.elements.date.value);
+    const {
+      assignmentsResult,
+      sessionsResult,
+      timeline,
+      reviewsResult,
+      reviewerRequestsResult,
+      handoverRequestsResult,
+      workContext,
+      tasksResult,
+      visibleTasksResult,
+      taskCatalogResult,
+      attendanceResult,
+      reviewerManagementResult,
+    } = await readWorkRouteData({
+      readPlan,
+      hasReviewRoute,
+      focusRequest,
+      reviewTarget: reviewTarget || {},
+      date,
+      searchParams: new URLSearchParams(window.location.search),
+      lifetime,
+      pageApi,
     });
-    board.append(dateForm);
-    const attendanceReadFailure = adminReadFailure(attendanceResult, "today’s attendance status");
-    if (attendanceReadFailure) board.append(attendanceReadFailure);
-    if (!attendanceReadFailure && (attendanceResult?.wfhPending || attendanceResult?.provisionalAttendance?.status === "pending")) {
-      const pendingWfhNote = document.createElement("p");
-      pendingWfhNote.className = "notice warning";
-      pendingWfhNote.textContent = attendanceResult.provisionalAttendance?.status === "pending"
-        ? "WFH approval is pending. Task work is retained independently. A role that requires attendance may run a timer only while this provisional check-in is open; approval promotes attendance, rejection discards only attendance credit and pauses that timer."
-        : "WFH approval is pending. Task work may continue. If your role requires attendance, record a provisional WFH check-in on Today before starting a timer.";
-      board.append(pendingWfhNote);
+    if (!isCurrentPageRequest(lifetime)) return;
+    const selectedReview = hasReviewRoute
+      ? reviewTarget?.assignmentId
+        ? (reviewsResult.reviews || []).find((item) => item.assignmentId === reviewTarget.assignmentId)
+        : reviewTarget?.taskId
+          ? (reviewsResult.reviews || []).find((item) => item.taskId === reviewTarget.taskId)
+          : null
+      : null;
+    const reviewDetailResult = selectedReview && readPlan.reviews
+      ? await readOrError(pageApi(
+        "/api/task-assignments/" + encodeURIComponent(selectedReview.assignmentId) + "/review",
+        lifetime,
+      ), {})
+      : undefined;
+    if (!isCurrentPageRequest(lifetime)) return;
+    reconcileReviewFeedbackDraftAccess(reviewsResult, reviewDetailResult, reviewTarget, hasReviewRoute, selectedReview);
+    const loadedWorkRouteFeatures = await workRouteFeaturesPromise;
+    if (!isCurrentPageRequest(lifetime)) return;
+    const workContextUi = loadedWorkRouteFeatures.workContext?.module || null;
+    const workContextDepartmentProjector = loadedWorkRouteFeatures.workContext?.projector || null;
+    const workContextUiLoadError = loadedWorkRouteFeatures.workContext?.error || null;
+    const reviewsUi = loadedWorkRouteFeatures.reviews?.module || null;
+    const reviewsUiLoadError = loadedWorkRouteFeatures.reviews?.error || null;
+    const workCollaborationUi = loadedWorkRouteFeatures.collaboration?.module || null;
+    const workCollaborationUiLoadError = loadedWorkRouteFeatures.collaboration?.error || null;
+    const reviewerManagementUi = loadedWorkRouteFeatures.reviewerManagement?.module || null;
+    const reviewerManagementUiLoadError = loadedWorkRouteFeatures.reviewerManagement?.error || null;
+    const taskComposerUi = loadedWorkRouteFeatures.taskComposer?.module || null;
+    const taskComposerUiLoadError = loadedWorkRouteFeatures.taskComposer?.error || null;
+    const sessionsUi = loadedWorkRouteFeatures.sessions?.module || null;
+    const sessionsRoute = loadedWorkRouteFeatures.sessions?.route || null;
+    const sessionsUiLoadError = loadedWorkRouteFeatures.sessions?.error || null;
+    const timelineUi = loadedWorkRouteFeatures.timeline?.module || null;
+    const timelineRoute = loadedWorkRouteFeatures.timeline?.route || null;
+    const timelineUiLoadError = loadedWorkRouteFeatures.timeline?.error || null;
+    const visibleTasksUi = loadedWorkRouteFeatures.visibleTasks?.module || null;
+    const visibleTasksRoute = loadedWorkRouteFeatures.visibleTasks?.route || null;
+    const visibleTasksUiLoadError = loadedWorkRouteFeatures.visibleTasks?.error || null;
+    const loadedMyAssignmentsUi = loadedWorkRouteFeatures.assignments;
+    const loadedSavedTaskViewsUi = loadedWorkRouteFeatures.savedTaskViews;
+    const myAssignmentsUi = loadedMyAssignmentsUi?.module || null;
+    const myAssignmentsUiLoadError = loadedMyAssignmentsUi?.error || null;
+    const savedTaskViewsUi = loadedSavedTaskViewsUi?.module || null;
+    const savedTaskViewsUiLoadError = loadedSavedTaskViewsUi?.error || null;
+    if (!isCurrentPageRequest(lifetime)) return;
+    const timelineReadFailure = adminReadFailure(timeline, "the daily timeline");
+    const timelineDate = timeline.readError ? undefined : timeline.date;
+    const workPageNotices = [];
+    const attendanceReadFailure = readPlan.attendance && !hasReviewRoute ? adminReadFailure(attendanceResult, "today’s attendance status") : undefined;
+    if (attendanceReadFailure) {
+      workPageNotices.push({ id: "attendance-read", kind: "warning", message: attendanceReadFailure.textContent || "Today’s attendance status could not be read." });
     }
-
-    const billingPolicyTools = renderBillingPolicyTools(workContext.clientWorkstreams, taskCatalogResult);
-    if (billingPolicyTools) board.append(billingPolicyTools);
-
-    const taskTargets = workContext.taskCreationTargets || [];
-    if (taskTargets.length) {
-      const createSection = adminSection(
-        "Add work to a workstream",
-        "Create a task in a workstream your role can edit. Self-assignment is created atomically; client work keeps its review requirement.",
-      );
-      const taskForm = document.createElement("form");
-      taskForm.className = "form-grid one";
-      taskForm.append(adminField("Task title", "title", "text", "", true));
-      const targetSelect = document.createElement("select");
-      targetSelect.name = "contextId";
-      targetSelect.required = true;
-      targetSelect.append(adminOption("", "Choose a workstream"));
-      taskTargets.forEach((target) => targetSelect.append(adminOption(
-        target.kind + ":" + target.id,
-        (target.kind === "client" ? (target.clientName + " · ") : "Organisation · ") + target.name +
-          (target.kind === "client" && !target.billingPolicyClass ? " · billing policy required" : ""),
-      )));
-      const targetLabel = document.createElement("label");
-      targetLabel.textContent = "Workstream";
-      targetLabel.append(targetSelect);
-      taskForm.append(targetLabel);
-      let taskCatalogSelect = null;
-      const billingPolicyHint = document.createElement("p");
-      billingPolicyHint.className = "small full";
-      const updateBillingPolicyHint = () => {
-        const selected = taskTargets.find((target) => target.kind + ":" + target.id === targetSelect.value);
-      billingPolicyHint.textContent = !selected
-          ? "NOVA assigns the class automatically. One-off work uses the workstream default; a predefined task uses its authorized workstream-specific rule when present. Users never choose a class."
-          : selected.kind === "organisation"
-            ? "NOVA automatically classifies organisation-workstream tasks as non-billable."
-            : selected.billingPolicyClass
-              ? "NOVA applies the default to one-off tasks and any saved admin rule to a selected predefined task. Users cannot change classification."
-            : "This workstream has no billing policy yet. Ask an authorized policy manager to configure it; NOVA will block task creation until then.";
-      };
-      targetSelect.addEventListener("change", updateBillingPolicyHint);
-      updateBillingPolicyHint();
-      taskForm.append(billingPolicyHint);
-      taskCatalogSelect = appendTaskCatalogSelector(taskForm, taskCatalogResult);
-      if (taskCatalogSelect) taskCatalogSelect.addEventListener("change", updateBillingPolicyHint);
-      const visibleTasks = tasksResult.tasks || [];
-      const correctionReadFailure = adminReadFailure(tasksResult, "existing tasks for correction links");
-      if (correctionReadFailure) taskForm.append(correctionReadFailure);
-      else appendTaskCorrectionFields(taskForm, visibleTasks, targetSelect);
-      const description = document.createElement("label");
-      description.textContent = "What needs to be done? (optional)";
-      const descriptionInput = document.createElement("textarea");
-      descriptionInput.name = "description";
-      descriptionInput.maxLength = 10000;
-      description.append(descriptionInput);
-      taskForm.append(description);
-      const dueDate = adminField("Due date (optional)", "dueDate", "date", "", false);
-      taskForm.append(dueDate);
-      const assignLabel = document.createElement("label");
-      assignLabel.className = "check full";
-      const assignToSelf = document.createElement("input");
-      assignToSelf.type = "checkbox";
-      assignToSelf.name = "assignToSelf";
-      assignToSelf.checked = workContext.canReceiveAssignments === true;
-      assignToSelf.disabled = workContext.canReceiveAssignments === false;
-      assignLabel.append(assignToSelf, document.createTextNode("Add this to my assignments now"));
-      taskForm.append(assignLabel);
-      if (workContext.canReceiveAssignments === false) {
-        const assignmentPolicyHint = document.createElement("p");
-        assignmentPolicyHint.className = "small full";
-        assignmentPolicyHint.textContent = "Your current role or status cannot receive assignments. You can still create the task without assigning it to yourself.";
-        taskForm.append(assignmentPolicyHint);
-      }
-      const hint = document.createElement("p");
-      hint.className = "small full";
-      hint.textContent = "Client work may require review. After creating it, use the assignment actions below to request a reviewer or handover.";
-      taskForm.append(hint, adminSubmit("Create task", true));
-      taskForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const button = taskForm.querySelector('[type="submit"]');
-        if (!button) return;
-        button.disabled = true;
-        const values = formValues(taskForm);
-        const [kind, id] = values.contextId.split(":");
-        const payload = {
-          title: values.title,
-          ...(kind === "client" ? { clientWorkstreamId: id } : { organisationWorkstreamId: id }),
-          ...taskCatalogProvenance(taskCatalogSelect),
-          description: values.description || null,
-          dueDate: values.dueDate || null,
-          correctionOfTaskId: values.correctionOfTaskId || null,
-          correctionReason: values.correctionReason || null,
-          assignToSelf: values.assignToSelf === "on",
-        };
-        try {
-          const createdTask = await api("/api/tasks", requestOptions(
-            "POST", payload, taskCreateIdempotencyHeaders(payload),
-          ));
-          clearTaskCreateIdempotency(payload);
-          setMessage((createdTask.assignmentId
-            ? "Task created and added to your assignments."
-            : "Task created without assigning it to you.") + " · " + taskBillingConfirmation(createdTask) +
-            taskCorrectionConfirmation(Boolean(payload.correctionOfTaskId)));
-          renderWork(timeline.date);
-        } catch (error) {
-          setMessage(errorText(error), "error");
-          showFeedback();
-          button.disabled = false;
-        }
+    if (readPlan.attendance && !hasReviewRoute && !attendanceReadFailure && (attendanceResult?.wfhPending || attendanceResult?.provisionalAttendance?.status === "pending")) {
+      workPageNotices.push({
+        id: "wfh-pending",
+        kind: "warning",
+        message: attendanceResult.provisionalAttendance?.status === "pending"
+          ? "WFH approval is pending. Task work is retained independently. A role that requires attendance may run a timer only while this provisional check-in is open; approval promotes attendance, rejection discards only attendance credit and pauses that timer."
+          : "WFH approval is pending. Task work may continue. If your role requires attendance, record a provisional WFH check-in on Today before starting a timer.",
       });
-      createSection.append(taskForm);
-      board.append(createSection);
     }
-    const taskCatalogTools = renderTaskCatalogTools(taskCatalogResult);
-    if (taskCatalogTools) board.append(taskCatalogTools);
 
-    const reviewSection = adminSection("Pending reviews", "Review only the assignments visible through your current tasks.review scope.");
-    const reviewList = document.createElement("div");
-    reviewList.className = "stack";
-    const reviews = reviewsResult.reviews || [];
-    const reviewReadFailure = adminReadFailure(reviewsResult, "pending reviews");
-    if (reviewReadFailure) reviewList.append(reviewReadFailure);
-    else if (!reviews.length) reviewList.append(noticeElement("No pending reviews.", "warning"));
-    reviews.forEach((review) => {
-      const row = document.createElement("div");
-      row.className = "list-item";
-      const label = document.createElement("span");
-      label.textContent = review.title + " · cycle " + review.cycleNumber + " · submitted " + timelineLabel(review.submittedAt);
-      row.append(label);
-      row.append(
-        adminButton("Approve", async () => {
-          try { await api("/api/task-assignments/" + review.assignmentId + "/review", requestOptions("POST", { decision: "approved", feedback: null })); setMessage("Work approved."); }
-          catch (error) { setMessage(errorText(error), "error"); }
-          renderWork(timeline.date);
+    const workContextReadFailure = readPlan.workContext && !hasReviewRoute ? adminReadFailure(workContext, "workstream options") : undefined;
+    if (workContextReadFailure && !readPlan.workContextView) {
+      workPageNotices.push({ id: "work-context-read", kind: "warning", message: workContextReadFailure.textContent || "Workstream options could not be read." });
+    }
+    const pageSections = workPageUi.createWorkPageSections(readPlan, {
+      canCreateTasks,
+      hasReviewRoute,
+      taskDetailRoute,
+      focusedCollaborationRequest: hasFocusedCollaborationRoute,
+    });
+    const pageSectionContent = {};
+    const savedViewsFor = (collection, filters, navigate) => {
+      if (savedTaskViewsUi?.WorkSavedTaskViews) {
+        return createSavedTaskViewsPanel(savedTaskViewsUi.WorkSavedTaskViews, collection, filters, navigate, lifetime);
+      }
+      return savedTaskViewsUiLoadError
+        ? createElement(workPageUi.WorkFeatureMessage, {
+          title: "Saved views are unavailable",
+          message: "Saved task view controls could not load. Refresh Work to try again.",
+        })
+        : null;
+    };
+    if (!hasReviewRoute && !hasFocusedCollaborationRoute && (readPlan.timeline || readPlan.attendance)) {
+      if (!timelineUi || typeof timelineRoute?.projectWorkTimelineProps !== "function") {
+        pageSectionContent.timeline = createElement(workPageUi.WorkFeatureMessage, {
+          title: "Timeline and attendance are unavailable",
+          message: timelineUiLoadError
+            ? "Daily timeline and attendance could not load. Refresh Work to try again."
+            : "Daily timeline is unavailable.",
+        });
+      } else {
+        const timelineCorrectionScopes = ["organisation", "own_record", "office", "organisation_department"];
+        const canAdjustTimeline = () => hasAnyPermissionGrant(
+          state.actorGrants,
+          ["work.timeline_adjust_own"],
+          timelineCorrectionScopes,
+        );
+        const timelineProps = timelineRoute.projectWorkTimelineProps({
+          readPlan,
+          timelineResult: timeline,
+          attendanceResult,
+          assignmentsResult,
+          onRetryTimeline: () => renderWork(timelineDate),
+          onRetryAttendance: () => renderWork(timelineDate),
+          onCorrectGap: canAdjustTimeline() ? createWorkTimelineCorrectionAction({
+            target: workRouteRoot,
+            canAdjustTimeline,
+            captureCommandContext,
+            isCurrentCommand,
+            api,
+            requestOptions,
+            recoverProtectedCommandFailure,
+            adminCommandUiError,
+            errorText,
+            setMessage,
+            refreshWork: () => renderWork(timelineDate),
+          }) : undefined,
+        });
+        pageSectionContent.timeline = createElement(timelineUi.WorkTimeline, timelineProps);
+      }
+    }
+    if (readPlan.sessions && pageSections.some((section) => section.id === "sessions")) {
+      if (!sessionsUi?.WorkSessions || !sessionsRoute?.projectWorkSessions || !sessionsRoute?.createWorkSessionActions) {
+        pageSectionContent.sessions = createElement(workPageUi.WorkFeatureMessage, {
+          title: "Work sessions are unavailable",
+          message: sessionsUiLoadError ? "Work sessions could not load. Refresh Work to try again." : "Work sessions are unavailable.",
+        });
+      } else {
+        const sessionProps = sessionsRoute.projectWorkSessions(
+          readPlan,
+          sessionsResult,
+          {
+            requestActorId: requestedActorId,
+            currentActorId: state.identityPersonId || state.actorGrants?.actorPersonId || null,
+            pageRequestCurrent: requestIdentityEpoch === state.identityEpoch && isCurrentPageRequest(lifetime),
+          },
+          () => renderWork(timelineDate),
+        );
+        const sessionActions = sessionsRoute.createWorkSessionActions({
+          target: workRouteRoot,
+          sessionProps,
+          host: {
+            api,
+            requestOptions,
+            captureCommandContext,
+            isCurrentCommand,
+            recoverProtectedCommandFailure,
+            adminCommandUiError,
+            errorText,
+            setMessage,
+            refreshWork: () => renderWork(timelineDate),
+          },
+        });
+        pageSectionContent.sessions = createElement(sessionsUi.WorkSessions, {
+          ...sessionProps,
+          ...sessionActions,
+        });
+      }
+    }
+    if (readPlan.taskCollection && pageSections.some((section) => section.id === "tasks")) {
+      const filters = readVisibleTaskFilters(new URLSearchParams(window.location.search));
+      const visibleTasksRead = visibleTasksRoute?.projectVisibleTasksRead?.(
+        visibleTasksResult,
+        adminReadIssue,
+        () => renderWork(timelineDate),
+      ) || { status: "error", message: "Visible tasks are unavailable. Refresh Work to try again." };
+      if (!visibleTasksUi?.VisibleTasks || !visibleTasksRoute?.projectVisibleTasksRead) {
+        pageSectionContent.tasks = createElement(workPageUi.WorkFeatureMessage, {
+          title: "Visible tasks are unavailable",
+          message: visibleTasksUiLoadError
+            ? "The visible tasks interface could not load. Refresh Work to try again."
+            : "The visible tasks interface is unavailable.",
+        });
+      } else {
+        const focusableReadStates = new Set(["ready", "partial", "denied", "error"]);
+        const shouldFocus = state.pendingVisibleTaskFocus && focusableReadStates.has(visibleTasksRead.status)
+          ? visibleTasksRead.status === "denied" || visibleTasksRead.status === "error"
+            ? "heading"
+            : state.pendingVisibleTaskFocus
+          : null;
+        if (shouldFocus) state.pendingVisibleTaskFocus = null;
+        pageSectionContent.tasks = createElement(visibleTasksUi.VisibleTasks, {
+          read: visibleTasksRead,
+          filters,
+          displayMode: visibleTasksRoute.readVisibleTaskDisplayMode(window.location.search),
+          savedViews: savedViewsFor("visible", filters, (nextFilters) => navigateVisibleTasks(nextFilters, timelineDate)),
+          focusTarget: shouldFocus,
+          taskDetailHref: (id) => taskDetailUrl(id),
+          onOpenTask: (id) => openTaskDetail(id, "visible"),
+          onDisplayModeChange: (displayMode) => {
+            const currentState = window.history.state && typeof window.history.state === "object"
+              ? window.history.state
+              : {};
+            window.history.replaceState(
+              { ...currentState, novaVisibleTaskDisplay: displayMode },
+              "",
+              visibleTasksRoute.visibleTaskDisplayHref(window.location.href, displayMode),
+            );
+          },
+          onApplyFilters: (nextFilters, focusTarget) =>
+            navigateVisibleTasks(nextFilters, timelineDate, focusTarget),
+          onNewer: () => {
+            if (window.history.state?.novaVisibleTaskPage && window.history.length > 1) {
+              window.history.back();
+            } else {
+              navigateVisibleTasks({ ...filters, cursor: "" }, timelineDate);
+            }
+          },
+          onOlder: (cursor) => navigateVisibleTasks({ ...filters, cursor }, timelineDate),
+          onRetry: () => renderWork(timelineDate),
+        });
+      }
+    }
+    mountWorkPage(pageSections, "ready", undefined, {
+      notices: workPageNotices,
+      sectionContent: pageSectionContent,
+      timelineDate: timelineDate || timeline.date,
+      showTimelineDate: readPlan.timeline,
+      timelineDateUnavailable: Boolean(timelineReadFailure),
+      onLoadTimelineDate: (value) => renderWork(value),
+    });
+    showFeedback();
+    if (readPlan.workContextView && !hasReviewRoute && !hasFocusedCollaborationRoute) {
+      const workContextHost = workSlot("context");
+      mountWorkContextRoute({
+        target: workContextHost,
+        result: workContext,
+        ui: workContextUi,
+        uiLoadError: workContextUiLoadError,
+        actorGrants: state.actorGrants,
+        projectDepartmentCreation: workContextDepartmentProjector,
+        hasPermission: hasPermissionGrant,
+        getReadIssue: adminReadIssue,
+        mountIsland: mountReactIsland,
+        showFeatureMessage: showWorkFeatureMessage,
+        runCommand: createWorkContextDepartmentCommandAction({
+          target: workContextHost,
+          lifetime,
+          getPermissionData: () => ({ actorGrants: state.actorGrants, workContext }),
+          runWorkSetupCommand,
+          api,
+          requestOptions,
+          permissionDeniedError: () => workSetupSafeError({ code: "PERMISSION_DENIED" }),
+          setMessage,
         }),
-        adminButton("Request changes", async () => {
-          const feedback = window.prompt("Explain the changes needed:");
-          if (!feedback) return;
-          try { await api("/api/task-assignments/" + review.assignmentId + "/review", requestOptions("POST", { decision: "changes_requested", feedback })); setMessage("Changes requested."); }
-          catch (error) { setMessage(errorText(error), "error"); }
-          renderWork(timeline.date);
-        }, true),
-      );
-      reviewList.append(row);
-    });
-    reviewSection.append(reviewList);
-    board.append(reviewSection);
-
-    const requestSection = adminSection("Collaboration requests", "Accept or decline reviewer and assignment handover requests. Every decision is transactional and audited.");
-    const requestList = document.createElement("div");
-    requestList.className = "stack";
-    const reviewerRequests = (reviewerRequestsResult.requests || []).filter((item) => item.status === "pending");
-    const handoverRequests = (handoverRequestsResult.requests || []).filter((item) => item.status === "pending");
-    const reviewerRequestsFailure = adminReadFailure(reviewerRequestsResult, "reviewer requests");
-    const handoverRequestsFailure = adminReadFailure(handoverRequestsResult, "handover requests");
-    if (reviewerRequestsFailure) requestList.append(reviewerRequestsFailure);
-    if (handoverRequestsFailure) requestList.append(handoverRequestsFailure);
-    if (!reviewerRequestsFailure && !handoverRequestsFailure && !reviewerRequests.length && !handoverRequests.length) {
-      requestList.append(noticeElement("No collaboration requests waiting for you.", "warning"));
+      });
     }
-    reviewerRequests.forEach((item) => {
-      const row = document.createElement("div"); row.className = "list-item";
-      row.append(document.createTextNode("Reviewer request · " + (item.title || item.assignment_id)));
-      if (item.isRecipient) {
-        row.append(adminButton("Accept", async () => { try { await api("/api/task-reviewer-requests/" + item.id + "/accept", requestOptions("POST", {})); setMessage("Reviewer request accepted."); } catch (error) { setMessage(errorText(error), "error"); } renderWork(timeline.date); }), adminButton("Decline", async () => { try { await api("/api/task-reviewer-requests/" + item.id + "/decline", requestOptions("POST", {})); setMessage("Reviewer request declined."); } catch (error) { setMessage(errorText(error), "error"); } renderWork(timeline.date); }, true));
-      } else row.append(adminButton("Withdraw", async () => { try { await api("/api/task-reviewer-requests/" + item.id + "/withdraw", requestOptions("POST", {})); setMessage("Reviewer request withdrawn."); } catch (error) { setMessage(errorText(error), "error"); } renderWork(timeline.date); }, true));
-      requestList.append(row);
-    });
-    handoverRequests.forEach((item) => {
-      const row = document.createElement("div"); row.className = "list-item";
-      row.append(document.createTextNode("Handover request · " + (item.title || item.assignment_id)));
-      if (item.isRecipient) row.append(adminButton("Accept", async () => { try { await api("/api/task-handover-requests/" + item.id + "/accept", requestOptions("POST", {})); setMessage("Handover accepted."); } catch (error) { setMessage(errorText(error), "error"); } renderWork(timeline.date); }), adminButton("Decline", async () => { try { await api("/api/task-handover-requests/" + item.id + "/decline", requestOptions("POST", {})); setMessage("Handover declined."); } catch (error) { setMessage(errorText(error), "error"); } renderWork(timeline.date); }, true));
-      else row.append(adminButton("Withdraw", async () => { try { await api("/api/task-handover-requests/" + item.id + "/withdraw", requestOptions("POST", {})); setMessage("Handover request withdrawn."); } catch (error) { setMessage(errorText(error), "error"); } renderWork(timeline.date); }, true));
-      requestList.append(row);
-    });
-    requestSection.append(requestList);
-    board.append(requestSection);
 
-    const assignmentsSection = adminSection("My assignments", "Only work visible through your current tasks.view scope is shown here.");
-    const assignmentList = document.createElement("div");
-    assignmentList.className = "stack";
-    const assignments = assignmentsResult.assignments || [];
-    const candidateResults = await Promise.all(assignments.map(async (assignment) => [assignment.assignmentId, await readOrError(
-      api("/api/task-assignments/" + assignment.assignmentId + "/candidates"),
-      { reviewers: [], handoverTargets: [] },
-    )]));
-    const candidateMap = new Map(candidateResults);
-    if (!assignments.length) assignmentList.append(noticeElement("No active assignments are available.", "warning"));
-    assignments.forEach((assignment) => {
-      const row = document.createElement("div");
-      row.className = "list-item";
-      const copy = document.createElement("div");
-      const title = document.createElement("strong");
-      title.textContent = assignment.title;
-      const meta = document.createElement("p");
-      meta.className = "small";
-      meta.textContent = assignment.status + " · " +
-        taskBillingConfirmation(assignment) +
-        " · " + taskDefinitionProvenance(assignment) +
-        (assignment.isCorrection ? " · correction task" + (assignment.correctionOf ? " for “" + assignment.correctionOf.title + "”" : "") +
-          (assignment.correctionReason ? " · " + assignment.correctionReason : "") : "") +
-        (assignment.dueDate ? " · due " + assignment.dueDate : "") +
-        (assignment.reviewRequired ? " · review required" : "") +
-        (assignment.resolutionSource === "policy" ? " · completed without review" : "") +
-        (assignment.reviewBlockedReason ? " · review blocked: no eligible reviewer" : "");
-      copy.append(title, meta);
-      row.append(copy);
-      const dueDateEditor = taskDueDateEditor(assignment, () => renderWork(timeline.date));
-      if (dueDateEditor) row.append(dueDateEditor);
-      const actions = document.createElement("div");
-      actions.className = "form-actions";
-      if (["assigned", "in_progress", "changes_requested"].includes(assignment.status)) {
-        actions.append(adminButton("Start / resume", async () => {
-          try { await api("/api/work-sessions/start", requestOptions("POST", { assignmentId: assignment.assignmentId })); setMessage("Work session started."); }
-          catch (error) { setMessage(errorText(error), "error"); }
-          renderWork(timeline.date);
-        }));
-      }
-      if (["in_progress", "changes_requested"].includes(assignment.status)) {
-        actions.append(adminButton("Submit", async () => {
-          try { await api("/api/task-assignments/" + assignment.assignmentId + "/submit", requestOptions("POST")); setMessage("Assignment submitted."); }
-          catch (error) { setMessage(errorText(error), "error"); }
-          renderWork(timeline.date);
-        }, true));
-      }
-      if (!["cancelled", "approved"].includes(assignment.status)) {
-        const collaboration = document.createElement("details");
-        const summary = document.createElement("summary"); summary.textContent = "Request reviewer or handover"; collaboration.append(summary);
-        const candidateData = candidateMap.get(assignment.assignmentId) || { reviewers: [], handoverTargets: [] };
-        const candidateReadFailure = adminReadFailure(candidateData, "eligible teammates");
-        if (candidateReadFailure) {
-          collaboration.append(candidateReadFailure);
-          actions.append(collaboration);
-          row.append(actions);
-          assignmentList.append(row);
-          return;
-        }
-        const candidatePeople = (candidateData.reviewers || []).filter((person) => person.id !== assignment.personId);
-        const reviewerForm = document.createElement("form"); reviewerForm.className = "form-actions";
-        const reviewerSelect = document.createElement("select"); reviewerSelect.name = "candidateReviewerPersonId"; reviewerSelect.append(adminOption("", "Choose reviewer"));
-        candidatePeople.forEach((person) => reviewerSelect.append(adminOption(person.id, person.displayName)));
-        const reviewerReason = document.createElement("input"); reviewerReason.name = "reason"; reviewerReason.placeholder = "Why is a reviewer needed?"; reviewerReason.required = true; reviewerReason.maxLength = 2000;
-        reviewerForm.append(reviewerSelect, reviewerReason, adminSubmit("Request reviewer", true));
-        reviewerForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => { const values = formValues(event.currentTarget); await api("/api/task-assignments/" + assignment.assignmentId + "/reviewer-requests", requestOptions("POST", values)); setMessage("Reviewer request sent."); }));
-        const handoverForm = document.createElement("form"); handoverForm.className = "form-actions";
-        const handoverSelect = document.createElement("select"); handoverSelect.name = "targetPersonId"; handoverSelect.append(adminOption("", "Choose teammate"));
-        (candidateData.handoverTargets || []).filter((person) => person.id !== assignment.personId).forEach((person) => handoverSelect.append(adminOption(person.id, person.displayName)));
-        const handoverReason = document.createElement("input"); handoverReason.name = "reason"; handoverReason.placeholder = "Why should this be handed over?"; handoverReason.required = true; handoverReason.maxLength = 2000;
-        handoverForm.append(handoverSelect, handoverReason, adminSubmit("Request handover", true));
-        handoverForm.addEventListener("submit", (event) => adminFormSubmit(event, async () => { const values = formValues(event.currentTarget); await api("/api/task-assignments/" + assignment.assignmentId + "/handover-requests", requestOptions("POST", values)); setMessage("Handover request sent."); }));
-        collaboration.append(reviewerForm, handoverForm); actions.append(collaboration);
-      }
-      row.append(actions);
-      assignmentList.append(row);
-    });
-    assignmentsSection.append(assignmentList);
-    board.append(assignmentsSection);
+    if (canCreateTasks && !hasReviewRoute && !hasFocusedCollaborationRoute) {
+      const composerRoot = workSlot("create");
+      mountWorkTaskComposerRoute(composerRoot, {
+        feature: taskComposerUi,
+        loadError: taskComposerUiLoadError,
+        lifetime,
+        canCreateTask: () => hasAnyPermissionGrant(state.actorGrants, ["tasks.create"], taskCreateScopes),
+        workContextResult: workContext,
+        catalogResult: taskCatalogResult,
+        catalogRequested: readPlan.taskCatalog,
+        correctionTasksResult: tasksResult,
+        correctionsRequested: readPlan.tasks,
+        isCurrentPageRequest,
+        runCommand: runWorkSetupCommand,
+        api,
+        requestOptions,
+        idempotencyHeaders: taskCreateIdempotencyHeaders,
+        clearIdempotency: clearTaskCreateIdempotency,
+        pageChangedError: () => adminCommandUiError("The Work page changed before this task could be created."),
+        permissionDeniedError: () => workSetupSafeError({ code: "PERMISSION_DENIED" }),
+        billingConfirmation: taskBillingConfirmation,
+        correctionConfirmation: taskCorrectionConfirmation,
+        setMessage,
+        refreshWork: () => renderWork(timelineDate),
+      }, {
+        mountReactIsland,
+        showFeatureMessage: showWorkFeatureMessage,
+      });
+    }
+    let reviewReadFailed = false;
+    if (readPlan.reviews && !hasFocusedCollaborationRoute) {
+      const reviewHost = workSlot("reviews");
+      const reviewProjection = projectWorkReviews({
+        reviewsResult,
+        reviewDetailResult,
+        hasReviewRoute,
+        selectedReview,
+        readIssue: adminReadIssue,
+        canDecide: canRenderRequestReviewActions,
+        readDraft: reviewFeedbackDraft,
+      });
+      const reviewActions = createWorkReviewActions({
+        target: reviewHost,
+        api,
+        requestOptions,
+        captureCommandContext,
+        isCurrentCommand,
+        isCurrentCommandIdentity,
+        recoverProtectedCommandFailure,
+        clearDraft: clearReviewFeedbackDraft,
+        setMessage,
+        errorText,
+        refreshWork: () => renderWork(timelineDate),
+        openReviewContext: (assignmentId) => openReviewAssignment(assignmentId),
+        saveDraft: (assignmentId, draft) => {
+          const taskId = (Array.isArray(reviewsResult?.reviews) ? reviewsResult.reviews : [])
+            .find((review) => review?.assignmentId === assignmentId)?.taskId;
+          saveReviewFeedbackDraft(assignmentId, draft, taskId);
+        },
+      });
+      const reviewRoute = mountWorkReviewsRoute(reviewHost, {
+        feature: reviewsUi,
+        loadError: reviewsUiLoadError,
+        projection: reviewProjection,
+        actions: reviewActions,
+      }, { mountReactIsland, showWorkFeatureMessage });
+      reviewReadFailed = reviewRoute.reviewReadFailed;
+    }
 
-    const sessionsSection = adminSection("Recorded work sessions", "Pause creates a closed segment; starting again creates the next segment without rewriting history.");
-    const sessions = sessionsResult.sessions || [];
-    const sessionList = document.createElement("div");
-    sessionList.className = "stack";
-    if (!sessions.length) sessionList.append(noticeElement("No work sessions in the last 31 days.", "warning"));
-    sessions.forEach((session) => {
-      const row = document.createElement("div");
-      row.className = "list-item";
-      const text = document.createElement("span");
-      text.textContent = session.title + " · " + timelineLabel(session.startedAt) + (session.endedAt ? "–" + new Date(session.endedAt).toLocaleTimeString() : " · running");
-      row.append(text);
-      if (!session.endedAt) {
-        row.append(
-          adminButton("Pause", async () => { try { await api("/api/work-sessions/" + session.id + "/pause", requestOptions("POST")); setMessage("Work session paused."); } catch (error) { setMessage(errorText(error), "error"); } renderWork(timeline.date); }),
-          adminButton("Stop", async () => { try { await api("/api/work-sessions/" + session.id + "/stop", requestOptions("POST")); setMessage("Work session stopped."); } catch (error) { setMessage(errorText(error), "error"); } renderWork(timeline.date); }, true),
+    if ((readPlan.reviewerRequests || readPlan.handoverRequests) && !taskDetailRoute && !hasReviewRoute) {
+      const collaborationRoot = workSlot("collaboration");
+      if (workCollaborationUi?.WorkCollaborationRequests) {
+        const retry = () => renderWork(timelineDate);
+        const onResolveCollaboration = createWorkCollaborationResolveAction({
+          target: collaborationRoot,
+          host: {
+            getRequestForKind: (kind, requestId) => {
+              const source = kind === "reviewer" ? reviewerRequestsResult : handoverRequestsResult;
+              return (Array.isArray(source?.requests) ? source.requests : [])
+                .find((candidate) => candidate.id === requestId);
+            },
+            api,
+            requestOptions,
+            captureCommandContext,
+            isCurrentCommand,
+            isCurrentCommandIdentity,
+            recoverProtectedCommandFailure,
+            setMessage,
+            refreshWork: () => renderWork(timelineDate),
+          },
+        });
+        mountReactIsland(collaborationRoot, workCollaborationUi.WorkCollaborationRequests, {
+          focusRequest,
+          ...(readPlan.reviewerRequests && (!hasFocusedCollaborationRoute || focusRequest?.kind === "reviewer") ? {
+            reviewerRequests: workCollaborationReadState(reviewerRequestsResult, "reviewer requests", retry),
+          } : {}),
+          ...(readPlan.handoverRequests && (!hasFocusedCollaborationRoute || focusRequest?.kind === "handover") ? {
+            handoverRequests: workCollaborationReadState(handoverRequestsResult, "handover requests", retry),
+          } : {}),
+          onResolve: onResolveCollaboration,
+        });
+      } else {
+        showWorkFeatureMessage(collaborationRoot, "Collaboration requests are unavailable",
+          workCollaborationUiLoadError
+            ? "The collaboration request interface could not load. Refresh Work to try again."
+            : "The collaboration request interface is unavailable.",
         );
       }
-      sessionList.append(row);
-    });
-    sessionsSection.append(sessionList);
-    board.append(sessionsSection);
-
-    const timelineSection = adminSection("Daily timeline", "Attendance and productive work are projected together. Exceptions are visible rather than silently discarded.");
-    const attendanceSummary = document.createElement("p");
-    attendanceSummary.className = "small";
-    attendanceSummary.textContent = "Attendance: " + timeline.attendanceSummary.durationMinutes + " min" +
-      (timeline.attendancePolicy?.mode === "hour_based"
-        ? " · required " + timeline.attendanceSummary.requiredMinutes + " min" +
-          (timeline.attendanceSummary.requirementSatisfied ? " · satisfied" : " · not yet satisfied")
-        : timeline.attendancePolicy?.mode === "scheduled"
-        ? " · scheduled interpretation"
-        : "");
-    timelineSection.append(attendanceSummary);
-    const timelineList = document.createElement("div");
-    timelineList.className = "stack";
-    (timeline.events || []).forEach((event) => {
-      const row = document.createElement("div");
-      row.className = "list-item";
-      row.textContent = event.type + " · " + timelineLabel(event.at);
-      timelineList.append(row);
-    });
-    (timeline.exceptions || []).forEach((exception) => {
-      const row = document.createElement("div");
-      row.className = "list-item";
-      const label = document.createElement("span");
-      label.textContent = exception.type + (exception.startedAt ? " · " + timelineLabel(exception.startedAt) + "–" + timelineLabel(exception.endedAt) : "");
-      row.append(label);
-      if (exception.type === "work.untracked_gap" && exception.actionable) {
-        const form = document.createElement("form");
-        form.className = "form-grid one";
-        const options = assignments.map((assignment) => '<option value="' + assignment.assignmentId + '">' + assignment.title.replaceAll("&", "&amp;").replaceAll("<", "&lt;") + '</option>').join("");
-        form.innerHTML = '<label>Assignment<select name="assignmentId" required>' + options + '</select></label><label>Reason<input name="reason" maxlength="2000" required placeholder="Forgot to start the timer"></label><button class="button compact" type="submit">Correct gap</button>';
-        form.addEventListener("submit", (event) => withSubmit(event, async () => {
-          const values = formValues(event.currentTarget);
-          await api("/api/work/timeline-adjustments", requestOptions("POST", {
-            startedAt: exception.startedAt, endedAt: exception.endedAt,
-            assignmentId: values.assignmentId, reason: values.reason,
-          }));
-          setMessage("Timeline gap corrected and audited.");
-          renderWork(timeline.date);
-        }));
-        row.append(form);
-      }
-      timelineList.append(row);
-    });
-    if (!timelineList.children.length) timelineList.append(noticeElement("No timeline events or exceptions for this day.", "warning"));
-    timelineSection.append(timelineList);
-    board.append(timelineSection);
-  } catch (error) {
-    const board = app.querySelector("#work-board");
-    if (board) board.replaceChildren(noticeElement(errorText(error), "error"));
-  }
-}
-
-async function renderOperations() {
-  renderShell(
-    '<section class="panel"><p class="eyebrow">Operations</p><h1>Organisation overview.</h1><p class="lede">A permission-filtered snapshot of people, client work, reviews, calendars and basic operational counts.</p>' + feedback() + '<div id="operations-board"><p class="small">Loading operations...</p></div></section>',
-    "operations",
-  );
-  showFeedback();
-  try {
-    const [peopleResult, tasksResult, availabilityResult, reviewsResult] = await Promise.all([
-      readOrError(api("/api/people"), { people: [] }),
-      readOrError(api("/api/tasks"), { tasks: [] }),
-      readOrError(api("/api/availability/config"), { calendars: [], holidays: [] }),
-      readOrError(api("/api/reviews/pending"), { reviews: [] }),
-    ]);
-    const people = peopleResult.people || [];
-    const tasks = tasksResult.tasks || [];
-    const calendars = availabilityResult.calendars || [];
-    const holidays = availabilityResult.holidays || [];
-    const reviews = reviewsResult.reviews || [];
-    const board = app.querySelector("#operations-board");
-    board.replaceChildren();
-    const counts = document.createElement("div");
-    counts.className = "card-grid";
-    [["People", people.length, peopleResult], ["Visible tasks", tasks.length, tasksResult], ["Pending reviews", reviews.length, reviewsResult], ["Calendars", calendars.length, availabilityResult]].forEach(([label, value, result]) => {
-      const card = document.createElement("article");
-      card.className = "card";
-      const heading = document.createElement("h2");
-      heading.textContent = result.readError ? "Unavailable" : String(value);
-      const text = document.createElement("p");
-      text.textContent = label;
-      card.append(heading, text);
-      counts.append(card);
-    });
-    board.append(counts);
-
-    const exports = document.createElement("div");
-    exports.className = "form-actions";
-    if (!peopleResult.readError) exports.append(adminButton("Download people CSV", () => downloadCsv(
-        "nova-people.csv",
-        ["Name", "Email", "Status", "Designation", "Start date", "Manager", "Office", "Department", "Role"],
-        people.map((person) => [
-          person.displayName || person.email,
-          person.email,
-          person.status,
-          person.designation,
-          person.employmentStartsOn,
-          person.managerName,
-          person.office && person.office.name,
-          person.department && person.department.name,
-          person.role && person.role.name,
-        ]),
-      ), true));
-    else exports.append(adminReadFailure(peopleResult, "people data"));
-    if (!tasksResult.readError) exports.append(adminButton("Download work CSV", () => downloadCsv(
-        "nova-work.csv",
-        ["Title", "Status", "Priority", "Billing class", "Billing policy source", "Billing policy revision", "Task definition provenance", "Correction of", "Due date", "Client", "Workstream", "Group", "Department", "Assignments"],
-        tasks.map((task) => [
-          task.title,
-          task.status,
-          task.priority,
-          task.billingClass,
-          task.billingPolicySource,
-          task.billingPolicyRevision,
-          taskDefinitionReference(task),
-          task.correctionOf && task.correctionOf.title,
-          task.dueDate,
-          task.client && task.client.name,
-          task.workstream && task.workstream.name,
-          task.group && task.group.name,
-          task.department && task.department.name,
-          (task.assignments || []).map((assignment) => assignment.personName).join("; "),
-        ]),
-      ), true));
-    else exports.append(adminReadFailure(tasksResult, "task data"));
-    if (!availabilityResult.readError) exports.append(adminButton("Download calendar CSV", () => downloadCsv(
-        "nova-calendar.csv",
-        ["Type", "Date", "Name", "Office", "Effective date", "Rules"],
-        [
-          ...calendars.map((calendar) => ["calendar", "", calendar.name, calendar.office && calendar.office.name, calendar.effectiveOn, JSON.stringify(calendar.rules || [])]),
-          ...holidays.map((holiday) => ["holiday", holiday.date, holiday.name, holiday.office && holiday.office.name, "", ""]),
-        ],
-      ), true));
-    else exports.append(adminReadFailure(availabilityResult, "calendar data"));
-    board.append(exports);
-
-    const teamSection = adminSection("Team and People detail", "People visible through your current people permissions, including lifecycle, employment, manager, office, department and role context.");
-    const teamList = document.createElement("div");
-    teamList.className = "stack";
-    const peopleReadFailure = adminReadFailure(peopleResult, "people");
-    if (peopleReadFailure) teamList.append(peopleReadFailure);
-    else if (!people.length) teamList.append(noticeElement("No people are visible.", "warning"));
-    people.forEach((person) => {
-      const row = document.createElement("p");
-      row.className = "list-item";
-      row.textContent = (person.displayName || person.email) + " · " + person.status +
-        [person.designation, person.office && person.office.name, person.department && person.department.name, person.role && person.role.name,
-          person.managerName && "manager: " + person.managerName, person.employmentStartsOn && "started: " + person.employmentStartsOn]
-          .filter(Boolean).join(" · ");
-      teamList.append(row);
-    });
-    teamSection.append(teamList);
-    board.append(teamSection);
-
-    const workSection = adminSection("Client Work and review queue detail", "Visible task context, due dates, assignments and pending review count use the same task/review permissions as the Work and Admin screens.");
-    const workList = document.createElement("div");
-    workList.className = "stack";
-    const tasksReadFailure = adminReadFailure(tasksResult, "tasks");
-    const reviewsReadFailure = adminReadFailure(reviewsResult, "pending reviews");
-    if (tasksReadFailure) workList.append(tasksReadFailure);
-    else if (!tasks.length) workList.append(noticeElement("No visible tasks.", "warning"));
-    tasks.forEach((task) => {
-      const row = document.createElement("p");
-      row.className = "list-item";
-      row.textContent = task.title + " · " + task.status + " · " +
-        (task.client ? task.client.name + " / " : "Organisation / ") +
-        (task.workstream && task.workstream.name || "workstream") +
-        (task.dueDate ? " · due " + task.dueDate : "") +
-        " · assignments " + (task.assignments || []).length;
-      workList.append(row);
-    });
-    if (reviewsReadFailure) workList.append(reviewsReadFailure);
-    else if (reviews.length) workList.append(noticeElement(reviews.length + " review(s) are waiting for your decision."));
-    workSection.append(workList);
-    board.append(workSection);
-
-    const calendarSection = adminSection("Calendar detail", "Office calendars, timezone-specific rules and holidays are read from the canonical availability configuration.");
-    const calendarList = document.createElement("div");
-    calendarList.className = "stack";
-    calendars.forEach((calendar) => {
-      const row = document.createElement("p");
-      row.className = "list-item";
-      row.textContent = calendar.name + " · " + (calendar.office && calendar.office.name || "office") + " · from " + calendar.effectiveOn;
-      calendarList.append(row);
-    });
-    holidays.slice(0, 20).forEach((holiday) => {
-      const row = document.createElement("p");
-      row.className = "list-item";
-      row.textContent = holiday.date + " · " + holiday.name + " · " + (holiday.office && holiday.office.name || "office");
-      calendarList.append(row);
-    });
-    const calendarReadFailure = adminReadFailure(availabilityResult, "calendar data");
-    if (calendarReadFailure) calendarList.append(calendarReadFailure);
-    else if (!calendarList.children.length) calendarList.append(noticeElement("No calendars or holidays are configured.", "warning"));
-    calendarSection.append(calendarList);
-    board.append(calendarSection);
-  } catch (error) {
-    const board = app.querySelector("#operations-board");
-    if (board) board.replaceChildren(noticeElement(errorText(error), "error"));
-  }
-}
-
-function renderWfhRequestPanel(target) {
-  const section = document.createElement("section");
-  section.className = "panel nested-panel";
-  const heading = document.createElement("h2");
-  heading.textContent = "Request work from home";
-  const note = document.createElement("p");
-  note.className = "small";
-  note.textContent = "You may continue task work while a request is pending. A WFH check-in remains provisional—not attendance or payroll credit—until approved. Rejection discards only that credit; task records remain.";
-  const form = document.createElement("form");
-  form.className = "form-grid";
-  form.innerHTML = '<label>Start date<input name="startDate" type="date" required></label>' +
-    '<label>End date<input name="endDate" type="date" required></label>' +
-    '<label class="full">Reason (optional)<textarea name="reason" maxlength="2000"></textarea></label>' +
-    '<div class="form-actions full"><button class="button" type="submit">Submit WFH request</button></div>';
-  form.addEventListener("submit", (event) => withSubmit(event, async () => {
-    const values = formValues(event.currentTarget);
-    await api("/api/availability/wfh", requestOptions("POST", {
-      startDate: values.startDate, endDate: values.endDate, reason: values.reason || undefined,
-    }));
-    setMessage("WFH request submitted for approval.");
-    render();
-  }));
-  const requests = document.createElement("div");
-  requests.className = "stack";
-  requests.append(noticeElement("Loading your WFH requests...", "warning"));
-  section.append(heading, note, form, requests);
-  target.append(section);
-  api("/api/availability/wfh/mine").then((result) => {
-    requests.replaceChildren();
-    if (!result.requests.length) {
-      requests.append(noticeElement("No WFH requests yet.", "warning"));
-      return;
     }
-    result.requests.forEach((item) => {
-      const row = document.createElement("div");
-      row.className = "list-item";
-      row.textContent = item.startDate + "–" + item.endDate + " · " + item.status +
-        (item.reviewReason ? " · " + item.reviewReason : "");
-      if (item.status === "pending" || item.status === "approved") {
-        const cancel = actionButton("Cancel", async () => {
-          try { await api("/api/availability/wfh/" + item.id + "/cancel", requestOptions("POST")); setMessage("WFH request cancelled."); }
-          catch (error) { setMessage(errorText(error), "error"); }
-          render();
+
+    if (readPlan.reviewerManagement && !taskDetailRoute && !hasReviewRoute && !hasFocusedCollaborationRoute) {
+      const reviewerManagementRoot = workSlot("reviewer-management");
+      const reviewerManagementScopes = ["organisation", "client_workstream", "group", "assigned_work"];
+      const onSaveReviewer = createWorkReviewerManagementSaveAction({
+        target: reviewerManagementRoot,
+        canManageReviewer: () => hasAnyPermissionGrant(state.actorGrants, ["tasks.reviewer_manage"], reviewerManagementScopes),
+        captureCommandContext,
+        isCurrentCommand,
+        isCurrentCommandIdentity,
+        recoverProtectedCommandFailure,
+        api,
+        requestOptions,
+      });
+      mountWorkReviewerManagementRoute(reviewerManagementRoot, {
+        feature: reviewerManagementUi,
+        loadError: reviewerManagementUiLoadError,
+        initialRead: reviewerManagementResult,
+        lifetime,
+        onSaveReviewer,
+      }, {
+        isCurrentPageRequest,
+        mountReactIsland,
+        showWorkFeatureMessage,
+        readPage: (path, requestLifetime, fallback) => readOrError(pageApi(path, requestLifetime), fallback),
+      });
+    }
+
+    if (readPlan.assignments && pageSections.some((section) => section.id === "assignments")) {
+      const assignmentTarget = workSlot("assignments");
+      if (!myAssignmentsUi?.MyAssignments) {
+        if (assignmentTarget) {
+          showWorkFeatureMessage(assignmentTarget, "Your assignments are unavailable",
+            myAssignmentsUiLoadError
+              ? "Your assignments interface could not load. Refresh Work to try again."
+              : "Your assignments interface is unavailable.");
+        }
+      } else {
+        const assignmentFilters = readWorkAssignmentFilters(new URLSearchParams(window.location.search));
+        const assignmentIssue = adminReadIssue(assignmentsResult, "your assignments");
+        const shouldFocusAssignmentHeading = state.pendingWorkAssignmentFocus && !assignmentIssue;
+        if (shouldFocusAssignmentHeading) state.pendingWorkAssignmentFocus = false;
+        const assignmentActionCallbacks = createMyAssignmentActionsRoute({
+          api,
+          requestOptions,
+          runActionButton,
+          withSubmit,
+          isCurrentCommand,
+          formValues,
+          setMessage,
+          refreshWork: () => renderWork(timelineDate),
         });
-        row.append(cancel);
+        myAssignmentsRoute({
+          authorized: readPlan.assignments,
+          target: assignmentTarget,
+          lifetime,
+          Component: myAssignmentsUi.MyAssignments,
+          result: assignmentsResult,
+          filters: assignmentFilters,
+          savedViews: savedViewsFor("mine", assignmentFilters, (filters) => navigateWorkAssignments(filters, timelineDate)),
+          focusHeading: Boolean(shouldFocusAssignmentHeading),
+          taskDetailHref: (id) => taskDetailUrl(id),
+          callbacks: {
+            ...assignmentActionCallbacks,
+            onApplyFilters: (filters) => navigateWorkAssignments(filters, timelineDate),
+            onClearFilters: () => navigateWorkAssignments({ status: "all", due: "any", search: "", cursor: "" }, timelineDate),
+            onOpenTask: (id) => openTaskDetail(id, "assignment"),
+            onOlder: (cursor) => navigateWorkAssignments({ ...assignmentFilters, cursor }, timelineDate),
+            onNewer: () => {
+              if (window.history.state?.novaWorkAssignmentPage && window.history.length > 1) {
+                window.history.back();
+              } else {
+                navigateWorkAssignments({ ...assignmentFilters, cursor: "" }, timelineDate);
+              }
+            },
+            onRetry: () => renderWork(timelineDate),
+          },
+        });
       }
-      requests.append(row);
-    });
-  }).catch(() => requests.replaceChildren(noticeElement("WFH requests are not available for this role.", "warning")));
-}
-
-function renderLeaveRequestPanel(target) {
-  const section = document.createElement("section");
-  section.className = "panel nested-panel";
-  const heading = document.createElement("h2");
-  heading.textContent = "Request leave";
-  const note = document.createElement("p");
-  note.className = "small";
-  note.textContent = "Use full-day or half-day portions. Approval never rewrites attendance automatically.";
-  const form = document.createElement("form");
-  form.className = "form-grid";
-  form.innerHTML = '<label>Leave type<input name="leaveType" value="annual" required maxlength="80"></label>' +
-    '<label>Start date<input name="startDate" type="date" required></label>' +
-    '<label>End date<input name="endDate" type="date" required></label>' +
-    '<label>Portion<select name="portion"><option value="1">Full day</option><option value="0.5">Half day</option></select></label>' +
-    '<label class="full">Reason (optional)<textarea name="reason" maxlength="2000"></textarea></label>' +
-    '<div class="form-actions full"><button class="button" type="submit">Submit leave request</button></div>';
-  form.addEventListener("submit", (event) => withSubmit(event, async () => {
-    const values = formValues(event.currentTarget);
-    const start = new Date(values.startDate + "T00:00:00Z");
-    const end = new Date(values.endDate + "T00:00:00Z");
-    const days = [];
-    for (let cursor = start; cursor <= end; cursor = new Date(cursor.getTime() + 86400000)) {
-      days.push({ date: cursor.toISOString().slice(0, 10), portion: Number(values.portion) });
-      if (days.length > 366) throw Object.assign(new Error("LEAVE_REQUEST_INPUT_INVALID"), { code: "LEAVE_REQUEST_INPUT_INVALID" });
     }
-    await api("/api/leave", requestOptions("POST", {
-      leaveType: values.leaveType, startDate: values.startDate, endDate: values.endDate,
-      reason: values.reason || undefined, days,
-    }));
-    setMessage("Leave request submitted for review.");
-    render();
-  }));
-  const requests = document.createElement("div");
-  requests.className = "stack";
-  requests.append(noticeElement("Loading your leave requests...", "warning"));
-  section.append(heading, note, form, requests);
-  target.append(section);
-  api("/api/leave/mine").then((result) => {
-    requests.replaceChildren();
-    if (!result.requests.length) {
-      requests.append(noticeElement("No leave requests yet.", "warning"));
-      return;
-    }
-    result.requests.forEach((leave) => {
-      const item = document.createElement("p");
-      item.className = "list-item";
-      item.textContent = leave.leaveType + " · " + leave.startDate + "–" + leave.endDate + " · " + leave.status;
-      requests.append(item);
-    });
-  }).catch(() => requests.replaceChildren(noticeElement("Leave history is not available for this role.", "warning")));
-}
-
-async function attendanceAction(path, body) {
-  try {
-    let payload = body;
-    if (body && body.mode === "office") {
-      if (!navigator.geolocation) throw Object.assign(new Error("ATTENDANCE_LOCATION_REQUIRED"), { code: "ATTENDANCE_LOCATION_REQUIRED" });
-      const position = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true, maximumAge: 30000, timeout: 10000,
-      }));
-      payload = { ...body, latitude: position.coords.latitude, longitude: position.coords.longitude,
-        accuracyMeters: position.coords.accuracy };
-    }
-    await api(path, requestOptions("POST", payload));
-    setMessage(path.endsWith("check-out") ? "Attendance checked out." : "Attendance updated.");
+    restorePendingRouteScroll();
   } catch (error) {
-    setMessage(error && error.code === 1 ? errorText(Object.assign(new Error("ATTENDANCE_LOCATION_REQUIRED"), { code: "ATTENDANCE_LOCATION_REQUIRED" })) : errorText(error), "error");
+    if (!isCurrentPageRequest(lifetime)) return;
+    mountWorkPage([], "error", errorText(error));
+    showFeedback();
+    restorePendingRouteScroll();
   }
-  render();
 }
 
-function renderAccept() {
-  const token = new URLSearchParams(window.location.hash.slice(1)).get("token");
-  window.history.replaceState({}, "", "/accept-invite");
-  if (!token) {
-    app.innerHTML = '<section class="panel"><p class="eyebrow">Invitation</p><h1>This invitation link is incomplete.</h1><p class="lede">Ask the person who invited you to send a new invitation.</p><a class="button secondary" href="/">Return to NOVA</a></section>';
+function workSetupPermission(actorGrants, permissionKey, target) {
+  return actorGrants?.isSuperAdmin === true || hasPermissionGrant(actorGrants, permissionKey, target);
+}
+
+function workSetupSafeError(error) {
+  const safe = new Error("NOVA could not complete this work-setup action.");
+  if (typeof error?.code === "string") safe.code = error.code;
+  return safe;
+}
+
+async function runWorkSetupCommand(source, lifetime, work, resource = "Work setup") {
+  if (!source.isConnected || !isCurrentPageRequest(lifetime)) {
+    throw adminCommandUiError(`The ${resource} page changed before this action could start.`);
+  }
+  const context = captureCommandContext(source);
+  if (!isCurrentCommand(context)) throw adminCommandUiError(`The ${resource} page changed before this action could start.`);
+  let result;
+  try {
+    result = await work();
+  } catch (error) {
+    if (!isCurrentCommandIdentity(context)) throw adminCommandUiError("Your session changed. Sign in again before continuing.");
+    if (recoverProtectedCommandFailure(error, context, `Your ${resource.toLocaleLowerCase()} access changed. Available controls are being refreshed.`)) {
+      throw adminCommandUiError("Your access changed. Refresh this section to confirm the available actions.");
+    }
+    if (!isCurrentCommand(context)) throw adminCommandUiError(`The ${resource} page changed before the action completed.`);
+    throw workSetupSafeError(error);
+  }
+  if (!isCurrentCommand(context)) throw adminCommandUiError(`The ${resource} page changed before the action completed.`);
+  return result;
+}
+
+async function renderWorkSetup(lifetime) {
+  lifetime = lifetime || beginPageRequestLifetime();
+  const readPlan = planWorkSetupReads(state.actorGrants);
+  renderShell(createElement("div", { id: "work-setup-page-root" }), "work-setup");
+  const pageRoot = app.querySelector("#work-setup-page-root");
+  let WorkSetupPage;
+  try {
+    ({ WorkSetupPage } = await import("./src/pages/work-setup/WorkSetupPage.tsx"));
+  } catch {
+    if (isCurrentPageRequest(lifetime) && pageRoot?.isConnected) {
+      pageRoot.replaceChildren(noticeElement("Work setup could not load. Refresh the page to try again.", "error"));
+    }
     return;
   }
-  app.innerHTML =
-    '<section class="panel"><p class="eyebrow">You are invited</p><h1>Create your NOVA account.</h1><p class="lede">Choose your own password. You will then receive a verification email before your onboarding continues.</p>' + feedback() +
-    '<form id="accept-form" class="form-grid one"><label>Your name<input name="name" autocomplete="name" required maxlength="180"></label><label>Invited email address<input name="email" type="email" autocomplete="email" required></label><label>New password<input name="password" type="password" autocomplete="new-password" required minlength="8"></label><div class="form-actions"><button class="button" type="submit">Create account</button></div></form></section>';
-  app.querySelector("#accept-form").addEventListener("submit", (event) => submitInvitation(event, token));
+  if (!isCurrentPageRequest(lifetime) || !pageRoot || !app.contains(pageRoot)) return;
+  mountReactIsland(pageRoot, WorkSetupPage, {
+    showTaskCatalog: readPlan.taskCatalog,
+    showBillingPolicy: readPlan.billingPolicy,
+  });
   showFeedback();
+  const fallbackCatalog = { entries: [], proposals: [], permissions: { view: false, propose: false, manage: false, review: false } };
+  const fallbackContext = { clients: [], clientWorkstreams: [], organisationWorkstreams: [], taskCreationTargets: [], groups: [] };
+  const [taskCatalog, workContext] = await Promise.all([
+    readPlan.taskCatalog
+      ? readOrError(pageApi("/api/task-catalog", lifetime), fallbackCatalog)
+      : Promise.resolve(fallbackCatalog),
+    readPlan.billingPolicy
+      ? readOrError(pageApi("/api/work-context", lifetime), fallbackContext)
+      : Promise.resolve(fallbackContext),
+  ]);
+  if (!isCurrentPageRequest(lifetime)) return;
+
+  const content = app.querySelector("#work-setup-content");
+  if (!content) return;
+  if (!readPlan.hasAny) {
+    content.replaceChildren(noticeElement("Your current role has no work-setup features available.", "warning"));
+    return;
+  }
+  const actorGrants = state.actorGrants;
+  const serverCatalogPermissions = taskCatalog?.permissions || {};
+  const permissions = {
+    view: serverCatalogPermissions.view === true && workSetupPermission(actorGrants, "tasks.catalog.view"),
+    propose: serverCatalogPermissions.propose === true && workSetupPermission(actorGrants, "tasks.catalog.propose"),
+    manage: serverCatalogPermissions.manage === true && workSetupPermission(actorGrants, "tasks.catalog.manage"),
+    review: serverCatalogPermissions.review === true && workSetupPermission(actorGrants, "tasks.catalog.review"),
+  };
+
+  await workSetupRoute({
+    content,
+    lifetime,
+    readPlan,
+    taskCatalog,
+    workContext,
+    permissions,
+    onRetry: () => render(),
+    createCatalogActions: (catalogRoot) => workSetupActionsRoute.createCatalogActions({
+      source: catalogRoot,
+      lifetime,
+      permissions,
+    }),
+    createBillingActions: (billingRoot) => workSetupActionsRoute.createBillingActions({
+      source: billingRoot,
+      lifetime,
+      workContext,
+    }),
+  });
 }
 
-function renderForgot() {
-  app.innerHTML =
-    '<section class="panel"><p class="eyebrow">Password recovery</p><h1>Reset your password.</h1><p class="lede">Enter your work email. If it is registered, NOVA will send a secure reset link.</p>' + feedback() +
-    '<form id="forgot-form" class="form-grid one"><label>Email address<input name="email" type="email" autocomplete="email" required></label><div class="form-actions"><button class="button" type="submit">Send reset link</button><button class="button secondary" type="button" data-nav="login">Back to sign in</button></div></form></section>';
-  app.querySelector("#forgot-form").addEventListener("submit", submitForgot);
-  attachNavigation();
-  showFeedback();
+function navigatePersonHistory(personId) {
+  const url = new URL("/", window.location.origin);
+  url.searchParams.set("view", "people");
+  if (personId) url.searchParams.set("person", personId);
+  window.history.pushState({}, "", url);
+  state.view = "people";
+  render();
+  window.requestAnimationFrame(focusPageHeading);
 }
 
-function renderReset() {
+async function renderPeople(lifetime) {
+  const personId = new URLSearchParams(window.location.search).get("person");
+  const directoryContext = isPeopleDirectoryContext(personId, window.history.state, peopleWorkspaceSessionId);
+  renderShell(createElement("div", { id: "people-page-root" }), "people");
+  const pageRoot = app.querySelector("#people-page-root");
+  if (!pageRoot || !isCurrentPageRequest(lifetime)) return;
+
+  activePeopleWorkspace = await peoplePageRoute({ pageRoot, lifetime, personId, directoryContext });
+}
+async function renderAvailability(lifetime) {
+  renderShell(
+    createElement("div", { id: "availability-content" },
+      createElement("p", { className: "small", role: "status" }, "Loading Availability agenda…")),
+    "availability",
+  );
+  const target = app.querySelector("#availability-content");
+  if (!target || !isCurrentPageRequest(lifetime)) return;
+
+  try {
+    const route = await import("./app/availability-page-route.js");
+    if (!isCurrentPageRequest(lifetime) || !target.isConnected) return;
+    await route.mountAvailabilityPage({
+      target,
+      actorGrants: state.actorGrants,
+      location: window.location,
+      history: window.history,
+      isCurrentPageRequest: () => isCurrentPageRequest(lifetime),
+      pageApi: (path) => pageApi(path, lifetime),
+      refreshPermissions: () => {
+        const actorPersonId = state.identityPersonId || state.actorGrants?.actorPersonId;
+        if (actorPersonId) return refreshActorPermissions(state.identityEpoch, actorPersonId);
+      },
+      mountIsland: mountReactIsland,
+      getReadIssue: adminReadIssue,
+      businessTimeLabel,
+      showFeedback,
+      restorePendingRouteScroll,
+    });
+  } catch (error) {
+    if (!isCurrentPageRequest(lifetime) || !target.isConnected) return;
+    target.replaceChildren(noticeElement(errorText(error), "error"));
+    restorePendingRouteScroll();
+  }
+}
+
+async function renderAttendanceRecovery(target, lifetime, initialResult) {
+  return mountAttendanceRecovery(target, lifetime, initialResult, {
+    loadCandidates: async (cursor) => {
+      const search = new URLSearchParams({ limit: "50" });
+      if (cursor) search.set("cursor", cursor);
+      return readOrError(pageApi("/api/attendance/recovery-candidates?" + search.toString(), lifetime), { candidates: [] });
+    },
+    isCurrentPageRequest,
+    makeReadError: (response) => adminReadFailure(response, "attendance recovery candidates"),
+    businessTimeLabel,
+    onCorrect: (event, candidate, values) => withSubmit(event, async (context) => {
+      await api("/api/attendance/recover", requestOptions("POST", {
+        personId: candidate.personId,
+        businessDate: candidate.businessDate,
+        ...values,
+      }));
+      if (!isCurrentCommand(context)) return;
+      setMessage("Attendance correction recorded and audit logged.");
+      render();
+    }),
+  });
+}
+
+async function renderOperations(lifetime) {
+  lifetime = lifetime || beginPageRequestLifetime();
+  renderShell(
+    createElement("div", { id: "operations-board" },
+      createElement("p", { className: "small", role: "status" }, "Loading Operations reports…")),
+    "operations",
+  );
+  const board = app.querySelector("#operations-board");
+  if (!board || !isCurrentPageRequest(lifetime)) return;
+
+  let operationsRoute;
+  try {
+    operationsRoute = await import("./app/operations-route.js");
+  } catch (error) {
+    if (!board.isConnected || !isCurrentPageRequest(lifetime)) return;
+    board.replaceChildren(noticeElement(errorText(error), "error"));
+    restorePendingRouteScroll();
+    return;
+  }
+  if (!board.isConnected || !isCurrentPageRequest(lifetime)) return;
+
+  const readPlan = planOperationsReads(state.actorGrants);
+  const historyHref = (personId) => {
+    const url = new URL("/", window.location.origin);
+    url.searchParams.set("view", "people");
+    if (personId) url.searchParams.set("person", personId);
+    return url.pathname + url.search;
+  };
+  await operationsRoute.mountOperationsRoute({
+    board,
+    readPlan,
+    readApi: (path) => pageApi(path, lifetime),
+    readOrError,
+    isCurrent: () => isCurrentPageRequest(lifetime) && board.isConnected,
+    getReadIssue: adminReadIssue,
+    getAvailabilitySources: () => planOperationsAvailabilitySources(state.actorGrants),
+    createRecoverySlot: () => document.createElement("div"),
+    renderRecovery: (target, initialResult) => renderAttendanceRecovery(target, lifetime, initialResult),
+    mountIsland: mountReactIsland,
+    onLoadError: (error) => board.replaceChildren(noticeElement(errorText(error), "error")),
+    onRetry: () => render(),
+    onRestoreScroll: restorePendingRouteScroll,
+    onShowFeedback: showFeedback,
+    personHistoryHref: historyHref,
+    onViewPersonHistory: navigatePersonHistory,
+    taskDetailHref: taskDetailUrl,
+    onOpenTask: (taskId) => openTaskDetail(taskId, "operations"),
+    taskDefinitionReference,
+    downloadCsv,
+    getErrorText: errorText,
+  });
+}
+function renderAccept(lifetime) {
+  const token = new URLSearchParams(window.location.hash.slice(1)).get("token");
+  window.history.replaceState({}, "", "/accept-invite");
+  const notice = state.message ? { kind: state.messageKind, message: state.message } : null;
+  app.innerHTML = '<div id="public-invitation-root"><p class="loading" role="status">Loading invitation…</p></div>';
+  const target = app.querySelector("#public-invitation-root");
+  void mountPublicInvitationAcceptanceRoute(target, lifetime, token, {
+    isCurrentPageRequest,
+    isTargetMounted: (candidate) => app.contains(candidate),
+    mountReactIsland,
+    notice,
+    consumeNotice: (shownNotice) => {
+      if (shownNotice && state.message === shownNotice.message) state.message = "";
+    },
+    api,
+    requestOptions,
+    publicOrigin: () => window.location.origin,
+    noticeElement,
+    navigateToSignIn: () => go("login"),
+    navigateToNOVA: () => go(null),
+  });
+}
+
+function renderForgot(lifetime) {
+  app.innerHTML = '<div id="password-recovery-root"><p class="loading" role="status">Loading password recovery…</p></div>';
+  const target = app.querySelector("#password-recovery-root");
+  void mountPublicPasswordRecoveryRoute(target, lifetime, {
+    isCurrentPageRequest,
+    isTargetMounted: (candidate) => app.contains(candidate),
+    mountReactIsland,
+    api,
+    requestOptions,
+    publicOrigin: () => window.location.origin,
+    noticeElement,
+    navigateToSignIn: () => go("login"),
+  });
+}
+
+function renderReset(lifetime) {
   const query = new URLSearchParams(window.location.search);
   const token = query.get("token");
-  const invalid = query.get("error");
+  const linkRejected = query.has("error");
   // The reset token is kept only in this short-lived page closure, not in the
   // address bar, local storage, or a later referrer.
   window.history.replaceState({}, "", "/reset-password");
-  if (!token || invalid) {
-    app.innerHTML =
-      '<section class="panel"><p class="eyebrow">Password recovery</p><h1>This reset link is no longer valid.</h1><p class="lede">Request a new password reset link and use the latest email.</p><a class="button secondary" href="/?view=forgot">Request a new link</a></section>';
-    return;
-  }
-  app.innerHTML =
-    '<section class="panel"><p class="eyebrow">Password recovery</p><h1>Choose a new password.</h1><p class="lede">After saving it, sign in normally with your new password.</p>' + feedback() +
-    '<form id="reset-form" class="form-grid one"><label>New password<input name="newPassword" type="password" autocomplete="new-password" required minlength="8"></label><label>Confirm new password<input name="confirmPassword" type="password" autocomplete="new-password" required minlength="8"></label><div class="form-actions"><button class="button" type="submit">Save new password</button></div></form></section>';
-  app.querySelector("#reset-form").addEventListener("submit", (event) => submitReset(event, token));
-  showFeedback();
+  app.innerHTML = '<div id="password-reset-root"><p class="loading" role="status">Loading password reset…</p></div>';
+  const target = app.querySelector("#password-reset-root");
+  void mountPublicPasswordResetRoute(target, lifetime, token, linkRejected, {
+    isCurrentPageRequest,
+    isTargetMounted: (candidate) => app.contains(candidate),
+    mountReactIsland,
+    api,
+    requestOptions,
+    noticeElement,
+    navigateToPasswordRecovery: () => go("forgot"),
+    navigateToSignIn: () => go("login"),
+    completePasswordReset: () => {
+      setMessage("Your password has been reset. Sign in with the new password.");
+      window.history.replaceState({}, "", "/?view=login");
+      state.view = "login";
+      render();
+    },
+  });
 }
 
 function formValues(form) {
   return Object.fromEntries(new FormData(form).entries());
 }
 
-async function withSubmit(event, work) {
-  event.preventDefault();
-  const button = event.currentTarget.querySelector("[type=submit]");
+function currentReviewDraftActorId() {
+  return state.identityPersonId || state.actorGrants?.actorPersonId || null;
+}
+
+function reviewAccessKey(read) {
+  if (read?.readError || !Array.isArray(read?.grants)) return "unavailable";
+  const grants = read.grants
+    .filter((grant) => grant?.permissionKey === "tasks.review")
+    .map((grant) => ({
+      scope: grant.scope || null,
+      officeId: grant.officeId || null,
+      organisationDepartmentId: grant.organisationDepartmentId || null,
+      clientId: grant.clientId || null,
+      clientWorkstreamId: grant.clientWorkstreamId || null,
+      groupId: grant.groupId || null,
+    }))
+    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  return JSON.stringify(grants);
+}
+
+function prepareReviewFeedbackDraftsForActor(grants) {
+  if (!grants?.actorPersonId) return;
+  reviewFeedbackDrafts.prepare(grants.actorPersonId, reviewAccessKey(grants));
+}
+
+function reviewFeedbackDraft(assignmentId) {
+  return reviewFeedbackDrafts.read(currentReviewDraftActorId(), assignmentId);
+}
+
+function saveReviewFeedbackDraft(assignmentId, draft, taskId) {
+  const actorId = currentReviewDraftActorId();
+  if (!actorId) return;
+  reviewFeedbackDrafts.save(actorId, assignmentId, draft, taskId);
+}
+
+function clearReviewFeedbackDraft(assignmentId) {
+  reviewFeedbackDrafts.clear(currentReviewDraftActorId(), assignmentId);
+}
+
+function clearAllReviewFeedbackDrafts() {
+  reviewFeedbackDrafts.clear();
+}
+
+let lastReviewAccessRefreshKey = null;
+function refreshReviewPermissionsAfterDeniedRead() {
+  const actorPersonId = currentReviewDraftActorId();
+  if (!actorPersonId) return;
+  const identityEpoch = state.identityEpoch;
+  const key = `${identityEpoch}:${actorPersonId}:${reviewAccessKey(state.actorGrants)}`;
+  if (lastReviewAccessRefreshKey === key) return;
+  lastReviewAccessRefreshKey = key;
+  void refreshActorPermissions(identityEpoch, actorPersonId);
+}
+
+function reconcileReviewFeedbackDraftAccess(reviewsResult, reviewDetailResult, reviewTarget, hasReviewRoute, selectedReview) {
+  const actorId = currentReviewDraftActorId();
+  const result = reconcileReviewDraftAccess(reviewFeedbackDrafts, actorId, {
+    reviewsResult, reviewDetailResult, reviewTarget, hasReviewRoute, selectedReview,
+  });
+  if (result.refreshPermissions) refreshReviewPermissionsAfterDeniedRead();
+}
+
+function captureCommandContext(source) {
+  return {
+    identityEpoch: state.identityEpoch,
+    actorPersonId: state.identityPersonId || state.actorGrants?.actorPersonId || null,
+    lifetime: pageRequestLifetime,
+    source,
+  };
+}
+
+function isCurrentCommandIdentity(context) {
+  return isCommandIdentityCurrent(context, {
+    identityEpoch: state.identityEpoch,
+    actorPersonId: state.identityPersonId || state.actorGrants?.actorPersonId || null,
+  });
+}
+
+function isCurrentCommand(context) {
+  return isCommandContextCurrent(context, {
+    identityEpoch: state.identityEpoch,
+    actorPersonId: state.identityPersonId || state.actorGrants?.actorPersonId || null,
+    pageLifetimeCurrent: Boolean(context.lifetime && isCurrentPageRequest(context.lifetime)),
+    sourceConnected: Boolean(context.source?.isConnected && app.contains(context.source)),
+  });
+}
+
+async function runActionButton(button, handler) {
+  const context = captureCommandContext(button);
   button.disabled = true;
   try {
-    await work();
+    await handler(context);
   } catch (error) {
+    if (!isCurrentCommandIdentity(context)) return;
+    if (recoverProtectedCommandFailure(error, context)) return;
+    if (!isCurrentCommand(context)) return;
     setMessage(errorText(error), "error");
-    render();
+    showFeedback();
   } finally {
-    button.disabled = false;
+    if (button.isConnected) button.disabled = false;
   }
 }
 
-function submitSetup(event) {
-  const form = event.currentTarget;
-  return withSubmit(event, async () => {
-    const values = formValues(form);
-    const headers = { "x-nova-bootstrap-token": values.bootstrapToken };
-    state.bootstrapToken = values.bootstrapToken;
-    await api("/api/setup/register", requestOptions("POST", {
-      email: values.email, name: values.name, password: values.password,
-    }, headers));
-    let originSaved = false;
-    try {
-      await api("/api/organisation/bootstrap", requestOptions("POST", {
-        organisationName: values.organisationName,
-        attendanceMode: values.attendanceMode,
-        requiredAttendanceMinutes: Number(values.requiredAttendanceMinutes),
-      }, headers));
-      try {
-        const saved = await api("/api/organisation/public-origin", requestOptions(
-          "PATCH",
-          { origin: values.publicOrigin },
-          headers,
-        ));
-        originSaved = Boolean(saved.configuredOrigin);
-        state.publicOriginConfigured = originSaved;
-        state.publicOrigin = saved.configuredOrigin || saved.effectiveOrigin || "";
-      } catch (error) {
-        state.publicOriginConfigured = false;
-        setMessage("Workspace created, but the public URL was not saved: " + errorText(error) + " Set it before configuring email.", "warning");
-      }
-    } finally {
-      form.reset();
+async function refreshActorPermissions(identityEpoch, actorPersonId, recoveryFeedback) {
+  try {
+    const grants = await api("/api/me/permission-grants");
+    if (state.identityEpoch !== identityEpoch || state.identityPersonId !== actorPersonId || !state.session) return;
+    if (grants.actorPersonId !== actorPersonId) {
+      state.session = null;
+      state.actorGrants = null;
+      state.view = null;
+      clearIdentityScopedState();
+      render();
+      return;
     }
-    await refreshSession();
-    state.view = "settings";
-    if (originSaved) {
-      setMessage("Workspace created. The public URL is set. Configure and test email delivery, then request the founder verification link.");
-    } else if (!state.message) {
-      setMessage("Workspace created. Set the public URL before configuring email.", "warning");
-    }
-    render();
-  });
-}
-
-function submitLogin(event) {
-  return withSubmit(event, async () => {
-    const values = formValues(event.currentTarget);
-    await api("/api/auth/sign-in/email", requestOptions("POST", {
-      email: values.email, password: values.password,
-    }));
-    await refreshSession();
-    if (!state.session) {
-      const error = new Error("AUTHENTICATION_REQUIRED");
-      error.code = "AUTHENTICATION_REQUIRED";
-      throw error;
-    }
-    state.view = "settings";
-    render();
-  });
-}
-
-function submitChangePassword(event) {
-  const form = event.currentTarget;
-  return withSubmit(event, async () => {
-    const values = formValues(form);
-    if (values.newPassword !== values.confirmPassword) {
-      const error = new Error("PASSWORDS_DO_NOT_MATCH");
-      error.code = "PASSWORDS_DO_NOT_MATCH";
-      throw error;
-    }
-    await api("/api/auth/change-password", requestOptions("POST", {
-      currentPassword: values.currentPassword,
-      newPassword: values.newPassword,
-      revokeOtherSessions: true,
-    }));
-    form.reset();
-    setMessage("Password changed. Other active sessions were signed out.");
-    render();
-  });
-}
-
-function submitForgot(event) {
-  return withSubmit(event, async () => {
-    const values = formValues(event.currentTarget);
-    await api("/api/auth/request-password-reset", requestOptions("POST", {
-      email: values.email,
-      redirectTo: window.location.origin + "/reset-password",
-    }));
-    setMessage("If that email is registered, NOVA has requested password recovery. Check your inbox or contact an administrator if email is unavailable.");
-    state.view = "login";
-    render();
-  });
-}
-
-function submitReset(event, token) {
-  return withSubmit(event, async () => {
-    const values = formValues(event.currentTarget);
-    if (values.newPassword !== values.confirmPassword) {
-      const error = new Error("PASSWORDS_DO_NOT_MATCH");
-      error.code = "PASSWORDS_DO_NOT_MATCH";
-      throw error;
-    }
-    await api("/api/auth/reset-password", requestOptions("POST", {
-      newPassword: values.newPassword,
-      token,
-    }));
-    setMessage("Your password has been reset. Sign in with the new password.");
-    window.history.replaceState({}, "", "/?view=login");
-    state.view = "login";
-    render();
-  });
-}
-
-function submitConnection(event) {
-  const form = event.currentTarget;
-  return withSubmit(event, async () => {
-    const values = formValues(form);
-    const input = {
-      name: values.name,
-      provider: values.provider,
-      replyToEmail: values.replyToEmail || undefined,
-      senderEmail: values.senderEmail,
-    };
-    if (values.provider === "smtp") {
-      input.credentials = {
-        host: values.smtpHost,
-        password: values.smtpPassword,
-        port: Number(values.smtpPort),
-        secure: values.smtpSecure === "on",
-        username: values.smtpUsername,
+    state.actorGrants = grants;
+    prepareReviewFeedbackDraftsForActor(grants);
+  } catch (error) {
+    if (state.identityEpoch !== identityEpoch || state.identityPersonId !== actorPersonId) return;
+    if (error?.httpStatus === 401 || error?.httpStatus === 403) {
+      state.session = null;
+      state.actorGrants = null;
+      state.view = null;
+      clearIdentityScopedState();
+    } else {
+      state.actorGrants = {
+        actorPersonId,
+        grants: [],
+        isSuperAdmin: false,
+        readError: error?.code || "PERMISSION_REFRESH_FAILED",
       };
-    } else if (values.provider === "gmail_oauth2") {
-      input.credentials = { clientId: values.gmailClientId, clientSecret: values.gmailClientSecret };
-    } else if (values.provider === "resend") {
-      input.credentials = { apiKey: values.resendApiKey };
+      prepareReviewFeedbackDraftsForActor(state.actorGrants);
     }
-    const result = await api("/api/email-connections", requestOptions("POST", input));
-    form.reset();
-    setMessage(
-      result.connection.provider === "gmail_oauth2"
-        ? "Gmail connection saved. Select Connect Google on it to authorize the sender."
-        : "Connection saved. Send a test before activating it.",
-      result.connection.provider === "gmail_oauth2" ? "warning" : "success",
-    );
-    render();
-  });
-}
-
-function submitTest(event, connectionId) {
-  return withSubmit(event, async () => {
-    const values = formValues(event.currentTarget);
-    await api("/api/email-connections/" + connectionId + "/test", requestOptions("POST", {
-      recipientEmail: values.recipientEmail,
-    }));
-    setMessage("Test email sent successfully.");
-    render();
-  });
-}
-
-async function activateConnection(connectionId) {
-  try {
-    await api("/api/email-connections/" + connectionId + "/activate", requestOptions("POST"));
-    setMessage("This is now NOVA active email connection.");
-  } catch (error) {
-    setMessage(errorText(error), "error");
   }
-  render();
-}
-
-async function deactivateConnection(connectionId) {
-  try {
-    await api("/api/email-connections/" + connectionId + "/deactivate", requestOptions("POST"));
-    setMessage("Email delivery is now off. Secure system handoffs remain available for invitations and recovery.", "warning");
-  } catch (error) {
-    setMessage(errorText(error), "error");
-  }
-  render();
-}
-
-async function connectGmail(connectionId) {
-  try {
-    const result = await api("/api/email-connections/" + connectionId + "/gmail/connect", requestOptions("POST"));
-    window.location.assign(result.authorizationUrl);
-  } catch (error) {
-    setMessage(errorText(error), "error");
+  if (state.identityEpoch === identityEpoch && state.identityPersonId === actorPersonId) {
+    if (recoveryFeedback && state.session) setMessage(recoveryFeedback, "error");
     render();
   }
+  else if (!state.session) render();
 }
 
-async function sendVerification() {
-  try {
-    await api("/api/auth/send-verification-email", requestOptions("POST", {
-      email: state.session.email,
-    }));
-    setMessage("Verification requested. Check your inbox, or ask an administrator for a secure system handoff if email is unavailable.");
-  } catch (error) {
-    setMessage(errorText(error), "error");
+function recoverProtectedCommandFailure(error, context, feedbackMessage) {
+  if (!state.session || (error?.httpStatus !== 401 && error?.httpStatus !== 403)) return false;
+  if (context && !isCurrentCommandIdentity(context)) return false;
+  const identityEpoch = state.identityEpoch;
+  const actorPersonId = state.identityPersonId || state.actorGrants?.actorPersonId || null;
+  if (error.httpStatus === 401) {
+    state.session = null;
+    state.actorGrants = null;
+    state.view = null;
+    clearIdentityScopedState();
+  } else {
+    if (feedbackMessage) setMessage(feedbackMessage, "error");
+    state.actorGrants = null;
+    state.adminData = null;
   }
   render();
+  if (error.httpStatus === 403 && actorPersonId) void refreshActorPermissions(identityEpoch, actorPersonId, feedbackMessage);
+  return true;
+}
+
+async function withSubmit(event, work) {
+  event.preventDefault();
+  return withSubmitForm(event.currentTarget, work);
+}
+
+async function withSubmitForm(form, work) {
+  const context = captureCommandContext(form);
+  const inlineFeedback = form.querySelector("[data-submit-feedback]");
+  if (inlineFeedback) {
+    inlineFeedback.hidden = true;
+    inlineFeedback.textContent = "";
+  }
+  const button = form.querySelector("[type=submit]");
+  if (button) button.disabled = true;
+  try {
+    await work(context);
+  } catch (error) {
+    if (!isCurrentCommandIdentity(context)) return;
+    if (error?.httpStatus === 403 && context.source?.dataset.reviewAssignmentId) {
+      clearReviewFeedbackDraft(context.source.dataset.reviewAssignmentId);
+    }
+    if (recoverProtectedCommandFailure(error, context)) return;
+    if (!isCurrentCommand(context)) return;
+    if (inlineFeedback?.isConnected) {
+      inlineFeedback.className = "notice error";
+      inlineFeedback.textContent = errorText(error);
+      inlineFeedback.hidden = false;
+    } else {
+      setMessage(errorText(error), "error");
+      showFeedback();
+    }
+  } finally {
+    if (button?.isConnected) button.disabled = false;
+  }
 }
 
 function submitInvite(event) {
   const form = event.currentTarget;
-  return withSubmit(event, async () => {
+  return withSubmit(event, async (context) => {
     const values = formValues(form);
     const result = await api("/api/people/invitations", requestOptions("POST", values));
+    if (!isCurrentCommand(context)) return;
     form.reset();
     reflectInvitationDelivery(result);
     render();
   });
 }
 
-function reflectInvitationDelivery(result) {
-  if (result.delivery === "manual") {
-    setMessage("No active email adapter was available. The invitation link is waiting in Secure system handoffs.", "warning");
-    state.view = "settings";
-    return;
-  }
-  setMessage("Invitation created and sent.");
-}
-
-function submitInvitation(event, invitationToken) {
-  return withSubmit(event, async () => {
-    const values = formValues(event.currentTarget);
-    const result = await api("/api/invitations/accept", requestOptions("POST", {
-      email: values.email, invitationToken, name: values.name, password: values.password,
-    }));
-    setMessage(
-      result.verificationSent
-        ? "Account created. Check your email to verify it, then sign in."
-        : "Account created. No email was delivered. Ask an authorized administrator to reveal your one-time verification link in Secure system handoffs, then return here to sign in.",
-      result.verificationSent ? "success" : "warning",
-    );
-    window.history.replaceState({}, "", "/?view=login");
-    state.view = "login";
-    render();
-  });
+function reflectInvitationDelivery(result, action = "create") {
+  const feedback = describeInvitationFeedback(result, action);
+  setMessage(feedback.message, feedback.kind);
+  if (feedback.navigateToSettings) state.view = "settings";
+  return feedback.delivery;
 }
 
 async function signOut() {
@@ -4571,63 +3198,201 @@ async function signOut() {
   state.session = null;
   state.actorGrants = null;
   state.view = null;
+  clearAllReviewFeedbackDrafts();
+  clearIdentityScopedState();
   setMessage("You have signed out.");
   go(null);
 }
 
 async function refreshSession() {
+  const previousPersonId = state.identityPersonId || state.uiPreferencePersonId || state.actorGrants?.actorPersonId;
   state.actorGrants = null;
   try {
     const response = await fetch("/api/auth/get-session", requestOptions("GET"));
     if (!response.ok) {
       state.session = null;
+      clearIdentityScopedState();
       return;
     }
     const result = await response.json().catch(() => null);
     state.session = result && result.user ? result.user : null;
-    if (state.session) {
-      state.actorGrants = await readOrError(api("/api/me/permission-grants"), {
-        actorPersonId: null,
-        grants: [],
-        isSuperAdmin: false,
-      });
+    if (!state.session) {
+      clearIdentityScopedState();
+      return;
     }
+    const grants = await readOrError(api("/api/me/permission-grants"), {
+      actorPersonId: null,
+      grants: [],
+      isSuperAdmin: false,
+    });
+    if (previousPersonId && grants.actorPersonId !== previousPersonId) {
+      clearIdentityScopedState();
+    }
+    state.actorGrants = grants;
+    prepareReviewFeedbackDraftsForActor(grants);
+    if (grants.readError || !grants.actorPersonId) {
+      const setupToken = state.bootstrapToken;
+      const founderSetupStillActive = state.session?.emailVerified === false &&
+        grants.readError === "ACCOUNT_NOT_OPERATIONAL" && Boolean(setupToken) &&
+        String(state.session?.email || "").trim().toLowerCase() === state.bootstrapFounderEmail;
+      clearIdentityScopedState();
+      if (founderSetupStillActive) {
+        state.bootstrapToken = setupToken;
+        state.bootstrapFounderEmail = String(state.session?.email || "").trim().toLowerCase();
+      }
+      state.actorGrants = grants;
+      state.uiPreferences = {
+        appearance: { ...DEFAULT_APPEARANCE },
+        workspace: normalizeWorkspace(DEFAULT_WORKSPACE),
+      };
+      state.uiPreferenceRevision = 0;
+      state.uiPreferencePersonId = null;
+      state.uiPreferenceWritable = false;
+      state.uiPreferenceReadError = true;
+      state.uiPreferenceSaveStatus = "idle";
+      state.uiPreferenceConflict = null;
+      return;
+    }
+    state.bootstrapToken = "";
+    state.bootstrapFounderEmail = "";
+    state.identityPersonId = grants.actorPersonId;
+    state.uiPreferencePersonId = grants.actorPersonId;
+    const preferenceEpoch = state.identityEpoch;
+    const saved = await readOrError(api("/api/me/ui-preferences"), {
+      schemaVersion: UI_PREFERENCE_SCHEMA_VERSION,
+      revision: 0,
+      appearance: { ...DEFAULT_APPEARANCE },
+      workspace: normalizeWorkspace(DEFAULT_WORKSPACE),
+      writable: false,
+    });
+    if (preferenceEpoch !== state.identityEpoch || state.uiPreferencePersonId !== grants.actorPersonId) return;
+    if (saved.personId !== grants.actorPersonId) {
+      state.uiPreferenceWritable = false;
+      state.uiPreferenceReadError = true;
+      state.uiPreferenceSaveStatus = "idle";
+      return;
+    }
+    state.uiPreferences = {
+      appearance: normalizeAppearance(saved.appearance),
+      workspace: normalizeWorkspace(saved.workspace),
+    };
+    state.uiPreferenceRevision = Number.isInteger(saved.revision) ? saved.revision : 0;
+    state.uiPreferenceWritable = saved.writable === true && !saved.readError;
+    state.uiPreferenceReadError = Boolean(saved.readError);
+    state.uiPreferenceSaveStatus = saved.readError ? "idle" : state.uiPreferenceWritable ? "saved" : "idle";
+    state.uiPreferenceConflict = null;
+    await loadSavedTaskViews(grants.actorPersonId, preferenceEpoch);
+    if (preferenceEpoch !== state.identityEpoch || state.uiPreferencePersonId !== grants.actorPersonId) return;
   } catch {
     state.session = null;
+    state.actorGrants = null;
+    clearIdentityScopedState();
   }
+}
+
+function canOpenView(view) {
+  return canAccessWorkspaceDestination(view, state.actorGrants, new URLSearchParams(window.location.search));
+}
+
+function renderUnavailableView(view) {
+  const label = ({ today: "Today", work: "Work", "work-setup": "Work setup", operations: "Operations", admin: "Administration", invite: "Invitations" })[view] || "This feature";
+  const accessUnresolved = Boolean(state.actorGrants?.readError || !state.actorGrants?.actorPersonId);
+  renderShell(createElement("div", { id: "unavailable-page-root" }), "");
+  const target = app.querySelector("#unavailable-page-root");
+  if (target) {
+    mountReactIsland(target, RouteUnavailablePage, {
+      label,
+      accessUnresolved,
+      onReturnToWorkspace: () => go(workspaceHomeView()),
+    });
+  }
+  showFeedback();
+  restorePendingRouteScroll();
+}
+
+function workspaceHomeView() {
+  const selected = normalizeWorkspace(state.uiPreferences.workspace).homeView;
+  return selected !== "auto" && canAccessWorkspaceDestination(selected, state.actorGrants)
+    ? selected
+    : resolveWorkspaceHome(state.actorGrants);
 }
 
 function render() {
+  activePeopleWorkspace = null;
+  clearReactIslands();
+  applyAppearanceTokens(normalizeAppearance(state.uiPreferences.appearance));
+  document.body?.classList.remove("workspace-mode");
+  app.setAttribute("role", "main");
+  const lifetime = beginPageRequestLifetime();
+  const publicNavigation = document.querySelector(".site-nav");
+  if (publicNavigation) publicNavigation.hidden = Boolean(state.session);
   const query = new URLSearchParams(window.location.search);
   if (query.get("gmail") === "connected") {
-    setMessage("Google connection completed. Send a test email before activating it.");
+    state.emailOAuthResult = {
+      status: "pending",
+      message: "NOVA returned from Google. This return status is not independent proof of authorization; refresh connections and send a test email before activating a sender.",
+    };
     window.history.replaceState({}, "", "/?view=settings");
     state.view = "settings";
   } else if (query.get("gmail") === "failed") {
-    setMessage(errorMessages[query.get("error")] || "Google connection did not complete.", "error");
+    state.emailOAuthResult = {
+      status: "error",
+      message: errorMessages[query.get("error")] || "Google connection did not complete. Try connecting again.",
+    };
     window.history.replaceState({}, "", "/?view=settings");
     state.view = "settings";
   }
-  const view = state.view || routeView();
-  if (view === "accept") return renderAccept();
-  if (view === "forgot") return renderForgot();
-  if (view === "reset") return renderReset();
-  if (view === "deploy") return renderDeployment();
-  if (view === "setup") return renderSetup();
-  if (view === "login") return renderLogin();
-  if (!state.session) return renderLanding();
-  if (view === "today") return renderAttendance();
-  if (view === "work") return renderWork();
-  if (view === "operations") return renderOperations();
-  if (view === "notifications") return renderNotifications();
-  if (view === "invite") return renderInvite();
-  if (view === "admin") return renderAdmin();
-  return renderSettings();
+  const requestedView = state.view || routeView();
+  const view = requestedView || (state.session ? workspaceHomeView() : null);
+  if (view !== "deploy") invalidateDeploymentProbe();
+  if (!state.session || view !== "admin") state.pendingAdminCommandFocus = false;
+  if (view !== "settings") state.emailOAuthResult = null;
+  if (view === "accept") return renderAccept(lifetime);
+  if (view === "forgot") return renderForgot(lifetime);
+  if (view === "reset") return renderReset(lifetime);
+  if (view === "deploy") return renderDeployment(lifetime);
+  if (view === "setup") return renderSetup(lifetime);
+  if (view === "login") return renderLogin(lifetime);
+  if (!state.session) {
+    state.emailOAuthResult = null;
+    state.pendingRouteScrollY = null;
+    state.pendingRouteFocusTaskId = null;
+    return renderLanding(lifetime);
+  }
+  if (!canOpenView(view)) {
+    state.pendingAdminCommandFocus = false;
+    state.emailOAuthResult = null;
+    return renderUnavailableView(view);
+  }
+  if (view === "today") return renderAttendance(lifetime);
+  if (view === "work") return renderWork(undefined, lifetime);
+  if (view === "work-setup") return renderWorkSetup(lifetime);
+  if (view === "operations") return renderOperations(lifetime);
+  if (view === "availability") return renderAvailability(lifetime);
+  if (view === "people") return renderPeople(lifetime);
+  if (view === "notifications") return renderNotifications(lifetime);
+  if (view === "invite") return renderInvite(lifetime);
+  if (view === "admin") return renderAdmin(lifetime);
+  return renderSettings(lifetime);
 }
 
-window.addEventListener("popstate", () => {
+window.addEventListener("popstate", (event) => {
+  if (activePeopleWorkspace?.handlePopState(event)) {
+    window.requestAnimationFrame(focusPageHeading);
+    return;
+  }
   state.view = null;
+  state.pendingRouteScrollY = Number.isFinite(event.state?.novaReturnScrollY)
+    ? event.state.novaReturnScrollY
+    : null;
+  state.pendingRouteFocusTaskId = typeof event.state?.novaReturnFocusTaskId === "string"
+    ? event.state.novaReturnFocusTaskId
+    : null;
+  state.pendingRouteFocusTaskSource = typeof event.state?.novaReturnFocusTaskSource === "string"
+    ? event.state.novaReturnFocusTaskSource
+    : null;
   render();
+  window.requestAnimationFrame(focusPageHeading);
 });
 
 refreshSession().then(render);

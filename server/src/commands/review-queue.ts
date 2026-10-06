@@ -1,12 +1,23 @@
-import type { PoolClient } from "pg";
 import { authenticationConfiguration } from "../auth-configuration.js";
 import { withDatabaseRequest, type DatabaseRequestContext } from "../db.js";
 import { isNormalOperationalActor, requestActor } from "../request-actor.js";
-import { enqueueNotification } from "./notifications.js";
-import { personCanReviewTarget } from "./work-context.js";
+import { permissionExistsSql } from "./work-context.js";
 
 const json = (body: unknown, status = 200) =>
   Response.json(body, { status, headers: { "cache-control": "no-store" } });
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function parsePendingReviewTarget(url: URL): { assignmentId?: string; taskId?: string } | null {
+  const assignmentIds = url.searchParams.getAll("assignmentId");
+  const taskIds = url.searchParams.getAll("taskId");
+  if (assignmentIds.length > 1 || taskIds.length > 1) return null;
+  const assignmentId = assignmentIds[0] || undefined;
+  const taskId = taskIds[0] || undefined;
+  if ((assignmentId && taskId) || (assignmentId && !uuidPattern.test(assignmentId)) || (taskId && !uuidPattern.test(taskId))) {
+    return null;
+  }
+  return { assignmentId, taskId };
+}
 
 async function actor(request: Request): Promise<{ context: DatabaseRequestContext } | { response: Response }> {
   try { authenticationConfiguration(); }
@@ -17,94 +28,73 @@ async function actor(request: Request): Promise<{ context: DatabaseRequestContex
   return { context: value.context };
 }
 
-async function canReview(
-  transaction: PoolClient,
-  actorId: string,
-  organisationId: string,
-  row: { id: string; reviewer_person_id: string | null; client_id: string | null; client_workstream_id: string | null; work_group_id: string | null; task_id: string },
-): Promise<boolean> {
-  return row.reviewer_person_id === actorId && await personCanReviewTarget(transaction, actorId, organisationId, {
-    clientId: row.client_id ?? undefined,
-    clientWorkstreamId: row.client_workstream_id ?? undefined,
-    groupId: row.work_group_id ?? undefined,
-    taskId: row.task_id,
-  });
-}
+export const pendingReviewsReadSql = `WITH actor_business_date AS MATERIALIZED (
+  SELECT nova.person_business_date($2) AS business_date
+), active_grants AS MATERIALIZED (
+  SELECT actor_date.business_date, grants.permission_key, grants.scope,
+         grants.client_id, grants.client_workstream_id, grants.group_id,
+         grants.office_id, grants.organisation_department_id
+  FROM nova.person_role_assignments role_assignments
+  CROSS JOIN actor_business_date actor_date
+  JOIN nova.roles roles ON roles.id = role_assignments.role_id
+  JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
+  WHERE role_assignments.person_id = $2
+    AND role_assignments.effective_on <= actor_date.business_date
+    AND (role_assignments.effective_until IS NULL OR role_assignments.effective_until >= actor_date.business_date)
+    AND roles.archived_at IS NULL
+)
+SELECT assignments.id, assignments.task_id, assignments.person_id,
+       assignments.reviewer_person_id, clients.id AS client_id, tasks.title,
+       tasks.client_workstream_id, tasks.work_group_id,
+       cycles.id AS cycle_id, cycles.cycle_number, cycles.submitted_at
+FROM nova.task_assignments assignments
+JOIN nova.tasks tasks ON tasks.id = assignments.task_id
+LEFT JOIN nova.client_workstreams workstreams ON workstreams.id = tasks.client_workstream_id
+LEFT JOIN nova.clients clients ON clients.id = workstreams.client_id
+JOIN nova.task_review_cycles cycles
+  ON cycles.assignment_id = assignments.id AND cycles.decided_at IS NULL
+WHERE assignments.organisation_id = $1
+  AND assignments.status = 'awaiting_review'
+  AND assignments.reviewer_person_id = $2
+  AND ($3::uuid IS NULL OR assignments.id = $3)
+  AND ($4::uuid IS NULL OR assignments.task_id = $4)
+  AND ${permissionExistsSql({
+    actorId: "$2",
+    organisationId: "$1",
+    permissionKey: "'tasks.review'",
+    clientId: "clients.id",
+    clientWorkstreamId: "tasks.client_workstream_id",
+    groupId: "tasks.work_group_id",
+    taskId: "tasks.id",
+  })}
+ORDER BY cycles.submitted_at ASC
+LIMIT 100`;
 
 export async function readPendingReviews(request: Request): Promise<Response> {
   const access = await actor(request);
   if ("response" in access) return access.response;
+  const target = parsePendingReviewTarget(new URL(request.url));
+  if (!target) return json({ error: "INVALID_REVIEW_TARGET" }, 400);
   try {
     const result = await withDatabaseRequest(access.context, async (transaction) => {
       const rows = await transaction.query<{
         id: string; task_id: string; person_id: string; reviewer_person_id: string | null;
         client_id: string | null; title: string; client_workstream_id: string | null; work_group_id: string | null;
         cycle_id: string; cycle_number: number; submitted_at: Date;
-      }>(
-        `SELECT assignments.id, assignments.task_id, assignments.person_id,
-                assignments.reviewer_person_id, clients.id AS client_id, tasks.title,
-                tasks.client_workstream_id, tasks.work_group_id,
-                cycles.id AS cycle_id, cycles.cycle_number, cycles.submitted_at
-         FROM nova.task_assignments assignments
-         JOIN nova.tasks tasks ON tasks.id = assignments.task_id
-         LEFT JOIN nova.client_workstreams workstreams ON workstreams.id = tasks.client_workstream_id
-         LEFT JOIN nova.clients clients ON clients.id = workstreams.client_id
-         JOIN nova.task_review_cycles cycles
-           ON cycles.assignment_id = assignments.id AND cycles.decided_at IS NULL
-         WHERE assignments.organisation_id = $1
-           AND assignments.status = 'awaiting_review'
-           AND assignments.reviewer_person_id IS NOT NULL
-         ORDER BY cycles.submitted_at ASC
-         LIMIT 100`,
-        [access.context.organisationId],
+      }>(pendingReviewsReadSql,
+        [access.context.organisationId, access.context.userId, target.assignmentId ?? null, target.taskId ?? null],
       );
-      const pending = [];
-      for (const row of rows.rows) {
-        if (await canReview(transaction, access.context.userId, access.context.organisationId, row)) {
-          pending.push({
-            assignmentId: row.id,
-            taskId: row.task_id,
-            assigneePersonId: row.person_id,
-            reviewerPersonId: row.reviewer_person_id,
-            title: row.title,
-            reviewCycleId: row.cycle_id,
-            cycleNumber: row.cycle_number,
-            submittedAt: row.submitted_at,
-          });
-        } else if (row.reviewer_person_id) {
-          const stillAssigned = await transaction.query<{ reviewer_person_id: string | null }>(
-            `UPDATE nova.task_assignments
-             SET reviewer_person_id = NULL, review_blocked_reason = 'REVIEWER_UNAVAILABLE', review_blocked_at = clock_timestamp()
-             WHERE id = $1 AND status = 'awaiting_review' AND reviewer_person_id = $2
-             RETURNING reviewer_person_id`,
-            [row.id, row.reviewer_person_id],
-          );
-          if (stillAssigned.rows[0]) {
-            await transaction.query(
-              `UPDATE nova.task_review_cycles SET reviewer_person_id = NULL
-               WHERE assignment_id = $1 AND decided_at IS NULL`,
-              [row.id],
-            );
-            await transaction.query(
-              `INSERT INTO nova.audit_events (organisation_id, actor_person_id, action, target_type, target_id, details)
-               VALUES ($1, $2, 'tasks.reviewer_unavailable', 'task_assignment', $3, $4)`,
-              [access.context.organisationId, access.context.userId, row.id, JSON.stringify({ previous_reviewer_person_id: row.reviewer_person_id })],
-            );
-            await enqueueNotification(transaction, {
-              organisationId: access.context.organisationId,
-              recipientPersonId: row.person_id,
-              eventKey: "task.reviewer_unavailable",
-              title: "Reviewer unavailable",
-              body: `Your submitted work needs a new reviewer: ${row.title}.`,
-              aggregateType: "task_assignment",
-              aggregateId: row.id,
-              deepLink: "/?view=today&task=" + row.task_id,
-              idempotencyKey: `task.reviewer_unavailable:${row.id}:${row.reviewer_person_id}`,
-            });
-          }
-        }
-      }
-      return { reviews: pending };
+      return { reviews: rows.rows.map((row) => ({
+        assignmentId: row.id,
+        taskId: row.task_id,
+        assigneePersonId: row.person_id,
+        reviewerPersonId: row.reviewer_person_id,
+        canReview: true,
+        title: row.title,
+        reviewCycleId: row.cycle_id,
+        cycleNumber: row.cycle_number,
+        submittedAt: row.submitted_at,
+      })) };
     });
     return json(result);
   } catch { return json({ error: "INTERNAL_ERROR" }, 500); }

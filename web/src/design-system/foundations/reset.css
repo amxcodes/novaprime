@@ -1,0 +1,123 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--nova-color-canvas);
+  color: var(--nova-color-text-primary);
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--nova-color-canvas);
+  color: var(--nova-color-text-primary);
+  font-family: var(--nova-type-family-sans);
+  font-size: var(--nova-type-size-md);
+  line-height: var(--nova-type-line-normal);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  color: inherit;
+  font: inherit;
+}
+
+button,
+[role="button"],
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+}
+
+.skip-link {
+  position: fixed;
+  z-index: var(--nova-layer-toast);
+  inset-block-start: var(--nova-space-3);
+  inset-inline-start: var(--nova-space-3);
+  padding: var(--nova-space-3) var(--nova-space-4);
+  transform: translateY(-160%);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface-raised);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+img,
+svg,
+video,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+svg {
+  flex: none;
+}
+
+:focus-visible {
+  outline: 3px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--nova-color-action-subtle);
+  color: var(--nova-color-text-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  /* The operating-system request takes precedence over the app's reduced mode. */
+  :root[data-motion="reduced"] *,
+  :root[data-motion="reduced"] *::before,
+  :root[data-motion="reduced"] *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline-color: Highlight;
+  }
+
+  ::selection {
+    color: HighlightText;
+    background: Highlight;
+  }
+}

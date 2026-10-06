@@ -1,0 +1,22 @@
+.header {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+  margin-block-end: var(--nova-space-4);
+}
+
+.title {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-lg);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.description {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+}

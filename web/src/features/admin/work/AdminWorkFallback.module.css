@@ -1,0 +1,10 @@
+.section {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+  color: var(--nova-color-text-primary);
+}
+
+@media (forced-colors: active) {
+  .section { color: CanvasText; }
+}

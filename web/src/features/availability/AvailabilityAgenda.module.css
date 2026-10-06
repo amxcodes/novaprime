@@ -1,0 +1,150 @@
+.agenda {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-5);
+  container: availability / inline-size;
+}
+
+.rangeForm {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: end;
+  gap: var(--nova-space-4);
+  padding: var(--nova-space-5);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.startField,
+.endField,
+.rangeHint,
+.rangeActions,
+.rangeError { min-width: 0; grid-column: 1 / -1; }
+
+.rangeHint {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.rangeActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: var(--nova-space-2);
+}
+
+.rangeError { margin: 0; }
+
+.results {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--nova-space-4);
+}
+
+.status {
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.pageFailure,
+.eventDetail { display: grid; min-width: 0; gap: var(--nova-space-2); }
+
+.eventList {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.eventRow {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(7rem, 0.2fr) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--nova-space-4);
+  padding: var(--nova-space-4) var(--nova-space-2);
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.eventDate {
+  padding-block-start: var(--nova-space-1);
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.eventDetail {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--nova-space-3);
+}
+
+.eventDetail p {
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  padding-block-start: var(--nova-space-2);
+}
+
+.agenda :global(:focus-visible) {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+/* MEDIUM: keep the form readable in tablet and constrained workspace panes. */
+@container availability (min-width: 40rem) and (max-width: 63.999rem) {
+  .rangeForm { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .startField { grid-column: 1; }
+  .endField { grid-column: 2; }
+  .rangeHint,
+  .rangeActions,
+  .rangeError { grid-column: 1 / -1; }
+  .rangeActions { justify-content: flex-end; }
+}
+
+/* EXPANDED: put the two date controls and primary action on one working line. */
+@container availability (min-width: 64rem) {
+  .rangeForm { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .startField { grid-column: 1 / 5; }
+  .endField { grid-column: 5 / 9; }
+  .rangeActions { grid-column: 9 / -1; grid-row: 1; justify-content: flex-end; }
+  .rangeHint,
+  .rangeError { grid-column: 1 / -1; }
+  .eventRow { grid-template-columns: minmax(9rem, 0.2fr) minmax(0, 1fr); }
+}
+
+/* COMPACT: records become clear stacked items with touch-sized actions. */
+@container availability (max-width: 39.999rem) {
+  .rangeForm { padding: var(--nova-space-4); }
+  .rangeActions > * { width: 100%; }
+  .pagination > * { width: 100%; }
+  .eventRow { grid-template-columns: minmax(0, 1fr); gap: var(--nova-space-2); padding-inline: 0; }
+  .eventDate { padding: 0; }
+  .eventDetail { grid-template-columns: minmax(0, 1fr); gap: var(--nova-space-2); }
+}
+
+@media (forced-colors: active) {
+  .rangeForm,
+  .eventRow { border-color: CanvasText; background: Canvas; }
+}

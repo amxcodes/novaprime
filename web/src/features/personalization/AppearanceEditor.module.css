@@ -1,0 +1,375 @@
+.editor {
+  container: appearance-editor / inline-size;
+  width: 100%;
+  min-width: 0;
+  color: var(--nova-color-text-primary);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--nova-space-5);
+  padding-block: var(--nova-space-4) var(--nova-space-6);
+}
+
+.eyebrow,
+.previewOverline {
+  margin: 0 0 var(--nova-space-2);
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: 0.09em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--nova-type-size-xl);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: -0.035em;
+  line-height: var(--nova-type-line-tight);
+}
+
+.intro {
+  max-width: 44rem;
+  margin: var(--nova-space-2) 0 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+}
+
+.statusRow {
+  display: flex;
+  min-height: var(--nova-control-touch-target);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nova-space-2) var(--nova-space-3);
+  padding: var(--nova-space-2) var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-secondary);
+  background: var(--nova-color-surface);
+  font-size: var(--nova-type-size-sm);
+}
+
+.statusDot {
+  width: 0.55rem;
+  height: 0.55rem;
+  flex: none;
+  border-radius: 50%;
+  background: var(--nova-color-text-muted);
+}
+
+.statusDot[data-state="saving"] { background: var(--nova-color-info); }
+.statusDot[data-state="pending"] { background: var(--nova-color-warning); }
+.statusDot[data-state="saved"] { background: var(--nova-color-success); }
+.statusDot[data-state="error"] { background: var(--nova-color-danger); }
+
+.revision {
+  margin-inline-start: auto;
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+}
+
+.readOnlyNote,
+.error {
+  margin: var(--nova-space-3) 0 0;
+  padding: var(--nova-space-3) var(--nova-space-4);
+  border-radius: var(--nova-radius-control);
+  font-size: var(--nova-type-size-sm);
+}
+
+.readOnlyNote {
+  color: var(--nova-color-text-secondary);
+  background: var(--nova-color-surface-subtle);
+}
+
+.error {
+  color: var(--nova-color-danger);
+  background: var(--nova-color-danger-surface);
+}
+
+.conflict {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--nova-space-4);
+  margin-top: var(--nova-space-4);
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-warning);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-warning-surface);
+}
+
+.conflict h3,
+.conflict p { margin: 0; }
+.conflict h3 { font-size: var(--nova-type-size-md); font-weight: var(--nova-type-weight-semibold); }
+.conflict p { margin-top: var(--nova-space-1); color: var(--nova-color-text-secondary); font-size: var(--nova-type-size-sm); }
+.conflictActions { display: flex; flex: none; flex-wrap: wrap; gap: var(--nova-space-2); }
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--nova-space-4);
+  margin-top: var(--nova-space-5);
+}
+
+.group {
+  display: grid;
+  align-content: start;
+  gap: var(--nova-space-5);
+  min-width: 0;
+  padding: clamp(var(--nova-space-4), 2vw, var(--nova-space-6));
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.groupTitle {
+  margin: 0;
+  font-size: var(--nova-type-size-lg);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: -0.015em;
+  line-height: var(--nova-type-line-tight);
+}
+
+.choiceFieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.groupLegend,
+.fieldLabel {
+  display: block;
+  margin-bottom: var(--nova-space-2);
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-medium);
+}
+
+.choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+  gap: var(--nova-space-2);
+}
+
+.choices[data-columns="three"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.choice {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: var(--nova-control-touch-target);
+  cursor: pointer;
+}
+
+.choiceFieldset:disabled .choice { cursor: not-allowed; }
+.choice[data-disabled="true"] { cursor: not-allowed; }
+
+.choiceInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.choiceCard {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--nova-control-touch-target);
+  align-items: center;
+  gap: var(--nova-space-2);
+  padding: var(--nova-space-2) var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-secondary);
+  background: var(--nova-color-surface);
+  transition: border-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard), background-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+
+.choice:hover .choiceCard { background: var(--nova-color-surface-subtle); }
+.choice[data-disabled="true"]:hover .choiceCard { background: var(--nova-color-surface); }
+.choiceCard[data-selected="true"] {
+  border-color: var(--nova-color-action-text);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-action-subtle);
+}
+
+.choiceInput:focus-visible + .choiceCard {
+  outline: 3px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+.choiceInput:disabled + .choiceCard { opacity: 0.65; }
+
+.choiceCopy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 0.125rem;
+}
+
+.choiceLabel {
+  overflow-wrap: anywhere;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-medium);
+  line-height: 1.25;
+}
+
+.choiceDetail {
+  overflow-wrap: anywhere;
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  line-height: 1.3;
+}
+
+.radioMark {
+  display: grid;
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--nova-color-border);
+  border-radius: 50%;
+}
+
+.choiceCard[data-selected="true"] .radioMark { border-color: var(--nova-color-action-text); }
+.choiceCard[data-selected="true"] .radioMark::after {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--nova-color-action);
+  content: "";
+}
+
+.swatch,
+.hexSwatch {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: none;
+  border: 1px solid color-mix(in srgb, var(--nova-color-text-primary) 18%, transparent);
+  border-radius: 50%;
+  background: var(--swatch-color);
+}
+
+.customAccent { min-width: 0; }
+
+.hexField {
+  display: flex;
+  min-height: var(--nova-control-height);
+  align-items: center;
+  gap: var(--nova-space-2);
+  padding: 0 var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-control-background);
+}
+
+.hexSwatch { width: 1.25rem; height: 1.25rem; }
+
+.textInput {
+  width: 100%;
+  min-width: 0;
+  min-height: calc(var(--nova-control-height) - 2px);
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: var(--nova-color-text-primary);
+  background: transparent;
+  font-family: var(--nova-type-family-mono);
+  font-size: var(--nova-type-size-sm);
+}
+
+.hexField:focus-within {
+  border-color: var(--nova-control-border-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--nova-color-focus) 22%, transparent);
+}
+
+.textInput[aria-invalid="true"] { color: var(--nova-color-danger); }
+.textInput:disabled { color: var(--nova-color-text-muted); }
+
+.fieldHint,
+.fieldError {
+  margin: var(--nova-space-2) 0 0;
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+}
+
+.fieldError { min-height: 1em; color: var(--nova-color-danger); }
+
+.preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface-subtle);
+}
+
+.previewCopy { display: grid; min-width: 0; gap: var(--nova-space-1); }
+.previewCopy strong { font-size: var(--nova-type-size-sm); font-weight: var(--nova-type-weight-semibold); }
+.previewCopy > span:last-child { color: var(--nova-color-text-secondary); font-size: var(--nova-type-size-xs); }
+.previewOverline { margin-bottom: 0; }
+
+.previewAction {
+  min-height: var(--nova-control-touch-target);
+  flex: none;
+  padding-inline: var(--nova-space-4);
+  border: 0;
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-action-contrast);
+  background: var(--nova-color-action);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+@media (any-pointer: coarse) {
+  .hexField { min-height: var(--nova-control-touch-target); }
+  .textInput { min-height: calc(var(--nova-control-touch-target) - 2px); }
+}
+
+@media (min-width: 48rem) {
+  .editor { padding-top: var(--nova-space-8); }
+}
+
+@container appearance-editor (min-width: 48rem) {
+  .layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .group { gap: var(--nova-space-6); }
+}
+
+@container appearance-editor (max-width: 36rem) {
+  .header { flex-direction: column; align-items: stretch; }
+  .header > button { align-self: flex-start; }
+  .choices[data-columns="three"] { grid-template-columns: 1fr; }
+  .conflict { flex-direction: column; }
+  .conflictActions { width: 100%; }
+  .conflictActions > button { flex: 1 1 10rem; white-space: normal; }
+  .preview { align-items: flex-start; flex-direction: column; }
+}
+
+@media (forced-colors: active) {
+  .choiceCard,
+  .hexField,
+  .statusRow,
+  .group,
+  .conflict { border-color: CanvasText; }
+  .choiceCard[data-selected="true"] { outline: 2px solid Highlight; }
+  .swatch,
+  .hexSwatch { border: 1px solid CanvasText; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .choiceCard { transition: none; }
+}

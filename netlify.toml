@@ -1,5 +1,6 @@
 [build]
-  publish = "web"
+  command = "bun run build:web"
+  publish = "web/dist"
 
 [functions]
   directory = "netlify/functions"
@@ -8,3 +9,23 @@
 
 [[plugins]]
   package = "./netlify/plugins/nova-functions"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/accept-invite*"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/reset-password*"
+  [headers.values]
+    Cache-Control = "no-store"

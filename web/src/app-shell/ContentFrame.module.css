@@ -1,0 +1,35 @@
+.frame {
+  width: 100%;
+  min-width: 0;
+  flex: 1 0 auto;
+  scroll-margin-block-start: 4.5rem;
+}
+
+.frame:focus {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: -2px;
+}
+
+.inner {
+  width: min(100%, var(--nova-content-max));
+  min-width: 0;
+  max-width: var(--nova-content-max);
+  margin-inline: auto;
+  padding: clamp(var(--nova-space-5), 3vw, var(--nova-space-8));
+}
+
+.frame[data-width="full"] .inner {
+  max-width: none;
+}
+
+@media (max-width: 639px) {
+  .inner {
+    padding: var(--nova-space-4) var(--nova-space-3) calc(5rem + env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frame {
+    scroll-behavior: auto;
+  }
+}

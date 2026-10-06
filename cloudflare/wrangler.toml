@@ -4,6 +4,9 @@ compatibility_date = "2026-09-22"
 compatibility_flags = ["nodejs_compat"]
 keep_vars = true
 
+[build]
+command = "bun run build:web"
+
 [vars]
 NOVA_BACKGROUND_SCHEDULER = "cloudflare"
 
@@ -11,8 +14,11 @@ NOVA_BACKGROUND_SCHEDULER = "cloudflare"
 crons = ["*/5 * * * *"]
 
 [assets]
-directory = "../web"
+directory = "../web/dist"
 binding = "ASSETS"
+run_worker_first = ["/api/*"]
+html_handling = "drop-trailing-slash"
+not_found_handling = "none"
 
 # Replace with the Hyperdrive configuration id for the Supabase/PostgreSQL
 # project. The connection string is supplied to the Worker at request time;

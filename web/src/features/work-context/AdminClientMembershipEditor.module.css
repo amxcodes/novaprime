@@ -1,0 +1,10 @@
+.state {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+  color: var(--nova-color-text-primary);
+}
+
+@media (forced-colors: active) {
+  .state { color: CanvasText; }
+}

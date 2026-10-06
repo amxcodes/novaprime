@@ -1,0 +1,134 @@
+.field {
+  min-width: 0;
+}
+
+.choiceShell {
+  position: relative;
+  min-width: 0;
+}
+
+.choiceInputHasClear {
+  padding-inline-end: 4.5rem;
+}
+
+.popup {
+  position: fixed;
+  z-index: var(--nova-layer-menu);
+  overflow: auto;
+  padding: var(--nova-space-1);
+  border: 1px solid var(--nova-select-popup-border);
+  border-radius: var(--nova-radius-overlay);
+  color: var(--nova-select-popup-text);
+  background: var(--nova-select-popup-background);
+  box-shadow: var(--nova-select-popup-shadow);
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+.listbox {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-1);
+}
+
+.option {
+  display: flex;
+  min-width: 0;
+  min-height: var(--nova-control-height);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-2) var(--nova-space-3);
+  border-radius: var(--nova-radius-control);
+  cursor: pointer;
+}
+
+.option:hover,
+.option[data-active="true"] {
+  background: var(--nova-select-option-hover);
+}
+
+.option[aria-selected="true"] {
+  color: var(--nova-select-option-selected-text);
+  background: var(--nova-select-option-selected);
+}
+
+.option[aria-disabled="true"] {
+  color: var(--nova-color-text-muted);
+  background: transparent;
+  cursor: not-allowed;
+}
+
+.optionCopy {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-1);
+}
+
+.optionLabel {
+  overflow-wrap: anywhere;
+  font-size: var(--nova-type-size-sm);
+}
+
+.optionDetail {
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.optionCheck {
+  flex: none;
+  color: var(--nova-color-action-text);
+}
+
+.noResults {
+  padding: var(--nova-space-3);
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+}
+
+.clearChoice {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: var(--nova-space-1);
+  z-index: 1;
+  min-width: 3.5rem;
+  padding-inline: var(--nova-space-2);
+  background: var(--nova-color-surface);
+  white-space: nowrap;
+}
+
+@media (any-pointer: coarse) {
+  .option {
+    min-height: var(--nova-control-touch-target);
+  }
+}
+
+@media (forced-colors: active) {
+  .popup {
+    border-color: CanvasText;
+    color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
+  }
+
+  .option[data-active="true"] {
+    outline: 1px solid Highlight;
+  }
+
+  .option[aria-selected="true"] {
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .option[aria-disabled="true"] {
+    color: GrayText;
+    background: Canvas;
+  }
+
+  .option[aria-selected="true"] .optionCheck {
+    color: inherit;
+  }
+}

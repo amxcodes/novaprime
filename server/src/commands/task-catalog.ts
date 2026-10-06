@@ -86,6 +86,30 @@ type Proposal = Readonly<{
   reviewer_name: string | null;
 }>;
 
+export function projectTaskCatalogProposal(
+  proposal: Proposal,
+  actorId: string,
+  canReviewPermission: boolean,
+) {
+  return {
+    id: proposal.id,
+    catalogEntryId: proposal.catalog_entry_id,
+    action: proposal.action,
+    expectedRevision: proposal.expected_revision,
+    title: proposal.title,
+    description: proposal.description,
+    priority: proposal.priority,
+    reason: proposal.reason,
+    status: proposal.status,
+    createdAt: proposal.created_at.toISOString(),
+    reviewedAt: proposal.reviewed_at?.toISOString() ?? null,
+    reviewNote: proposal.review_note,
+    proposerName: proposal.proposer_name,
+    reviewerName: proposal.reviewer_name,
+    canReview: canReviewPermission && proposal.status === "pending" && proposal.proposed_by_person_id !== actorId,
+  };
+}
+
 export async function readTaskCatalog(request: Request): Promise<Response> {
   const actor = await normalActor(request);
   if ("response" in actor) return actor.response;
@@ -138,16 +162,11 @@ export async function readTaskCatalog(request: Request): Promise<Response> {
           createdAt: entry.created_at.toISOString(), updatedAt: entry.updated_at.toISOString(),
           createdByName: entry.created_by_name,
         })),
-        proposals: proposals.map((proposal) => ({
-          id: proposal.id, catalogEntryId: proposal.catalog_entry_id,
-          action: proposal.action, expectedRevision: proposal.expected_revision,
-          title: proposal.title, description: proposal.description,
-          priority: proposal.priority, reason: proposal.reason, status: proposal.status,
-          createdAt: proposal.created_at.toISOString(),
-          reviewedAt: proposal.reviewed_at?.toISOString() ?? null,
-          reviewNote: proposal.review_note, proposerName: proposal.proposer_name,
-          reviewerName: proposal.reviewer_name,
-        })),
+        proposals: proposals.map((proposal) => projectTaskCatalogProposal(
+          proposal,
+          actor.context.userId,
+          permissions.review,
+        )),
         permissions,
       };
     });

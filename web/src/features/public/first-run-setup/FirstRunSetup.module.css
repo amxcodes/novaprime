@@ -1,0 +1,266 @@
+.root {
+  box-sizing: border-box;
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  justify-items: center;
+  container: first-run-setup / inline-size;
+}
+
+.panel {
+  box-sizing: border-box;
+  display: grid;
+  width: min(100%, 54rem);
+  min-width: 0;
+  align-content: start;
+  gap: var(--nova-space-6);
+  padding: clamp(var(--nova-space-4), 3.5cqi, var(--nova-space-8));
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface);
+  box-shadow: var(--nova-elevation-raised);
+}
+
+.header,
+.groupHeader {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--nova-color-action-text);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: 0.02em;
+}
+
+.title {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: clamp(var(--nova-type-size-xl), 4cqi, 2rem);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.title:focus-visible { outline: none; }
+
+.description,
+.groupDescription,
+.policyHint,
+.modeHint {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.form {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-5);
+}
+
+.group {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+  padding-block: var(--nova-space-4);
+  border-top: 1px solid var(--nova-color-border);
+}
+
+.groupTitle {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-md);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+}
+
+.grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--nova-space-4) var(--nova-space-5);
+}
+
+.full { grid-column: 1 / -1; }
+
+.modeField {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.modeLegend {
+  margin-bottom: var(--nova-space-2);
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-medium);
+  line-height: var(--nova-type-line-normal);
+}
+
+.modeLegend > span { color: var(--nova-color-danger); }
+
+.modeOptions {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--nova-space-2);
+}
+
+.modeOption {
+  box-sizing: border-box;
+  display: flex;
+  min-width: 0;
+  min-height: var(--nova-control-touch-target);
+  align-items: flex-start;
+  gap: var(--nova-space-2);
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface);
+  cursor: pointer;
+}
+
+.modeOption[data-selected="true"] {
+  border-color: var(--nova-color-action);
+  background: var(--nova-color-action-subtle);
+}
+
+.modeOption:has(input:focus-visible) {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+.modeOption input:focus-visible {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+.modeOption:has(input:disabled) { cursor: not-allowed; }
+
+.modeOption input {
+  appearance: none;
+  display: grid;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: 0 0 auto;
+  place-content: center;
+  margin: 0.125rem 0 0;
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-pill);
+  color: var(--nova-color-action-contrast);
+  background: var(--nova-color-surface);
+  cursor: inherit;
+}
+
+.modeOption input::before {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: inherit;
+  background: currentColor;
+  content: "";
+  transform: scale(0);
+  transition: transform var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+
+.modeOption input:checked {
+  border-color: var(--nova-color-action);
+  color: var(--nova-color-action);
+}
+
+.modeOption input:checked::before { transform: scale(1); }
+
+.modeOption input:disabled { opacity: 0.6; }
+
+.modeCopy {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-1);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.modeCopy strong {
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-medium);
+}
+
+.modeCopy small {
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+}
+
+.fieldError {
+  color: var(--nova-color-danger);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+}
+
+.policyHint,
+.modeHint {
+  grid-column: 1 / -1;
+  padding-inline-start: var(--nova-space-1);
+}
+
+.progress {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+}
+
+.actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--nova-space-3);
+  padding-top: var(--nova-space-2);
+  border-top: 1px solid var(--nova-color-border);
+}
+
+@container first-run-setup (max-width: 42rem) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .full,
+  .policyHint,
+  .modeHint { grid-column: auto; }
+}
+
+@container first-run-setup (max-width: 25rem) {
+  .panel { gap: var(--nova-space-5); }
+  .group { gap: var(--nova-space-3); }
+  .modeOptions { grid-template-columns: minmax(0, 1fr); }
+  .actions { align-items: stretch; }
+  .actions > button { width: 100%; }
+}
+
+@media (any-pointer: coarse) {
+  .actions > button { min-height: var(--nova-control-touch-target); }
+  .modeOption { min-height: var(--nova-control-touch-target); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modeOption input::before { transition: none; }
+}
+
+@media (forced-colors: active) {
+  .panel,
+  .group,
+  .actions { border-color: CanvasText; }
+  .modeOption,
+  .modeOption input { border-color: FieldText; color: FieldText; background: Field; }
+  .modeOption[data-selected="true"] { border-color: Highlight; }
+  .modeOption input:checked { border-color: Highlight; color: Highlight; }
+  .fieldError { color: Mark; }
+}

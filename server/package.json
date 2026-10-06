@@ -13,7 +13,7 @@
     "migrate": "bun src/migrate.ts",
     "supabase:bootstrap": "bun src/supabase-bootstrap.ts",
     "start": "node dist/index.js",
-    "test": "bun test src ../api ../netlify/functions ../cloudflare ../web/deployment-guide.test.js ../web/deployment-ui.test.js ../scripts/role-grants.test.js ../scripts/admin-read-state.test.js",
+    "test": "bun test --isolate src ../api ../netlify/functions ../cloudflare ../web/deployment-guide.test.js ../web/deployment-ui.test.js ../web/app/workspace-shortcuts.test.js ../web/app/people-directory-route.test.js ../web/app/work-collaboration-route.test.cjs ../web/app/work-route.test.cjs ../web/features/work/saved-task-views.test.js ../web/features/attendance/recovery.test.js ../web/features/people/people-directory.test.js ../web/features/operations/people-report.test.js ../web/ui-preferences.test.js ../web/request-lifecycle.test.js ../web/vercel-config.test.js ../scripts/role-grants.test.js ../scripts/admin-read-state.test.js ../scripts/workspace-destinations.test.js ../scripts/review-actions.test.js ../scripts/update ../web/src",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

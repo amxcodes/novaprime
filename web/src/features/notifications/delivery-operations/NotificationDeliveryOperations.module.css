@@ -1,0 +1,188 @@
+.section {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+  container: notification-delivery / inline-size;
+}
+
+.content {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+}
+
+.scopeNote {
+  margin: 0;
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+}
+
+.readError {
+  display: grid;
+  justify-items: start;
+  gap: var(--nova-space-3);
+}
+
+.records {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.record {
+  min-width: 0;
+  padding-block: var(--nova-space-3);
+  border-block-end: 1px solid var(--nova-color-border);
+}
+
+.fields {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(9rem, 1.1fr) minmax(7rem, 0.8fr) minmax(5rem, 0.45fr) minmax(13rem, 1.3fr) minmax(10rem, 1fr) minmax(9rem, 0.8fr);
+  align-items: start;
+  gap: var(--nova-space-3) var(--nova-space-4);
+  margin: 0;
+}
+
+.field {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--nova-space-1);
+}
+
+.field dt {
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-medium);
+  line-height: var(--nova-type-line-normal);
+}
+
+.field dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.eventKey {
+  font-family: var(--nova-type-family-mono);
+  font-size: var(--nova-type-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.timing {
+  display: grid;
+  gap: var(--nova-space-1);
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+}
+
+.timing time { color: var(--nova-color-text-primary); }
+
+.errorSummary {
+  display: block;
+  max-width: 42ch;
+  color: var(--nova-color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+}
+
+.confirmation { min-width: 0; }
+
+.confirmationSummary {
+  display: inline-flex;
+  min-height: var(--nova-control-touch-target);
+  align-items: center;
+  justify-content: center;
+  padding: var(--nova-space-2) var(--nova-space-3);
+  border: 1px solid var(--nova-color-action);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-action-text);
+  background: var(--nova-color-surface);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-normal);
+  cursor: pointer;
+  list-style: none;
+}
+
+.confirmationSummary::-webkit-details-marker { display: none; }
+.confirmationSummary::marker { content: ""; }
+.confirmationSummary:hover { background: var(--nova-color-action-subtle); }
+.confirmationSummary:focus-visible { outline: 3px solid var(--nova-color-focus); outline-offset: 2px; }
+
+.confirmationBody {
+  display: grid;
+  min-width: 13rem;
+  gap: var(--nova-space-2);
+  margin-block-start: var(--nova-space-2);
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface-raised);
+}
+
+.confirmationText {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+}
+
+.confirmationActions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: var(--nova-space-2);
+}
+
+@container notification-delivery (max-width: 63.999rem) {
+  .fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .timingField,
+  .errorField { grid-column: span 2; }
+}
+
+@container notification-delivery (max-width: 39.999rem) {
+  .record { padding-block: var(--nova-space-4); }
+
+  .fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--nova-space-3);
+  }
+
+  .eventField,
+  .timingField,
+  .errorField,
+  .actionField { grid-column: 1 / -1; }
+
+  .confirmationBody { min-width: 0; }
+  .confirmationActions > :global(button) { flex: 1 1 8rem; }
+}
+
+@media (forced-colors: active) {
+  .records,
+  .record { border-color: CanvasText; }
+  .field dt,
+  .field dd,
+  .timing,
+  .timing time,
+  .errorSummary,
+  .muted,
+  .confirmationText { color: CanvasText; }
+  .confirmationSummary,
+  .confirmationBody { border-color: ButtonText; color: ButtonText; background: Canvas; }
+}

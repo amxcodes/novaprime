@@ -37,6 +37,17 @@ BEGIN
     NULL;
   END;
 
+  -- Geofence management and its selector read currently share an
+  -- organisation-only command contract. Do not silently broaden this to
+  -- office-scoped writes without adding matching authorization semantics.
+  BEGIN
+    INSERT INTO nova.role_permission_grants (role_id, permission_key, scope, office_id)
+    VALUES (v_role_id, 'availability.office_geofence.manage', 'office', v_office_id);
+    RAISE EXCEPTION 'office-scoped geofence management was accepted';
+  EXCEPTION WHEN check_violation THEN
+    NULL;
+  END;
+
   INSERT INTO nova.role_permission_grants (role_id, permission_key, scope)
   VALUES (v_role_id, 'tasks.start', 'assigned_work');
 END;

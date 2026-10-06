@@ -14,6 +14,8 @@ export type Target = Readonly<{
   clientWorkstreamId?: string;
   groupId?: string;
   taskId?: string;
+  /** Limit assigned_work permission checks to one exact assignment when required. */
+  assignmentId?: string;
 }>;
 
 const json = (body: unknown, status = 200) =>
@@ -42,6 +44,36 @@ export function validTaskDueDate(value: unknown): value is string {
 }
 
 export type TaskBillingClass = "billable" | "non_billable";
+
+export type OwnAssignmentActionState = Readonly<{
+  status: string;
+  taskStatus: string;
+  canStartPermission: boolean;
+  canSubmitPermission: boolean;
+  canRequestReviewerPermission: boolean;
+  canRequestHandoverPermission: boolean;
+  hasPendingReviewerRequest: boolean;
+  hasPendingHandoverRequest: boolean;
+}>;
+
+/**
+ * Describe the actions that fit an actor's own assignment state. Permissions
+ * are projected from effective target-scoped grants in the database query;
+ * the corresponding write commands still repeat every check transactionally.
+ */
+export function ownAssignmentActionCapabilities(state: OwnAssignmentActionState) {
+  const canStart = ["assigned", "in_progress", "changes_requested"].includes(state.status) &&
+    ["backlog", "ready", "in_progress", "returned", "blocked"].includes(state.taskStatus);
+  const canSubmit = ["in_progress", "changes_requested"].includes(state.status);
+  const requestable = state.taskStatus !== "cancelled" &&
+    !["cancelled", "approved"].includes(state.status);
+  return {
+    canStart: canStart && state.canStartPermission,
+    canSubmit: canSubmit && state.canSubmitPermission,
+    canRequestReviewer: requestable && state.canRequestReviewerPermission && !state.hasPendingReviewerRequest,
+    canRequestHandover: requestable && state.canRequestHandoverPermission && !state.hasPendingHandoverRequest,
+  };
+}
 
 export function taskCorrectionInput(value: Record<string, unknown>): {
   correctionOfTaskId: string | null;
@@ -82,7 +114,7 @@ export async function body(request: Request): Promise<Record<string, unknown>> {
   } catch { return {}; }
 }
 
-type PermissionSqlReferences = Readonly<{
+export type PermissionSqlReferences = Readonly<{
   actorId: string;
   organisationId: string;
   permissionKey: string;
@@ -90,13 +122,25 @@ type PermissionSqlReferences = Readonly<{
   clientWorkstreamId: string;
   groupId: string;
   taskId: string;
+  allowedScopes?: readonly ("organisation" | "client" | "client_workstream" | "group" | "assigned_work")[];
+  /** Narrow assigned_work authorization to one exact assignment when the target is an assignment action. */
+  assignedWorkAssignmentId?: string;
+  /** Bind the grant scan to a person when active_grants contains candidates for multiple actors. */
+  grantPersonId?: string;
+  /** Permission-query CTE name; callers must supply a fixed internal identifier. */
+  grantsRelation?: string;
 }>;
 
-function permissionExistsSql(ref: PermissionSqlReferences): string {
+export function permissionExistsSql(ref: PermissionSqlReferences): string {
+  const allowedScopes = ref.allowedScopes
+    ? `AND grants.scope = ANY(ARRAY[${ref.allowedScopes.map((scope) => `'${scope}'`).join(", ")}]::nova.permission_scope[])`
+    : "";
   return `EXISTS (
     SELECT 1
-    FROM active_grants grants
+    FROM ${ref.grantsRelation ?? "active_grants"} grants
     WHERE grants.permission_key = ${ref.permissionKey}
+      ${ref.grantPersonId ? `AND grants.person_id = ${ref.grantPersonId}` : ""}
+      ${allowedScopes}
       AND (
         grants.scope = 'organisation'
         OR (grants.scope = 'client' AND grants.client_id = ${ref.clientId})
@@ -120,6 +164,7 @@ function permissionExistsSql(ref: PermissionSqlReferences): string {
           SELECT 1 FROM nova.task_assignments actor_assignments
           WHERE actor_assignments.task_id = ${ref.taskId}
             AND actor_assignments.organisation_id = ${ref.organisationId}
+            ${ref.assignedWorkAssignmentId ? `AND actor_assignments.id = ${ref.assignedWorkAssignmentId}` : ""}
             AND (actor_assignments.person_id = ${ref.actorId}
                  OR (grants.permission_key = 'tasks.review'
                      AND (actor_assignments.reviewer_person_id = ${ref.actorId}
@@ -141,6 +186,41 @@ function permissionExistsSql(ref: PermissionSqlReferences): string {
         ))
       )
   )`;
+}
+
+/** An exception is meaningful only when this assignment actually requires review. */
+export function reviewerExceptionTargetEligible(status: string, reviewRequired: boolean): boolean {
+  return reviewRequired && !["approved", "cancelled"].includes(status);
+}
+
+export function exactReviewerManagementTarget(assignmentId: string, taskId: string, target: Target): Target {
+  return { ...target, taskId, assignmentId };
+}
+
+export const reviewerExceptionGrantTargetSql = `SELECT assignments.id, assignments.task_id, assignments.person_id,
+       assignments.status, assignments.review_required, tasks.title
+FROM nova.task_assignments assignments
+JOIN nova.tasks tasks ON tasks.id = assignments.task_id
+WHERE assignments.id = $1 AND assignments.organisation_id = $2
+FOR UPDATE OF assignments, tasks`;
+
+/** Task-scoped grants used to present controls on the actor's own assignments. */
+export function ownAssignmentActionPermissionSql() {
+  const permission = (permissionKey: string) => permissionExistsSql({
+    actorId: "$2",
+    organisationId: "$1",
+    permissionKey: `'${permissionKey}'`,
+    clientId: "candidate_assignments.client_id",
+    clientWorkstreamId: "candidate_assignments.client_workstream_id",
+    groupId: "candidate_assignments.work_group_id",
+    taskId: "candidate_assignments.task_id",
+  });
+  return {
+    canStart: permission("tasks.start"),
+    canSubmit: permission("tasks.submit"),
+    canRequestReviewer: permission("tasks.reviewer_request"),
+    canRequestHandover: permission("tasks.handover_request"),
+  };
 }
 
 export async function hasPermission(
@@ -174,11 +254,89 @@ export async function hasPermission(
       clientWorkstreamId: "$5",
       groupId: "$6",
       taskId: "$7",
+      assignedWorkAssignmentId: target.assignmentId ? "$8" : undefined,
     })} AS permitted`,
     [actorId, organisationId, permissionKey, target.clientId ?? null,
-      target.clientWorkstreamId ?? null, target.groupId ?? null, target.taskId ?? null],
+      target.clientWorkstreamId ?? null, target.groupId ?? null, target.taskId ?? null,
+      ...(target.assignmentId ? [target.assignmentId] : [])],
   );
   return result.rows[0]?.permitted === true;
+}
+
+export type TaskPermissionHints = Readonly<{
+  canView: boolean;
+  /** Broad task visibility; assigned_work alone must never expose a task roster. */
+  canViewBroad: boolean;
+  canEditDueDate: boolean;
+  canAssign: boolean;
+  canCancel: boolean;
+  canReassign: boolean;
+}>;
+
+/**
+ * Project the exact task-scoped permissions in one query so list responses can
+ * hide controls without doing one permission round-trip per action/assignment.
+ * Commands still recheck every permission before writing.
+ */
+export async function readTaskPermissionHints(
+  transaction: PoolClient,
+  actorId: string,
+  organisationId: string,
+  target: Target,
+): Promise<TaskPermissionHints> {
+  const references = (permissionKey: string): PermissionSqlReferences => ({
+    actorId: "$1",
+    organisationId: "$2",
+    permissionKey: `'${permissionKey}'`,
+    clientId: "$3",
+    clientWorkstreamId: "$4",
+    groupId: "$5",
+    taskId: "$6",
+  });
+  const result = await transaction.query<{
+    can_view: boolean;
+    can_view_broad: boolean;
+    can_edit_due_date: boolean;
+    can_assign: boolean;
+    can_cancel: boolean;
+    can_reassign: boolean;
+  }>(
+    `WITH actor_business_date AS MATERIALIZED (
+       SELECT nova.person_business_date($1) AS business_date
+     ), active_grants AS MATERIALIZED (
+       SELECT actor_date.business_date, grants.permission_key, grants.scope, grants.client_id,
+              grants.client_workstream_id, grants.group_id, grants.office_id,
+              grants.organisation_department_id
+       FROM nova.person_role_assignments assignments
+       CROSS JOIN actor_business_date actor_date
+       JOIN nova.roles roles ON roles.id = assignments.role_id
+       JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
+       WHERE assignments.person_id = $1
+         AND assignments.effective_on <= actor_date.business_date
+         AND (assignments.effective_until IS NULL OR assignments.effective_until >= actor_date.business_date)
+         AND roles.archived_at IS NULL
+     )
+     SELECT ${permissionExistsSql(references("tasks.view"))} AS can_view,
+            ${permissionExistsSql({
+              ...references("tasks.view"),
+              allowedScopes: ["organisation", "client", "client_workstream", "group"],
+            })} AS can_view_broad,
+            ${permissionExistsSql(references("tasks.edit"))} AS can_edit_due_date,
+            ${permissionExistsSql(references("tasks.assign"))} AS can_assign,
+            ${permissionExistsSql(references("tasks.edit"))} AS can_cancel,
+            ${permissionExistsSql(references("tasks.reassign"))} AS can_reassign`,
+    [actorId, organisationId, target.clientId ?? null,
+      target.clientWorkstreamId ?? null, target.groupId ?? null, target.taskId ?? null],
+  );
+  const row = result.rows[0];
+  return {
+    canView: row?.can_view === true,
+    canViewBroad: row?.can_view_broad === true,
+    canEditDueDate: row?.can_edit_due_date === true,
+    canAssign: row?.can_assign === true,
+    canCancel: row?.can_cancel === true,
+    canReassign: row?.can_reassign === true,
+  };
 }
 
 async function hasAnyPermission(
@@ -271,6 +429,98 @@ export async function personCanReviewTarget(
 ): Promise<boolean> {
   return await personIsOperational(transaction, personId, organisationId)
     && await hasPermission(transaction, personId, organisationId, "tasks.review", target);
+}
+
+export type TaskAssignmentOption = Readonly<{ id: string; name: string }>;
+
+/**
+ * Resolve narrowly scoped assignee/reviewer options for a single task. The
+ * caller must have assignment or reassignment authority on this exact task;
+ * candidates are filtered through the same domain eligibility checks used by
+ * the write commands.
+ */
+export async function resolveTaskAssignmentOptions(
+  transaction: PoolClient,
+  actorId: string,
+  organisationId: string,
+  taskId: string,
+): Promise<{
+  assignees: TaskAssignmentOption[];
+  reviewers: TaskAssignmentOption[];
+} | "TASK_NOT_FOUND" | "PERMISSION_DENIED"> {
+  const taskResult = await transaction.query<{
+    id: string;
+    client_id: string | null;
+    client_workstream_id: string | null;
+    work_group_id: string | null;
+  }>(
+    `SELECT tasks.id, clients.id AS client_id, tasks.client_workstream_id,
+            tasks.work_group_id
+     FROM nova.tasks tasks
+     LEFT JOIN nova.client_workstreams workstreams
+       ON workstreams.id = tasks.client_workstream_id
+     LEFT JOIN nova.clients clients
+       ON clients.id = workstreams.client_id
+     WHERE tasks.id = $1 AND tasks.organisation_id = $2`,
+    [taskId, organisationId],
+  );
+  const task = taskResult.rows[0];
+  if (!task) return "TASK_NOT_FOUND";
+
+  const target: Target = {
+    ...(task.client_id ? { clientId: task.client_id } : {}),
+    ...(task.client_workstream_id ? { clientWorkstreamId: task.client_workstream_id } : {}),
+    ...(task.work_group_id ? { groupId: task.work_group_id } : {}),
+    taskId: task.id,
+  };
+  if (!await hasAnyPermission(
+    transaction,
+    actorId,
+    organisationId,
+    ["tasks.assign", "tasks.reassign"],
+    target,
+  )) return "PERMISSION_DENIED";
+
+  const people = await transaction.query<{ id: string; display_name: string }>(
+    `SELECT people.id, people.display_name
+     FROM nova.people people
+     JOIN nova.person_status_periods statuses
+       ON statuses.person_id = people.id AND statuses.ended_at IS NULL
+     WHERE people.organisation_id = $1
+       AND statuses.status IN ('active', 'notice')
+     ORDER BY people.display_name, people.id`,
+    [organisationId],
+  );
+  const assignees: TaskAssignmentOption[] = [];
+  const reviewers: TaskAssignmentOption[] = [];
+  for (const person of people.rows) {
+    if (await personCanReceiveAssignments(transaction, person.id, organisationId)) {
+      assignees.push({ id: person.id, name: person.display_name });
+    }
+    if (await personCanReviewTarget(transaction, person.id, organisationId, target)) {
+      reviewers.push({ id: person.id, name: person.display_name });
+    }
+  }
+  return { assignees, reviewers };
+}
+
+export async function readTaskAssignmentOptions(request: Request, taskId: string): Promise<Response> {
+  const actor = await normalActor(request);
+  if ("response" in actor) return actor.response;
+  if (!uuidPattern.test(taskId)) return json({ error: "TASK_NOT_FOUND" }, 404);
+  try {
+    const result = await withDatabaseRequest(actor.context, (transaction) =>
+      resolveTaskAssignmentOptions(
+        transaction,
+        actor.context.userId,
+        actor.context.organisationId,
+        taskId,
+      ),
+    );
+    if (result === "PERMISSION_DENIED") return json({ error: result }, 403);
+    if (result === "TASK_NOT_FOUND") return json({ error: result }, 404);
+    return json(result);
+  } catch { return json({ error: "INTERNAL_ERROR" }, 500); }
 }
 
 export async function createClient(request: Request): Promise<Response> {
@@ -1036,7 +1286,7 @@ export async function createTaskAssignment(request: Request, taskId: string): Pr
           body: "A new task has been assigned to you.",
           aggregateType: "task_assignment",
           aggregateId: assignmentId,
-          deepLink: "/?view=today&task=" + taskId,
+          deepLink: "/?view=work&task=" + taskId,
           idempotencyKey: "task.assigned:" + assignmentId,
         });
         if (reviewerPersonId) {
@@ -1048,7 +1298,7 @@ export async function createTaskAssignment(request: Request, taskId: string): Pr
             body: "You have been selected to review an assigned task.",
             aggregateType: "task_assignment",
             aggregateId: assignmentId,
-            deepLink: "/?view=today&task=" + taskId,
+            deepLink: "/?view=work&review=" + assignmentId,
             idempotencyKey: "task.review_requested:" + assignmentId + ":" + reviewerPersonId,
           });
         }
@@ -1097,7 +1347,10 @@ export async function updateAssignmentReviewer(request: Request, assignmentId: s
         ...(assignment.client_workstream_id ? { clientWorkstreamId: assignment.client_workstream_id } : {}),
         ...(assignment.work_group_id ? { groupId: assignment.work_group_id } : {}),
       };
-      if (!await hasPermission(transaction, actor.context.userId, actor.context.organisationId, "tasks.reviewer_manage", { ...target, taskId: assignment.task_id })) return "PERMISSION_DENIED" as const;
+      if (!await hasPermission(transaction, actor.context.userId, actor.context.organisationId,
+        "tasks.reviewer_manage", exactReviewerManagementTarget(assignment.id, assignment.task_id, target))) {
+        return "PERMISSION_DENIED" as const;
+      }
       if (!await personCanReviewTarget(transaction, reviewerPersonId, actor.context.organisationId, { ...target, taskId: assignment.task_id })) return "REVIEWER_NOT_ASSIGNABLE" as const;
       const updated = await transaction.query<{ id: string }>(
         `UPDATE nova.task_assignments
@@ -1127,7 +1380,7 @@ export async function updateAssignmentReviewer(request: Request, assignmentId: s
         body: "You have been selected to review an assigned task.",
         aggregateType: "task_assignment",
         aggregateId: assignmentId,
-        deepLink: "/?view=today&task=" + assignment.task_id,
+        deepLink: "/?view=work&review=" + assignmentId,
         idempotencyKey: "task.review_requested:" + assignmentId + ":" + reviewerPersonId,
       });
       return assignmentId;
@@ -1155,19 +1408,14 @@ export async function grantReviewerException(request: Request, assignmentId: str
       const owner = await transaction.query<{ permitted: boolean }>("SELECT nova.request_actor_is_super_admin() AS permitted");
       if (owner.rows[0]?.permitted !== true) return "PERMISSION_DENIED" as const;
       const rowResult = await transaction.query<{
-        id: string; task_id: string; person_id: string; status: string; title: string;
+        id: string; task_id: string; person_id: string; status: string; title: string; review_required: boolean;
       }>(
-        `SELECT assignments.id, assignments.task_id, assignments.person_id,
-                assignments.status, tasks.title
-         FROM nova.task_assignments assignments
-         JOIN nova.tasks tasks ON tasks.id = assignments.task_id
-         WHERE assignments.id = $1 AND assignments.organisation_id = $2
-         FOR UPDATE OF assignments, tasks`,
+        reviewerExceptionGrantTargetSql,
         [assignmentId, actor.context.organisationId],
       );
       const row = rowResult.rows[0];
       if (!row) return "ASSIGNMENT_NOT_FOUND" as const;
-      if (["cancelled", "approved"].includes(row.status)) return "ASSIGNMENT_NOT_EXCEPTION_ELIGIBLE" as const;
+      if (!reviewerExceptionTargetEligible(row.status, row.review_required)) return "ASSIGNMENT_NOT_EXCEPTION_ELIGIBLE" as const;
       if (reviewerPersonId === row.person_id) return "SELF_REVIEW_NOT_ALLOWED" as const;
       const reviewer = await transaction.query<{ id: string }>(
         `SELECT people.id
@@ -1200,7 +1448,7 @@ export async function grantReviewerException(request: Request, assignmentId: str
       await enqueueNotification(transaction, {
         organisationId: actor.context.organisationId, recipientPersonId: reviewerPersonId,
         eventKey: "task.review_requested", title: "Review requested", body: `You have been selected to review: ${row.title}.`,
-        aggregateType: "task_assignment", aggregateId: assignmentId, deepLink: "/?view=today&task=" + row.task_id,
+        aggregateType: "task_assignment", aggregateId: assignmentId, deepLink: "/?view=work&review=" + assignmentId,
         idempotencyKey: `task.review_exception:${assignmentId}:${reviewerPersonId}`,
       });
       return { assignmentId, reviewerPersonId, exception: true };
@@ -1255,7 +1503,7 @@ export async function cancelTask(request: Request, taskId: string): Promise<Resp
           await enqueueNotification(transaction, {
             organisationId: actor.context.organisationId, recipientPersonId: assignment.person_id,
             eventKey: "task.cancelled", title: "Task cancelled", body: `The task was cancelled: ${task.title}.`,
-            aggregateType: "task", aggregateId: taskId, deepLink: "/?view=today&task=" + taskId,
+            aggregateType: "task", aggregateId: taskId, deepLink: "/?view=work&task=" + taskId,
             idempotencyKey: `task.cancelled:${taskId}:${assignment.id}`,
           });
           cancelled.push(assignment.id);
@@ -1469,13 +1717,13 @@ export async function reassignTaskAssignment(request: Request, assignmentId: str
         eventKey: "task.reassigned", title: "Task reassigned away",
         body: `The task was reassigned to another person: ${row.title}.`,
         aggregateType: "task_assignment", aggregateId: newAssignmentId,
-        deepLink: "/?view=today&task=" + row.task_id,
+        deepLink: "/?view=work&task=" + row.task_id,
         idempotencyKey: `task.reassigned:previous:${assignmentId}:${newAssignmentId}`,
       });
       await enqueueNotification(transaction, {
         organisationId: actor.context.organisationId, recipientPersonId: personId,
         eventKey: "task.reassigned", title: "Task reassigned", body: `A task has been assigned to you: ${row.title}.`,
-        aggregateType: "task_assignment", aggregateId: newAssignmentId, deepLink: "/?view=today&task=" + row.task_id,
+        aggregateType: "task_assignment", aggregateId: newAssignmentId, deepLink: "/?view=work&task=" + row.task_id,
         idempotencyKey: `task.reassigned:${newAssignmentId}`,
       });
       return { assignmentId: newAssignmentId, previousAssignmentId: assignmentId };
@@ -1506,7 +1754,7 @@ export async function readWorkContext(request: Request): Promise<Response> {
       const visibleClients = [];
       for (const client of clients.rows) {
         if (await hasAnyPermission(transaction, actor.context.userId, actor.context.organisationId,
-          ["clients.view", "workstreams.view"], { clientId: client.id })) visibleClients.push(client);
+          ["clients.view", "workstreams.view", "clients.members.manage"], { clientId: client.id })) visibleClients.push(client);
       }
       const clientWorkstreams = await transaction.query<{
         id: string; client_id: string; name: string; client_name: string;
@@ -1538,8 +1786,8 @@ export async function readWorkContext(request: Request): Promise<Response> {
           });
         }
         const canCreate = await hasPermission(transaction, actor.context.userId, actor.context.organisationId, "tasks.create", target);
-        const canView = await hasPermission(transaction, actor.context.userId, actor.context.organisationId, "tasks.view", target);
-        if (canCreate && canView) taskCreationTargets.push({
+        if (canCreate) taskCreationTargets.push({
+          key: `client:${workstream.id}`,
           id: workstream.id,
           name: workstream.name,
           kind: "client",
@@ -1556,12 +1804,11 @@ export async function readWorkContext(request: Request): Promise<Response> {
       const visibleOrganisationWorkstreams = [];
       const canCreateOrganisationTask = await hasPermission(
         transaction, actor.context.userId, actor.context.organisationId, "tasks.create");
-      const canViewOrganisationTasks = await hasPermission(
-        transaction, actor.context.userId, actor.context.organisationId, "tasks.view");
       for (const workstream of organisationWorkstreams.rows) {
         if (await hasPermission(transaction, actor.context.userId, actor.context.organisationId,
           "workstreams.view")) visibleOrganisationWorkstreams.push(workstream);
-        if (canCreateOrganisationTask && canViewOrganisationTasks) taskCreationTargets.push({
+        if (canCreateOrganisationTask) taskCreationTargets.push({
+          key: `organisation:${workstream.id}`,
           id: workstream.id,
           name: workstream.name,
           kind: "organisation",
@@ -1569,8 +1816,24 @@ export async function readWorkContext(request: Request): Promise<Response> {
           billingPolicyRevision: 1,
         });
       }
-      const groups = await transaction.query<{ id: string; client_workstream_id: string | null; organisation_workstream_id: string | null; name: string }>(
-        `SELECT groups.id, groups.client_workstream_id, groups.organisation_workstream_id, groups.name
+      const groups = await transaction.query<{
+        id: string;
+        client_workstream_id: string | null;
+        organisation_workstream_id: string | null;
+        client_id: string | null;
+        client_name: string | null;
+        client_workstream_name: string | null;
+        client_billing_policy_class: TaskBillingClass | null;
+        client_billing_policy_revision: number | null;
+        organisation_workstream_name: string | null;
+        name: string;
+      }>(
+        `SELECT groups.id, groups.client_workstream_id, groups.organisation_workstream_id, groups.name,
+                clients.id AS client_id, clients.name AS client_name,
+                client_workstreams.name AS client_workstream_name,
+                client_workstreams.billing_policy_class AS client_billing_policy_class,
+                client_workstreams.billing_policy_revision AS client_billing_policy_revision,
+                organisation_workstreams.name AS organisation_workstream_name
          FROM nova.work_groups groups
          LEFT JOIN nova.client_workstreams client_workstreams
            ON client_workstreams.id = groups.client_workstream_id
@@ -1591,8 +1854,36 @@ export async function readWorkContext(request: Request): Promise<Response> {
       );
       const visibleGroups = [];
       for (const group of groups.rows) {
-        if (await hasPermission(transaction, actor.context.userId, actor.context.organisationId,
-          "groups.view", { clientWorkstreamId: group.client_workstream_id ?? undefined, groupId: group.id })) visibleGroups.push(group);
+        const kind = group.client_workstream_id ? "client" : "organisation";
+        const parentId = group.client_workstream_id ?? group.organisation_workstream_id!;
+        const permissionTarget = {
+          ...(group.client_id ? { clientId: group.client_id } : {}),
+          ...(group.client_workstream_id ? { clientWorkstreamId: group.client_workstream_id } : {}),
+          groupId: group.id,
+        };
+        const canViewGroup = await hasPermission(transaction, actor.context.userId,
+          actor.context.organisationId, "groups.view", permissionTarget);
+        const canCreateGroupTask = await hasPermission(transaction, actor.context.userId,
+          actor.context.organisationId, "tasks.create", permissionTarget);
+        const hasParentCreateTarget = taskCreationTargets.some((target) =>
+          target.kind === kind && target.id === parentId,
+        );
+        if (canCreateGroupTask && !hasParentCreateTarget) {
+          taskCreationTargets.push({
+            key: `${kind}:${parentId}:group:${group.id}`,
+            id: parentId,
+            name: kind === "client" ? group.client_workstream_name! : group.organisation_workstream_name!,
+            kind,
+            ...(kind === "client" ? { clientName: group.client_name! } : {}),
+            billingPolicyClass: kind === "client" ? group.client_billing_policy_class : "non_billable",
+            billingPolicyRevision: kind === "client" ? group.client_billing_policy_revision : 1,
+            requiredGroupId: group.id,
+            groupName: group.name,
+          });
+        }
+        if (canViewGroup || canCreateGroupTask) {
+          visibleGroups.push({ ...group, canCreateTask: canCreateGroupTask, canViewGroup });
+        }
       }
       return {
         clients: visibleClients,
@@ -1605,6 +1896,8 @@ export async function readWorkContext(request: Request): Promise<Response> {
           name: group.name,
           clientWorkstreamId: group.client_workstream_id,
           organisationWorkstreamId: group.organisation_workstream_id,
+          canCreateTask: group.canCreateTask,
+          canViewGroup: group.canViewGroup,
         })),
       };
     });
@@ -1612,132 +1905,542 @@ export async function readWorkContext(request: Request): Promise<Response> {
   } catch { return json({ error: "INTERNAL_ERROR" }, 500); }
 }
 
+export type MyAssignmentFilters = Readonly<{
+  limit: number;
+  cursorAssignedAt: string | null;
+  cursorAssignmentId: string | null;
+  status: string | null;
+  due: "any" | "overdue" | "today" | "upcoming" | "unscheduled";
+  searchPattern: string | null;
+}>;
+
+function pageCursorBinding(status: string, due: string, search: string): string {
+  const encoded = new TextEncoder().encode(JSON.stringify([status, due, search]));
+  return Array.from(encoded, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function formatUtcTimeUuidCursor(timestamp: string, id: string, binding: string): string {
+  return `${timestamp}~${id}~${binding}`;
+}
+
+function parseUtcTimeUuidCursor(
+  value: string | null,
+  expectedBinding: string,
+): { timestamp: string; id: string } | null | undefined {
+  if (!value) return null;
+  const [timestamp, id, binding, ...extra] = value.split("~");
+  if (!timestamp || !id || !binding || extra.length) return undefined;
+  const timestampPattern = /^\d{4}-\d{2}-\d{2} (?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{6}\+00$/;
+  const timestampAsIso = timestamp.slice(0, 23).replace(" ", "T") + "Z";
+  if (!/^[0-9a-f]+$/.test(binding) || binding !== expectedBinding ||
+      !timestampPattern.test(timestamp) || !validTaskDueDate(timestamp.slice(0, 10)) ||
+      !Number.isFinite(Date.parse(timestampAsIso)) || !uuidPattern.test(id)) return undefined;
+  return { timestamp, id };
+}
+
+export function parseMyAssignmentFilters(request: Request): MyAssignmentFilters | undefined {
+  const params = new URL(request.url).searchParams;
+  const rawLimit = params.get("limit");
+  const limit = rawLimit === null ? 30 : Number(rawLimit);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) return undefined;
+
+  const rawStatus = params.get("status") || "all";
+  const statuses = new Set(["all", "assigned", "in_progress", "submitted", "awaiting_review", "changes_requested", "approved"]);
+  if (!statuses.has(rawStatus)) return undefined;
+  const rawDue = params.get("due") || "any";
+  const dueFilters = new Set(["any", "overdue", "today", "upcoming", "unscheduled"]);
+  if (!dueFilters.has(rawDue)) return undefined;
+
+  const rawSearch = params.get("q")?.trim() || "";
+  if (rawSearch.length > 100) return undefined;
+  const searchPattern = rawSearch
+    ? `%${rawSearch.replace(/[\\%^_]/g, "^$&")}%`
+    : null;
+
+  const status = rawStatus === "all" ? null : rawStatus;
+  const cursor = parseUtcTimeUuidCursor(params.get("cursor"), pageCursorBinding(rawStatus, rawDue, rawSearch));
+  if (cursor === undefined) return undefined;
+  if (!cursor) {
+    return {
+      limit,
+      cursorAssignedAt: null,
+      cursorAssignmentId: null,
+      status,
+      due: rawDue as MyAssignmentFilters["due"],
+      searchPattern,
+    };
+  }
+
+  return {
+    limit,
+    cursorAssignedAt: cursor.timestamp,
+    cursorAssignmentId: cursor.id,
+    status,
+    due: rawDue as MyAssignmentFilters["due"],
+    searchPattern,
+  };
+}
+
+export type MyAssignmentReadRow = Readonly<{
+  id: string;
+  task_id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  task_status: string;
+  review_required: boolean;
+  reviewer_person_id: string | null;
+  review_blocked_reason: string | null;
+  review_blocked_at: Date | null;
+  resolution_source: string | null;
+  due_date: string | null;
+  due_date_revision: number;
+  billing_class: TaskBillingClass;
+  billing_policy_source: string;
+  billing_policy_revision: number;
+  correction_of_task_id: string | null;
+  task_catalog_entry_id: string | null;
+  task_catalog_revision: number | null;
+  correction_reason: string | null;
+  correction_title: string | null;
+  correction_client_id: string | null;
+  correction_client_workstream_id: string | null;
+  correction_group_id: string | null;
+  client_id: string | null;
+  client_workstream_id: string | null;
+  work_group_id: string | null;
+  assigned_at: Date;
+  cursor_assigned_at: string;
+  can_view: boolean;
+  can_edit_due_date: boolean;
+  can_start: boolean;
+  can_submit: boolean;
+  can_request_reviewer: boolean;
+  can_request_handover: boolean;
+  has_pending_reviewer_request: boolean;
+  has_pending_handover_request: boolean;
+  correction_source_visible: boolean;
+}>;
+
+export function projectMyAssignmentSummary(row: MyAssignmentReadRow) {
+  const canViewTask = row.can_view === true;
+  const canEditDueDate = row.can_edit_due_date === true &&
+    !["approved", "done", "cancelled"].includes(row.task_status);
+  const actionCapabilities = ownAssignmentActionCapabilities({
+    status: row.status,
+    taskStatus: row.task_status,
+    canStartPermission: row.can_start === true,
+    canSubmitPermission: row.can_submit === true,
+    canRequestReviewerPermission: row.can_request_reviewer === true,
+    canRequestHandoverPermission: row.can_request_handover === true,
+    hasPendingReviewerRequest: row.has_pending_reviewer_request === true,
+    hasPendingHandoverRequest: row.has_pending_handover_request === true,
+  });
+  if (!canViewTask && !canEditDueDate && !Object.values(actionCapabilities).some(Boolean)) return null;
+
+  const correctionOf: { taskId: string; title: string } | null =
+    canViewTask && row.correction_of_task_id && row.correction_title &&
+    row.correction_source_visible === true
+      ? { taskId: row.correction_of_task_id, title: row.correction_title }
+      : null;
+  return {
+    assignmentId: row.id,
+    taskId: row.task_id,
+    title: row.title,
+    canViewTask,
+    ...(canViewTask ? {
+      description: row.description,
+      taskStatus: row.task_status,
+      reviewRequired: row.review_required,
+      reviewerPersonId: row.reviewer_person_id,
+      reviewBlockedReason: row.review_blocked_reason,
+      reviewBlockedAt: row.review_blocked_at,
+      resolutionSource: row.resolution_source,
+    } : {}),
+    status: row.status,
+    dueDate: row.due_date,
+    dueDateRevision: row.due_date_revision,
+    canEditDueDate,
+    ...actionCapabilities,
+    ...(canViewTask ? {
+      billingClass: row.billing_class,
+      billingPolicySource: row.billing_policy_source,
+      billingPolicyRevision: row.billing_policy_revision,
+      taskDefinition: row.task_catalog_entry_id
+        ? { entryId: row.task_catalog_entry_id, revision: row.task_catalog_revision }
+        : null,
+      isCorrection: row.correction_of_task_id !== null,
+      correctionReason: row.correction_reason,
+      correctionOf,
+    } : {}),
+  };
+}
+
+export function myAssignmentsReadSql(): string {
+  const actionPermissions = ownAssignmentActionPermissionSql();
+  const candidatePermission = (permissionKey: string) => permissionExistsSql({
+    actorId: "$2",
+    organisationId: "$1",
+    permissionKey: `'${permissionKey}'`,
+    clientId: "workstreams.client_id",
+    clientWorkstreamId: "tasks.client_workstream_id",
+    groupId: "tasks.work_group_id",
+    taskId: "tasks.id",
+  });
+  const canViewTask = candidatePermission("tasks.view");
+  const canEditTask = candidatePermission("tasks.edit");
+  const canStartTask = candidatePermission("tasks.start");
+  const canSubmitTask = candidatePermission("tasks.submit");
+  const canRequestReviewer = candidatePermission("tasks.reviewer_request");
+  const canRequestHandover = candidatePermission("tasks.handover_request");
+  const actionableAssignment = `(
+    ((${canEditTask}) AND tasks.status::text NOT IN ('approved', 'done', 'cancelled'))
+    OR ((${canStartTask}) AND assignments.status::text IN ('assigned', 'in_progress', 'changes_requested')
+        AND tasks.status::text IN ('backlog', 'ready', 'in_progress', 'returned', 'blocked'))
+    OR ((${canSubmitTask}) AND assignments.status::text IN ('in_progress', 'changes_requested'))
+    OR ((${canRequestReviewer}) AND assignments.status::text NOT IN ('cancelled', 'approved')
+        AND tasks.status::text <> 'cancelled'
+        AND NOT EXISTS (SELECT 1 FROM nova.task_reviewer_requests pending
+          WHERE pending.assignment_id = assignments.id AND pending.status = 'pending'
+            AND pending.expires_at > clock_timestamp()))
+    OR ((${canRequestHandover}) AND assignments.status::text NOT IN ('cancelled', 'approved')
+        AND tasks.status::text <> 'cancelled'
+        AND NOT EXISTS (SELECT 1 FROM nova.task_assignment_handover_requests pending
+          WHERE pending.assignment_id = assignments.id AND pending.status = 'pending'
+            AND pending.expires_at > clock_timestamp()))
+  )`;
+  return `WITH actor_business_date AS MATERIALIZED (
+    SELECT nova.person_business_date($2) AS business_date
+  ), active_grants AS MATERIALIZED (
+    SELECT actor_date.business_date, grants.permission_key, grants.scope,
+           grants.client_id, grants.client_workstream_id, grants.group_id,
+           grants.office_id, grants.organisation_department_id
+    FROM nova.person_role_assignments role_assignments
+    CROSS JOIN actor_business_date actor_date
+    JOIN nova.roles roles ON roles.id = role_assignments.role_id
+    JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
+    WHERE role_assignments.person_id = $2
+      AND role_assignments.effective_on <= actor_date.business_date
+      AND (role_assignments.effective_until IS NULL OR role_assignments.effective_until >= actor_date.business_date)
+      AND roles.archived_at IS NULL
+  ), candidate_assignments AS MATERIALIZED (
+    SELECT assignments.id, assignments.task_id, tasks.title, tasks.description,
+           assignments.status, tasks.status AS task_status, assignments.review_required,
+           assignments.reviewer_person_id, assignments.review_blocked_reason,
+           assignments.review_blocked_at, assignments.resolution_source,
+           tasks.due_date::text AS due_date, assignments.assigned_at,
+           to_char(assignments.assigned_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') || '+00' AS cursor_assigned_at,
+           tasks.due_date_revision, tasks.billing_class, tasks.billing_policy_source,
+           tasks.billing_policy_revision, tasks.correction_of_task_id,
+           tasks.task_catalog_entry_id, tasks.task_catalog_revision,
+           tasks.correction_reason, correction_source.title AS correction_title,
+           correction_workstreams.client_id AS correction_client_id,
+           correction_source.client_workstream_id AS correction_client_workstream_id,
+           correction_source.work_group_id AS correction_group_id,
+           workstreams.client_id AS client_id,
+           tasks.client_workstream_id, tasks.work_group_id
+    FROM nova.task_assignments assignments
+    JOIN nova.tasks tasks ON tasks.id = assignments.task_id
+    LEFT JOIN nova.client_workstreams workstreams
+      ON workstreams.id = tasks.client_workstream_id
+    LEFT JOIN nova.tasks correction_source
+      ON correction_source.id = tasks.correction_of_task_id
+    LEFT JOIN nova.client_workstreams correction_workstreams
+      ON correction_workstreams.id = correction_source.client_workstream_id
+    WHERE assignments.organisation_id = $1
+      AND assignments.person_id = $2
+      AND assignments.status <> 'cancelled'
+      AND tasks.status <> 'cancelled'
+      AND ($3::timestamptz IS NULL OR (assignments.assigned_at, assignments.id) < ($3::timestamptz, $4::uuid))
+      AND ($5::text IS NULL OR assignments.status::text = $5)
+      AND CASE $6::text
+        WHEN 'overdue' THEN tasks.due_date < nova.person_business_date($2)
+        WHEN 'today' THEN tasks.due_date = nova.person_business_date($2)
+        WHEN 'upcoming' THEN tasks.due_date > nova.person_business_date($2)
+          AND tasks.due_date <= nova.person_business_date($2) + 7
+        WHEN 'unscheduled' THEN tasks.due_date IS NULL
+        ELSE TRUE
+      END
+      AND ($7::text IS NULL OR tasks.title ILIKE $7 ESCAPE '^')
+      AND ((${canViewTask}) OR ${actionableAssignment})
+    ORDER BY assignments.assigned_at DESC, assignments.id DESC
+    LIMIT $8
+  )
+  SELECT candidate_assignments.*,
+         ${permissionExistsSql({
+           actorId: "$2",
+           organisationId: "$1",
+           permissionKey: "'tasks.view'",
+           clientId: "candidate_assignments.client_id",
+           clientWorkstreamId: "candidate_assignments.client_workstream_id",
+           groupId: "candidate_assignments.work_group_id",
+           taskId: "candidate_assignments.task_id",
+         })} AS can_view,
+         (${permissionExistsSql({
+           actorId: "$2",
+           organisationId: "$1",
+           permissionKey: "'tasks.edit'",
+           clientId: "candidate_assignments.client_id",
+           clientWorkstreamId: "candidate_assignments.client_workstream_id",
+           groupId: "candidate_assignments.work_group_id",
+           taskId: "candidate_assignments.task_id",
+         })} AND candidate_assignments.task_status::text NOT IN ('approved', 'done', 'cancelled')) AS can_edit_due_date,
+         ${actionPermissions.canStart} AS can_start,
+         ${actionPermissions.canSubmit} AS can_submit,
+         ${actionPermissions.canRequestReviewer} AS can_request_reviewer,
+         ${actionPermissions.canRequestHandover} AS can_request_handover,
+         EXISTS (
+           SELECT 1 FROM nova.task_reviewer_requests reviewer_requests
+           WHERE reviewer_requests.assignment_id = candidate_assignments.id
+             AND reviewer_requests.status = 'pending'
+             AND reviewer_requests.expires_at > clock_timestamp()
+         ) AS has_pending_reviewer_request,
+         EXISTS (
+           SELECT 1 FROM nova.task_assignment_handover_requests handover_requests
+           WHERE handover_requests.assignment_id = candidate_assignments.id
+             AND handover_requests.status = 'pending'
+             AND handover_requests.expires_at > clock_timestamp()
+         ) AS has_pending_handover_request,
+         ${permissionExistsSql({
+           actorId: "$2",
+           organisationId: "$1",
+           permissionKey: "'tasks.view'",
+           clientId: "candidate_assignments.correction_client_id",
+           clientWorkstreamId: "candidate_assignments.correction_client_workstream_id",
+           groupId: "candidate_assignments.correction_group_id",
+           taskId: "candidate_assignments.correction_of_task_id",
+         })} AS correction_source_visible
+  FROM candidate_assignments
+  ORDER BY candidate_assignments.assigned_at DESC, candidate_assignments.id DESC`;
+}
+
 export async function readMyAssignments(request: Request): Promise<Response> {
   const actor = await normalActor(request);
   if ("response" in actor) return actor.response;
+  const filters = parseMyAssignmentFilters(request);
+  if (!filters) return json({ error: "ASSIGNMENT_QUERY_INVALID" }, 400);
   try {
     const result = await withDatabaseRequest(actor.context, async (transaction) => {
-      const rows = await transaction.query<{
-        id: string; task_id: string; title: string; description: string | null; status: string;
-        task_status: string; review_required: boolean; reviewer_person_id: string | null;
-        review_blocked_reason: string | null; review_blocked_at: Date | null; resolution_source: string | null;
-        due_date: string | null; due_date_revision: number; billing_class: TaskBillingClass;
-        billing_policy_source: string; billing_policy_revision: number; correction_of_task_id: string | null;
-        task_catalog_entry_id: string | null; task_catalog_revision: number | null;
-        correction_reason: string | null; correction_title: string | null;
-        correction_client_id: string | null; correction_client_workstream_id: string | null;
-        correction_group_id: string | null;
-        client_id: string | null; client_workstream_id: string | null; work_group_id: string | null;
-        assigned_at: Date; can_view: boolean; can_edit_due_date: boolean; correction_source_visible: boolean;
-      }>(
-        `WITH actor_business_date AS MATERIALIZED (
-           SELECT nova.person_business_date($2) AS business_date
-         ), active_grants AS MATERIALIZED (
-           SELECT actor_date.business_date, grants.permission_key, grants.scope,
-                  grants.client_id, grants.client_workstream_id, grants.group_id,
-                  grants.office_id, grants.organisation_department_id
-           FROM nova.person_role_assignments role_assignments
-           CROSS JOIN actor_business_date actor_date
-           JOIN nova.roles roles ON roles.id = role_assignments.role_id
-           JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
-           WHERE role_assignments.person_id = $2
-             AND role_assignments.effective_on <= actor_date.business_date
-             AND (role_assignments.effective_until IS NULL OR role_assignments.effective_until >= actor_date.business_date)
-             AND roles.archived_at IS NULL
-         ), candidate_assignments AS MATERIALIZED (
-           SELECT assignments.id, assignments.task_id, tasks.title, tasks.description,
-                  assignments.status, tasks.status AS task_status, assignments.review_required,
-                  assignments.reviewer_person_id, assignments.review_blocked_reason,
-                  assignments.review_blocked_at, assignments.resolution_source,
-                  tasks.due_date::text AS due_date, assignments.assigned_at,
-                  tasks.due_date_revision, tasks.billing_class, tasks.billing_policy_source,
-                  tasks.billing_policy_revision, tasks.correction_of_task_id,
-                  tasks.task_catalog_entry_id, tasks.task_catalog_revision,
-                  tasks.correction_reason, correction_source.title AS correction_title,
-                  correction_workstreams.client_id AS correction_client_id,
-                  correction_source.client_workstream_id AS correction_client_workstream_id,
-                  correction_source.work_group_id AS correction_group_id,
-                  workstreams.client_id AS client_id,
-                  tasks.client_workstream_id, tasks.work_group_id
-           FROM nova.task_assignments assignments
-           JOIN nova.tasks tasks ON tasks.id = assignments.task_id
-           LEFT JOIN nova.client_workstreams workstreams
-             ON workstreams.id = tasks.client_workstream_id
-           LEFT JOIN nova.tasks correction_source
-             ON correction_source.id = tasks.correction_of_task_id
-           LEFT JOIN nova.client_workstreams correction_workstreams
-             ON correction_workstreams.id = correction_source.client_workstream_id
-           WHERE assignments.organisation_id = $1
-             AND assignments.person_id = $2
-             AND assignments.status <> 'cancelled'
-             AND tasks.status <> 'cancelled'
-           ORDER BY tasks.due_date NULLS LAST, assignments.assigned_at DESC
-           LIMIT 200
-         )
-         SELECT candidate_assignments.*,
-                ${permissionExistsSql({
-                  actorId: "$2",
-                  organisationId: "$1",
-                  permissionKey: "'tasks.view'",
-                  clientId: "candidate_assignments.client_id",
-                  clientWorkstreamId: "candidate_assignments.client_workstream_id",
-                  groupId: "candidate_assignments.work_group_id",
-                  taskId: "candidate_assignments.task_id",
-                })} AS can_view,
-                ${permissionExistsSql({
-                  actorId: "$2",
-                  organisationId: "$1",
-                  permissionKey: "'tasks.edit'",
-                  clientId: "candidate_assignments.client_id",
-                  clientWorkstreamId: "candidate_assignments.client_workstream_id",
-                  groupId: "candidate_assignments.work_group_id",
-                  taskId: "candidate_assignments.task_id",
-                })} AS can_edit_due_date,
-                ${permissionExistsSql({
-                  actorId: "$2",
-                  organisationId: "$1",
-                  permissionKey: "'tasks.view'",
-                  clientId: "candidate_assignments.correction_client_id",
-                  clientWorkstreamId: "candidate_assignments.correction_client_workstream_id",
-                  groupId: "candidate_assignments.correction_group_id",
-                  taskId: "candidate_assignments.correction_of_task_id",
-                })} AS correction_source_visible
-         FROM candidate_assignments
-         ORDER BY candidate_assignments.due_date NULLS LAST, candidate_assignments.assigned_at DESC`,
-        [actor.context.organisationId, actor.context.userId],
-      );
+      const rows = await transaction.query<MyAssignmentReadRow>(myAssignmentsReadSql(), [
+        actor.context.organisationId,
+        actor.context.userId,
+        filters.cursorAssignedAt,
+        filters.cursorAssignmentId,
+        filters.status,
+        filters.due,
+        filters.searchPattern,
+        filters.limit + 1,
+      ]);
+      const hasMore = rows.rows.length > filters.limit;
+      const pageRows = rows.rows.slice(0, filters.limit);
       const visible = [];
-      for (const row of rows.rows) {
-        if (row.can_view !== true) continue;
-        const correctionOf: { taskId: string; title: string } | null =
-          row.correction_of_task_id && row.correction_title &&
-          row.correction_source_visible === true
-            ? { taskId: row.correction_of_task_id, title: row.correction_title }
-            : null;
-        visible.push({
-          assignmentId: row.id, taskId: row.task_id, title: row.title,
-          description: row.description, status: row.status, taskStatus: row.task_status,
-          reviewRequired: row.review_required, reviewerPersonId: row.reviewer_person_id,
-          reviewBlockedReason: row.review_blocked_reason,
-          reviewBlockedAt: row.review_blocked_at,
-          resolutionSource: row.resolution_source,
-          dueDate: row.due_date,
-          dueDateRevision: row.due_date_revision,
-          canEditDueDate: row.can_edit_due_date === true,
-          billingClass: row.billing_class,
-          billingPolicySource: row.billing_policy_source,
-          billingPolicyRevision: row.billing_policy_revision,
-          taskDefinition: row.task_catalog_entry_id
-            ? { entryId: row.task_catalog_entry_id, revision: row.task_catalog_revision }
-            : null,
-          isCorrection: row.correction_of_task_id !== null,
-          correctionReason: row.correction_reason,
-          correctionOf,
-        });
+      for (const row of pageRows) {
+        const projected = projectMyAssignmentSummary(row);
+        if (projected) visible.push(projected);
       }
-      return visible;
+      const last = pageRows[pageRows.length - 1];
+      return {
+        assignments: visible,
+        hasMore,
+        nextCursor: hasMore && last
+          ? formatUtcTimeUuidCursor(last.cursor_assigned_at, last.id,
+            pageCursorBinding(filters.status ?? "all", filters.due,
+              new URL(request.url).searchParams.get("q")?.trim() || ""))
+          : null,
+        limit: filters.limit,
+      };
     });
-    return json({ assignments: result });
+    return json(result);
+  } catch { return json({ error: "INTERNAL_ERROR" }, 500); }
+}
+
+export type VisibleTaskFilters = Readonly<{
+  limit: number;
+  cursorCreatedAt: string | null;
+  cursorTaskId: string | null;
+  status: string;
+  due: "any" | "overdue" | "today" | "upcoming" | "unscheduled";
+  searchPattern: string | null;
+}>;
+
+const taskStatuses = new Set([
+  "all", "open", "backlog", "ready", "in_progress", "submitted", "approved",
+  "done", "blocked", "returned", "cancelled",
+]);
+
+export function parseVisibleTaskFilters(request: Request): VisibleTaskFilters | undefined {
+  const params = new URL(request.url).searchParams;
+  const rawLimit = params.get("limit");
+  const limit = rawLimit === null ? 30 : Number(rawLimit);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) return undefined;
+
+  const status = params.get("status") || "open";
+  if (!taskStatuses.has(status)) return undefined;
+  const rawDue = params.get("due") || "any";
+  const dueFilters = new Set(["any", "overdue", "today", "upcoming", "unscheduled"]);
+  if (!dueFilters.has(rawDue)) return undefined;
+  const rawSearch = params.get("q")?.trim() || "";
+  if (rawSearch.length > 100) return undefined;
+  const searchPattern = rawSearch
+    ? `%${rawSearch.replace(/[\\%^_]/g, "^$&")}%`
+    : null;
+
+  const cursor = parseUtcTimeUuidCursor(params.get("cursor"), pageCursorBinding(status, rawDue, rawSearch));
+  if (cursor === undefined) return undefined;
+  if (!cursor) {
+    return {
+      limit, cursorCreatedAt: null, cursorTaskId: null,
+      status, due: rawDue as VisibleTaskFilters["due"], searchPattern,
+    };
+  }
+  return {
+    limit, cursorCreatedAt: cursor.timestamp, cursorTaskId: cursor.id,
+    status, due: rawDue as VisibleTaskFilters["due"], searchPattern,
+  };
+}
+
+type VisibleTaskReadRow = Readonly<{
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  due_date: string | null;
+  created_at: Date;
+  cursor_created_at: string;
+  client_id: string | null;
+  client_name: string | null;
+  client_workstream_id: string | null;
+  workstream_name: string | null;
+  organisation_workstream_id: string | null;
+  organisation_workstream_name: string | null;
+  work_group_id: string | null;
+  work_group_name: string | null;
+  department_id: string | null;
+  department_name: string | null;
+  assignment_count: number;
+}>;
+
+export function visibleTasksReadSql(): string {
+  return `WITH actor_business_date AS MATERIALIZED (
+    SELECT nova.person_business_date($2) AS business_date
+  ), active_grants AS MATERIALIZED (
+    SELECT actor_date.business_date, grants.permission_key, grants.scope,
+           grants.client_id, grants.client_workstream_id, grants.group_id,
+           grants.office_id, grants.organisation_department_id
+    FROM nova.person_role_assignments role_assignments
+    CROSS JOIN actor_business_date actor_date
+    JOIN nova.roles roles ON roles.id = role_assignments.role_id
+    JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
+    WHERE role_assignments.person_id = $2
+      AND role_assignments.effective_on <= actor_date.business_date
+      AND (role_assignments.effective_until IS NULL OR role_assignments.effective_until >= actor_date.business_date)
+      AND roles.archived_at IS NULL
+  ), candidate_tasks AS MATERIALIZED (
+    SELECT tasks.id, tasks.title, tasks.description, tasks.status, tasks.priority,
+           tasks.due_date::text AS due_date, tasks.created_at,
+           to_char(tasks.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') || '+00' AS cursor_created_at,
+           clients.id AS client_id, clients.name AS client_name,
+           client_workstreams.id AS client_workstream_id,
+           client_workstreams.name AS workstream_name,
+           organisation_workstreams.id AS organisation_workstream_id,
+           organisation_workstreams.name AS organisation_workstream_name,
+           work_groups.id AS work_group_id, work_groups.name AS work_group_name,
+           departments.id AS department_id, departments.name AS department_name
+    FROM nova.tasks
+    LEFT JOIN nova.client_workstreams
+      ON client_workstreams.id = tasks.client_workstream_id
+    LEFT JOIN nova.clients
+      ON clients.id = client_workstreams.client_id
+    LEFT JOIN nova.organisation_workstreams
+      ON organisation_workstreams.id = tasks.organisation_workstream_id
+    LEFT JOIN nova.work_groups
+      ON work_groups.id = tasks.work_group_id
+    LEFT JOIN nova.organisation_departments departments
+      ON departments.id = tasks.organisation_department_id
+    WHERE tasks.organisation_id = $1
+      AND ($3::timestamptz IS NULL OR (tasks.created_at, tasks.id) < ($3::timestamptz, $4::uuid))
+      AND CASE $5::text
+        WHEN 'all' THEN TRUE
+        WHEN 'open' THEN tasks.status NOT IN ('approved', 'done', 'cancelled')
+        ELSE tasks.status::text = $5
+      END
+      AND CASE $6::text
+        WHEN 'overdue' THEN tasks.due_date < nova.person_business_date($2)
+        WHEN 'today' THEN tasks.due_date = nova.person_business_date($2)
+        WHEN 'upcoming' THEN tasks.due_date > nova.person_business_date($2)
+          AND tasks.due_date <= nova.person_business_date($2) + 7
+        WHEN 'unscheduled' THEN tasks.due_date IS NULL
+        ELSE TRUE
+      END
+      AND ($7::text IS NULL OR tasks.title ILIKE $7 ESCAPE '^')
+      AND ${permissionExistsSql({
+        actorId: "$2",
+        organisationId: "$1",
+        permissionKey: "'tasks.view'",
+        clientId: "client_workstreams.client_id",
+        clientWorkstreamId: "tasks.client_workstream_id",
+        groupId: "tasks.work_group_id",
+        taskId: "tasks.id",
+        allowedScopes: ["organisation", "client", "client_workstream", "group"],
+      })}
+    ORDER BY tasks.created_at DESC, tasks.id DESC
+    LIMIT $8
+  )
+  SELECT candidate_tasks.*,
+         (SELECT count(*)::integer FROM nova.task_assignments assignments
+           WHERE assignments.task_id = candidate_tasks.id AND assignments.status <> 'cancelled') AS assignment_count
+  FROM candidate_tasks
+  ORDER BY created_at DESC, id DESC`;
+}
+
+export async function readVisibleTasks(request: Request): Promise<Response> {
+  const actor = await normalActor(request);
+  if ("response" in actor) return actor.response;
+  const filters = parseVisibleTaskFilters(request);
+  if (!filters) return json({ error: "TASK_QUERY_INVALID" }, 400);
+  try {
+    const result = await withDatabaseRequest(actor.context, async (transaction) => {
+      const rows = await transaction.query<VisibleTaskReadRow>(visibleTasksReadSql(), [
+        actor.context.organisationId,
+        actor.context.userId,
+        filters.cursorCreatedAt,
+        filters.cursorTaskId,
+        filters.status,
+        filters.due,
+        filters.searchPattern,
+        filters.limit + 1,
+      ]);
+      const hasMore = rows.rows.length > filters.limit;
+      const pageRows = rows.rows.slice(0, filters.limit);
+      const lastRow = pageRows.at(-1);
+      return {
+        tasks: pageRows.map((row) => ({
+          id: row.id,
+          title: row.title,
+          description: row.description,
+          status: row.status,
+          priority: row.priority,
+          dueDate: row.due_date,
+          createdAt: row.created_at,
+          client: row.client_id ? { id: row.client_id, name: row.client_name } : null,
+          workstream: row.client_workstream_id
+            ? { id: row.client_workstream_id, name: row.workstream_name, kind: "client" }
+            : { id: row.organisation_workstream_id, name: row.organisation_workstream_name, kind: "organisation" },
+          group: row.work_group_id ? { id: row.work_group_id, name: row.work_group_name } : null,
+          department: row.department_id ? { id: row.department_id, name: row.department_name } : null,
+          assignmentCount: row.assignment_count,
+        })),
+        hasMore,
+        nextCursor: hasMore && lastRow
+          ? formatUtcTimeUuidCursor(lastRow.cursor_created_at, lastRow.id,
+            pageCursorBinding(filters.status, filters.due,
+              new URL(request.url).searchParams.get("q")?.trim() || ""))
+          : null,
+        limit: filters.limit,
+      };
+    });
+    return json(result);
   } catch { return json({ error: "INTERNAL_ERROR" }, 500); }
 }
 
@@ -1799,20 +2502,26 @@ export async function readTasks(request: Request): Promise<Response> {
       );
       const tasks = [];
       for (const row of rows.rows) {
-        const visible = await hasPermission(transaction, actor.context.userId, actor.context.organisationId, "tasks.view", {
+        const taskTarget = {
           clientId: row.client_id ?? undefined,
           clientWorkstreamId: row.client_workstream_id ?? undefined,
           groupId: row.work_group_id ?? undefined,
           taskId: row.id,
-        });
-        if (!visible) continue;
+        };
+        const permissionHints = await readTaskPermissionHints(
+          transaction, actor.context.userId, actor.context.organisationId, taskTarget,
+        );
+        // This legacy read returns the full assignment roster and reviewer
+        // names, so assigned_work-only grants cannot use it. Their dedicated
+        // Mine endpoint returns only their own scoped assignment summary.
+        if (!permissionHints.canViewBroad) continue;
         const assignments = await transaction.query<{
-          id: string; person_id: string; person_name: string; person_email: string;
+          id: string; person_id: string; person_name: string;
           reviewer_person_id: string | null; reviewer_name: string | null;
           review_required: boolean; review_blocked_reason: string | null; review_blocked_at: Date | null; resolution_source: string | null; status: string;
         }>(
           `SELECT assignments.id, assignments.person_id,
-                  people.display_name AS person_name, people.email AS person_email,
+                  people.display_name AS person_name,
                   assignments.reviewer_person_id,
                   reviewers.display_name AS reviewer_name,
                   assignments.review_required, assignments.review_blocked_reason,
@@ -1842,12 +2551,9 @@ export async function readTasks(request: Request): Promise<Response> {
           priority: row.priority,
           dueDate: row.due_date,
           dueDateRevision: row.due_date_revision,
-          canEditDueDate: await hasPermission(transaction, actor.context.userId, actor.context.organisationId, "tasks.edit", {
-            clientId: row.client_id ?? undefined,
-            clientWorkstreamId: row.client_workstream_id ?? undefined,
-            groupId: row.work_group_id ?? undefined,
-            taskId: row.id,
-          }),
+          canEditDueDate: permissionHints.canEditDueDate,
+          canAssign: permissionHints.canAssign,
+          canCancel: permissionHints.canCancel,
           billingClass: row.billing_class,
           billingPolicySource: row.billing_policy_source,
           billingPolicyRevision: row.billing_policy_revision,
@@ -1867,7 +2573,6 @@ export async function readTasks(request: Request): Promise<Response> {
             id: assignment.id,
             personId: assignment.person_id,
             personName: assignment.person_name,
-            personEmail: assignment.person_email,
             reviewerPersonId: assignment.reviewer_person_id,
             reviewerName: assignment.reviewer_name,
             reviewRequired: assignment.review_required,
@@ -1875,6 +2580,7 @@ export async function readTasks(request: Request): Promise<Response> {
             reviewBlockedAt: assignment.review_blocked_at,
             resolutionSource: assignment.resolution_source,
             status: assignment.status,
+            canReassign: permissionHints.canReassign,
           })),
         });
       }

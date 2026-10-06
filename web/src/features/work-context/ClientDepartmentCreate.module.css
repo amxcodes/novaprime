@@ -1,0 +1,33 @@
+.root {
+  container: client-department-create / inline-size;
+  display: grid;
+  min-width: 0;
+  justify-items: start;
+  gap: var(--nova-space-3);
+  padding-block-start: var(--nova-space-3);
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.form {
+  display: grid;
+  width: min(100%, 34rem);
+  min-width: 0;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+}
+
+.message { min-width: 0; }
+.actions { display: flex; min-width: 0; flex-wrap: wrap; gap: var(--nova-space-2); }
+
+@container client-department-create (max-width: 24rem) {
+  .form { padding: var(--nova-space-2); }
+  .actions > * { width: 100%; }
+}
+
+@media (forced-colors: active) {
+  .root { border-color: CanvasText; }
+  .form { border-color: CanvasText; color: CanvasText; background: Canvas; }
+}

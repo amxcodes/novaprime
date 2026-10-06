@@ -1,0 +1,204 @@
+.root {
+  container: account-security / inline-size;
+  display: grid;
+  gap: var(--nova-space-5);
+  min-width: 0;
+  color: var(--nova-color-text-primary);
+}
+
+.header h2,
+.sectionHeading h3 {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  line-height: var(--nova-type-line-tight);
+}
+
+.header h2 {
+  font-size: var(--nova-type-size-xl);
+}
+
+.eyebrow {
+  margin: 0 0 var(--nova-space-1);
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.intro {
+  margin: var(--nova-space-2) 0 0;
+  color: var(--nova-color-text-secondary);
+}
+
+.content {
+  display: grid;
+  gap: var(--nova-space-4);
+  min-width: 0;
+}
+
+.identity,
+.password {
+  display: grid;
+  align-content: start;
+  gap: var(--nova-space-4);
+  min-width: 0;
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--nova-space-3);
+  min-width: 0;
+}
+
+.sectionHeading h3 {
+  font-size: var(--nova-type-size-lg);
+}
+
+.sectionHeading p {
+  margin: var(--nova-space-1) 0 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+}
+
+.verified,
+.unverified {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  min-height: var(--nova-control-height-compact);
+  padding-inline: var(--nova-space-2);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-pill);
+  color: var(--nova-color-text-secondary);
+  background: var(--nova-color-surface-subtle);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-medium);
+  white-space: nowrap;
+}
+
+.verified {
+  border-color: var(--nova-color-success);
+  color: var(--nova-color-success);
+  background: var(--nova-color-success-surface);
+}
+
+.identityDetails {
+  display: flex;
+  align-items: start;
+  gap: var(--nova-space-3);
+  min-width: 0;
+}
+
+.avatar {
+  display: grid;
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  border-radius: var(--nova-radius-pill);
+  color: var(--nova-color-action-text);
+  background: var(--nova-color-action-subtle);
+  font-size: var(--nova-type-size-lg);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.identityValues {
+  display: grid;
+  gap: var(--nova-space-3);
+  min-width: 0;
+  margin: 0;
+}
+
+.identityValues > div {
+  display: grid;
+  gap: var(--nova-space-1);
+  min-width: 0;
+}
+
+.identityValues dt {
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+}
+
+.identityValues dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.identityActions,
+.passwordForm {
+  display: grid;
+  justify-items: start;
+  gap: var(--nova-space-3);
+  min-width: 0;
+}
+
+.passwordForm {
+  max-width: 34rem;
+  width: 100%;
+}
+
+.formActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nova-space-2);
+  padding-block-start: var(--nova-space-2);
+}
+
+.root :focus-visible {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+@container account-security (min-width: 52rem) {
+  .content {
+    grid-template-columns: minmax(16rem, 0.8fr) minmax(22rem, 1.2fr);
+    align-items: start;
+  }
+}
+
+@container account-security (max-width: 40rem) {
+  .identity,
+  .password {
+    padding: var(--nova-space-3);
+  }
+
+  .sectionHeading {
+    flex-direction: column;
+  }
+
+  .identityActions > button,
+  .formActions > button {
+    width: 100%;
+  }
+}
+
+@media (any-pointer: coarse) {
+  .identityActions > button,
+  .formActions > button {
+    min-height: var(--nova-control-touch-target);
+  }
+}
+
+@media (forced-colors: active) {
+  .identity,
+  .password {
+    border-color: CanvasText;
+  }
+
+  .avatar {
+    border: 1px solid CanvasText;
+    color: CanvasText;
+    background: Canvas;
+  }
+}

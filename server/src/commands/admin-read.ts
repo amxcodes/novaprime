@@ -160,13 +160,32 @@ export async function readActorPermissionGrants(request: Request): Promise<Respo
         client_id: string | null;
         client_workstream_id: string | null;
         group_id: string | null;
+        self_applicable: boolean;
       }>(
         `WITH actor_business_date AS MATERIALIZED (
            SELECT nova.person_business_date($1) AS business_date
          )
          SELECT DISTINCT grants.permission_key, grants.scope::text AS scope,
                 grants.office_id, grants.organisation_department_id,
-                grants.client_id, grants.client_workstream_id, grants.group_id
+                grants.client_id, grants.client_workstream_id, grants.group_id,
+                CASE
+                  WHEN grants.scope IN ('organisation', 'own_record') THEN true
+                  WHEN grants.scope = 'office' THEN EXISTS (
+                    SELECT 1 FROM nova.person_office_assignments office_assignments
+                    WHERE office_assignments.person_id = $1
+                      AND office_assignments.office_id = grants.office_id
+                      AND office_assignments.effective_on <= actor_date.business_date
+                      AND (office_assignments.effective_until IS NULL OR office_assignments.effective_until >= actor_date.business_date)
+                  )
+                  WHEN grants.scope = 'organisation_department' THEN EXISTS (
+                    SELECT 1 FROM nova.person_department_assignments department_assignments
+                    WHERE department_assignments.person_id = $1
+                      AND department_assignments.organisation_department_id = grants.organisation_department_id
+                      AND department_assignments.effective_on <= actor_date.business_date
+                      AND (department_assignments.effective_until IS NULL OR department_assignments.effective_until >= actor_date.business_date)
+                  )
+                  ELSE false
+                END AS self_applicable
          FROM nova.person_role_assignments assignments
          CROSS JOIN actor_business_date actor_date
          JOIN nova.roles roles ON roles.id = assignments.role_id
@@ -181,12 +200,18 @@ export async function readActorPermissionGrants(request: Request): Promise<Respo
                   grants.client_id, grants.client_workstream_id, grants.group_id`,
         [actor.context.userId, actor.context.organisationId],
       );
-      const owner = await transaction.query<{ is_super_admin: boolean }>(
-        "SELECT nova.request_actor_is_super_admin() AS is_super_admin",
+      const owner = await transaction.query<{ is_super_admin: boolean; has_open_work_session: boolean }>(
+        `SELECT nova.request_actor_is_super_admin() AS is_super_admin,
+                EXISTS (
+                  SELECT 1 FROM nova.work_sessions
+                  WHERE organisation_id = $1 AND person_id = $2 AND ended_at IS NULL
+                ) AS has_open_work_session`,
+        [actor.context.organisationId, actor.context.userId],
       );
       return {
         actorPersonId: actor.context.userId,
         isSuperAdmin: owner.rows[0]?.is_super_admin === true,
+        hasOpenWorkSession: owner.rows[0]?.has_open_work_session === true,
         grants: grants.rows.map((grant) => ({
           permissionKey: grant.permission_key,
           scope: grant.scope,
@@ -195,6 +220,7 @@ export async function readActorPermissionGrants(request: Request): Promise<Respo
           clientId: grant.client_id,
           clientWorkstreamId: grant.client_workstream_id,
           groupId: grant.group_id,
+          selfApplicable: grant.self_applicable,
         })),
       };
     });
@@ -233,6 +259,48 @@ export async function readOffices(request: Request): Promise<Response> {
       })),
     };
   });
+}
+
+type GeofenceOfficeOptionRow = {
+  id: string;
+  name: string;
+  latitude: string | null;
+  longitude: string | null;
+  attendance_geofence_radius_meters: number;
+};
+
+export function geofenceOfficeOptions(rows: GeofenceOfficeOptionRow[]) {
+  return {
+    offices: rows.map((office) => ({
+      id: office.id,
+      name: office.name,
+      latitude: office.latitude === null ? null : Number(office.latitude),
+      longitude: office.longitude === null ? null : Number(office.longitude),
+      geofenceRadiusMeters: office.attendance_geofence_radius_meters,
+    })),
+  };
+}
+
+/**
+ * Purpose-limited selector for the geofence command. Its permission deliberately
+ * matches updateOfficeGeofence's organisation-only command contract; office
+ * scoped grants are not currently allowed by the permission catalogue.
+ */
+export async function readGeofenceOfficeOptions(request: Request): Promise<Response> {
+  return readWithPermission(
+    request,
+    "availability.office_geofence.manage",
+    async (transaction, organisationId) => {
+      const result = await transaction.query<GeofenceOfficeOptionRow>(
+        `SELECT id, name, latitude, longitude, attendance_geofence_radius_meters
+         FROM nova.offices
+         WHERE organisation_id = $1 AND archived_at IS NULL
+         ORDER BY name`,
+        [organisationId],
+      );
+      return geofenceOfficeOptions(result.rows);
+    },
+  );
 }
 
 export async function readDepartments(request: Request): Promise<Response> {

@@ -2,6 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { confirmSupabaseProject } from "./supabase-project-confirmation.js";
+import { migrationSha256 } from "./migration-checksum.js";
 
 const projectRef = requiredEnvironment("NOVA_SUPABASE_PROJECT_REF");
 const accessToken =
@@ -113,29 +114,69 @@ const appliedMigrations = new Set(
     )
     : [],
 );
+const checksumColumnResult = await postSql("/database/query", {
+  query: `
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'nova_schema_migrations'
+        AND column_name = 'sha256'
+    ) AS exists
+  `,
+});
+let checksumColumnExists = Array.isArray(checksumColumnResult) &&
+  (checksumColumnResult[0] as { exists?: unknown } | undefined)?.exists === true;
+const checksumMigration = "0076_operator_update_checksums.sql";
 const migrationFiles = (await readdir(migrationDirectory))
   .filter((filename) => /^\d{4}_[a-z0-9_]+\.sql$/.test(filename))
   .sort();
 
 for (const filename of migrationFiles) {
   if (appliedMigrations.has(filename)) {
+    if (filename === checksumMigration && !checksumColumnExists) {
+      throw new Error("MIGRATION_CHECKSUM_COLUMN_MISSING");
+    }
     continue;
   }
 
   const source = await readFile(join(migrationDirectory, filename), "utf8");
+  const storesChecksum = checksumColumnExists || filename === checksumMigration;
+  const checksum = storesChecksum
+    ? migrationSha256(source)
+    : undefined;
+  const ledgerInsert = storesChecksum
+    ? `INSERT INTO public.nova_schema_migrations (filename, sha256) VALUES ('${filename}', '${checksum}');`
+    : `INSERT INTO public.nova_schema_migrations (filename) VALUES ('${filename}');`;
   const roleProvisioning = filename === "0001_people_identity.sql"
     ? roleProvisioningSource
     : "";
+  const migrationGuard = `
+    DO $nova_migration_guard$
+    BEGIN
+      IF NOT pg_try_advisory_xact_lock(hashtextextended('nova_schema_migrations', 0)) THEN
+        RAISE EXCEPTION 'NOVA_MIGRATION_LOCK_BUSY';
+      END IF;
+      IF EXISTS (
+        SELECT 1
+        FROM public.nova_schema_migrations
+        WHERE filename = '${filename}'
+      ) THEN
+        RAISE EXCEPTION 'NOVA_MIGRATION_ALREADY_APPLIED';
+      END IF;
+    END;
+    $nova_migration_guard$;
+  `;
 
   await postSql("/database/migrations", {
     name: filename.slice(0, -4),
     query: `
+      ${migrationGuard}
       ${source}
-      INSERT INTO public.nova_schema_migrations (filename)
-      VALUES ('${filename}');
+      ${ledgerInsert}
       ${roleProvisioning}
     `,
   });
+  if (filename === checksumMigration) checksumColumnExists = true;
 }
 
 // Re-apply the restricted login on every bootstrap, not only when migration

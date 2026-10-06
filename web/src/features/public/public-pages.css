@@ -1,0 +1,109 @@
+/* Public navigation, page frame, and loading placeholders stay in the global shell. */
+body:not(.workspace-mode) {
+  background: var(--nova-color-canvas);
+}
+
+body:not(.workspace-mode) .site-header {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  width: min(100% - 2.5rem, 82rem);
+  min-height: 4.5rem;
+  margin-inline: auto;
+  border-bottom: 1px solid var(--nova-color-border);
+}
+
+body:not(.workspace-mode) .wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  flex: none;
+  gap: 0.12rem;
+  color: var(--nova-color-text-primary);
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+}
+
+body:not(.workspace-mode) .wordmark span {
+  color: var(--nova-color-action-text);
+  font-size: 1.5em;
+  line-height: 0;
+}
+
+body:not(.workspace-mode) .site-nav {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+body:not(.workspace-mode) .site-nav a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--nova-radius-pill);
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-medium);
+  text-decoration: none;
+  transition: color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    background-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+
+body:not(.workspace-mode) .site-nav a:hover {
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface-subtle);
+}
+
+body:not(.workspace-mode) #app {
+  box-sizing: border-box;
+  display: grid;
+  align-content: center;
+  width: min(100% - 2.5rem, var(--nova-content-max));
+  min-height: calc(100svh - 4.5rem);
+  margin-inline: auto;
+  padding-block: clamp(2.5rem, 7vh, 5.5rem);
+}
+
+body:not(.workspace-mode) #app .loading {
+  justify-self: center;
+  color: var(--nova-color-text-secondary);
+}
+
+@media (max-width: 560px) {
+  body:not(.workspace-mode) .site-header {
+    width: calc(100% - 2rem);
+    min-height: auto;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.625rem;
+    padding-block: 1rem 0.75rem;
+  }
+
+  body:not(.workspace-mode) .site-nav {
+    justify-content: flex-start;
+    width: 100%;
+    gap: 0.25rem;
+  }
+
+  body:not(.workspace-mode) .site-nav a {
+    flex: 1 1 auto;
+    min-height: 2.75rem;
+    padding-inline: 0.5rem;
+    font-size: 0.8125rem;
+    white-space: nowrap;
+  }
+
+  body:not(.workspace-mode) #app {
+    align-content: start;
+    width: calc(100% - 2rem);
+    min-height: calc(100svh - 7.5rem);
+    padding-block: 2.5rem 3rem;
+  }
+}

@@ -17,6 +17,11 @@ const pg = await import(pgModulePath) as unknown as {
 
 const databaseUrl = process.env.DATABASE_URL;
 const migrationUrl = process.env.MIGRATOR_DATABASE_URL;
+const preflightArguments = process.argv.slice(2);
+if (preflightArguments.some((argument) => argument !== "--migration-update") || preflightArguments.length > 1) {
+  throw new Error("PREFLIGHT_ARGUMENT_UNSUPPORTED");
+}
+const migrationUpdateMode = preflightArguments.length === 1;
 const expectedApplicationRole = process.env.NOVA_APPLICATION_DATABASE_ROLE ?? "nova_app";
 const migrationDirectory = resolve(import.meta.dir, "../database/migrations");
 const expectedMigration = (await readdir(migrationDirectory))
@@ -67,13 +72,13 @@ async function readSupabaseMigrationLedger(): Promise<{
 if (!databaseUrl) {
   throw new Error("DATABASE_URL_REQUIRED");
 }
-if (!isSecretsEncryptionKeyValid()) {
+if (!migrationUpdateMode && !isSecretsEncryptionKeyValid()) {
   throw new Error("NOVA_SECRETS_ENCRYPTION_KEY_INVALID");
 }
-if (!process.env.NOVA_BACKGROUND_JOB_SECRET) {
+if (!migrationUpdateMode && !process.env.NOVA_BACKGROUND_JOB_SECRET) {
   throw new Error("NOVA_BACKGROUND_JOB_SECRET_REQUIRED");
 }
-if (!["cloudflare", "netlify", "vercel", "supabase", "vps"]
+if (!migrationUpdateMode && !["cloudflare", "netlify", "vercel", "supabase", "vps"]
   .some((scheduler) => scheduler === process.env.NOVA_BACKGROUND_SCHEDULER)) {
   throw new Error("NOVA_BACKGROUND_SCHEDULER_INVALID");
 }

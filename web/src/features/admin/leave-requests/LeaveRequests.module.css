@@ -1,0 +1,396 @@
+.section {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+  container: admin-leave-requests / inline-size;
+}
+
+.header {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--nova-space-3);
+}
+
+.header > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-1);
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--nova-color-action-text);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-xl);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.description {
+  max-width: 70ch;
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.count {
+  display: inline-flex;
+  min-height: var(--nova-control-height);
+  flex: none;
+  align-items: center;
+  padding-inline: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-pill);
+  color: var(--nova-color-text-secondary);
+  background: var(--nova-color-surface);
+  font-size: var(--nova-type-size-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--nova-type-weight-medium);
+}
+
+.requestList {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.requestItem {
+  min-width: 0;
+}
+
+.requestItem[data-notification-focus] .requestCard {
+  border-color: var(--nova-color-action);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--nova-color-action) 18%, transparent);
+}
+
+.requestItem:focus {
+  outline: none;
+}
+
+.requestCard {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.requestDetails {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--nova-space-2);
+}
+
+.cardHeader,
+.recordHeading {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nova-space-2);
+}
+
+.cardHeader {
+  justify-content: space-between;
+}
+
+.recordHeading {
+  flex: 1 1 14rem;
+}
+
+.requestTitle {
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-md);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.dateRange,
+.reason {
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.dateRange {
+  color: var(--nova-color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.reason {
+  white-space: pre-wrap;
+}
+
+.actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: var(--nova-space-2);
+}
+
+.actionNotice {
+  min-width: 0;
+}
+
+.conflictForm {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+  padding-block-start: var(--nova-space-4);
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.conflictIntro {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-1);
+}
+
+.conflictIntro h4,
+.conflictIntro p {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fieldError {
+  margin: calc(-1 * var(--nova-space-2)) 0 0;
+  color: var(--nova-color-danger);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.conflictIntro h4 {
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.conflictIntro p {
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+}
+
+.decisionSet {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.decisionSet legend {
+  margin-block-end: var(--nova-space-2);
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-medium);
+}
+
+.decisionOption {
+  display: flex;
+  min-width: 0;
+  min-height: var(--nova-control-touch-target);
+  align-items: center;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-2) var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  cursor: pointer;
+}
+
+.decisionOption:has(input:checked) {
+  border-color: var(--nova-color-action);
+  background: var(--nova-color-action-subtle);
+}
+
+.decisionOption input {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: none;
+  margin: 0;
+  accent-color: var(--nova-color-action);
+}
+
+.decisionOption:has(input:focus-visible) {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+.decisionOption:has(input:focus-visible) input {
+  outline: none;
+}
+
+.section :global(:focus-visible):not(input[type="checkbox"]):not(input[type="radio"]) {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+.noteInput {
+  width: 100%;
+  min-width: 0;
+  min-height: 6rem;
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-control-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-control-background);
+  font-size: var(--nova-type-size-md);
+  line-height: var(--nova-type-line-normal);
+  resize: vertical;
+}
+
+.noteInput:hover:not(:disabled) {
+  border-color: var(--nova-color-text-muted);
+}
+
+.noteInput[aria-invalid="true"] {
+  border-color: var(--nova-color-danger);
+}
+
+.noteInput:disabled {
+  color: var(--nova-color-text-muted);
+  background: var(--nova-control-background-disabled);
+}
+
+.noteInput:focus-visible {
+  border-color: var(--nova-color-focus);
+}
+
+.actions > * {
+  min-width: 0;
+}
+
+@container admin-leave-requests (min-width: 40rem) {
+  .requestCard {
+    padding: var(--nova-space-5);
+  }
+
+  .actions {
+    flex-direction: row;
+  }
+}
+
+@container admin-leave-requests (min-width: 58rem) {
+  .requestCard {
+    grid-template-columns: minmax(0, 1fr) minmax(13rem, 0.48fr);
+    align-items: start;
+    gap: var(--nova-space-4) var(--nova-space-6);
+    padding: var(--nova-space-6);
+  }
+
+  .requestDetails {
+    grid-column: 1;
+  }
+
+  .requestCard > .actions,
+  .requestCard > .actionNotice {
+    grid-column: 2;
+    align-self: center;
+  }
+
+  .actions {
+    justify-content: flex-end;
+  }
+
+  .conflictForm {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .conflictIntro,
+  .conflictForm > .actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@container admin-leave-requests (max-width: 39.999rem) {
+  .header {
+    align-items: flex-start;
+  }
+
+  .count {
+    min-height: var(--nova-control-touch-target);
+  }
+
+  .requestCard {
+    padding: var(--nova-space-3);
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .actions > * {
+    width: 100%;
+    min-height: var(--nova-control-touch-target);
+  }
+}
+
+@media (forced-colors: active) {
+  .count,
+  .requestCard,
+  .decisionOption,
+  .noteInput {
+    border-color: CanvasText;
+    color: CanvasText;
+    background: Canvas;
+  }
+
+  .decisionOption:has(input:checked) {
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
+  }
+
+  .requestItem:focus .requestCard {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  .decisionOption:has(input:focus-visible) {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  .decisionOption input {
+    accent-color: Highlight;
+  }
+
+  .decisionOption:has(input:focus-visible) input {
+    outline: none;
+  }
+}

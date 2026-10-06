@@ -1,0 +1,221 @@
+.configuration {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-5);
+  container: availability-config / inline-size;
+}
+
+.resourceGrid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--nova-space-4);
+}
+
+.panel {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--nova-space-4);
+  container: availability-panel / inline-size;
+  padding: var(--nova-space-5);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.shiftPanel,
+.holidayPanel { grid-column: span 6; }
+.calendarPanel { grid-column: 1 / -1; }
+
+.form,
+.calendarContent,
+.targetStates {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+}
+
+.shiftFields,
+.calendarFields,
+.holidayFields {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: var(--nova-space-4);
+}
+
+.calendarFields { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); }
+.holidayFields { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+
+.weekFieldset {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+  margin: 0;
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+}
+
+.weekFieldset legend {
+  padding-inline: var(--nova-space-2);
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.formHint {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.weekGrid {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+}
+
+.weekRow {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(6rem, 0.7fr) minmax(7rem, 0.8fr) minmax(10rem, 1.5fr);
+  align-items: center;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-2);
+  border-block-end: 1px solid var(--nova-color-border);
+}
+
+.weekRow:last-child { border-block-end: 0; }
+.weekday { color: var(--nova-color-text-primary); font-size: var(--nova-type-size-sm); }
+
+.checkboxRow {
+  display: inline-flex;
+  min-width: 0;
+  min-height: var(--nova-control-touch-target);
+  align-items: center;
+  gap: var(--nova-space-2);
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  cursor: pointer;
+}
+
+.checkboxRow input {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: 0 0 auto;
+  accent-color: var(--nova-color-action);
+}
+
+.required { color: var(--nova-color-danger); }
+
+.actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nova-space-2);
+}
+
+.itemList {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-1);
+  padding: var(--nova-space-3) var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+  overflow-wrap: anywhere;
+}
+
+.item strong {
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.item span {
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+}
+
+.configuration :global(:focus-visible) {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+@container availability-config (min-width: 40rem) and (max-width: 63.999rem) {
+  .shiftPanel,
+  .holidayPanel { grid-column: span 6; }
+  .calendarFields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .weekRow { grid-template-columns: minmax(5.5rem, 0.7fr) minmax(6.5rem, 0.8fr) minmax(9rem, 1.5fr); }
+}
+
+@container availability-config (max-width: 39.999rem) {
+  .panel { padding: var(--nova-space-4); }
+  .shiftPanel,
+  .holidayPanel,
+  .calendarPanel { grid-column: 1 / -1; }
+  .shiftFields,
+  .calendarFields,
+  .holidayFields { grid-template-columns: minmax(0, 1fr); }
+  .weekRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--nova-space-1);
+    padding: var(--nova-space-3) var(--nova-space-1);
+  }
+  .weekRow :global(input[role="combobox"]) { width: 100%; }
+  .checkboxRow { justify-self: start; }
+}
+
+/* A medium configuration can still give each side panel a compact card width.
+   Let each panel choose its form columns from its own available space. */
+@container availability-panel (max-width: 23.999rem) {
+  .shiftFields,
+  .holidayFields { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* The three weekly-schedule tracks need 23.5rem inside their fieldset, plus
+   the fieldset's own horizontal padding. Stack before that space is missing. */
+@container availability-panel (max-width: 25.999rem) {
+  .weekRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--nova-space-1);
+    padding: var(--nova-space-3) var(--nova-space-1);
+  }
+  .weekRow :global(input[role="combobox"]) { width: 100%; }
+  .checkboxRow { justify-self: start; }
+}
+
+@media (any-pointer: coarse) {
+  .checkboxRow { min-height: var(--nova-control-touch-target); }
+}
+
+@media (forced-colors: active) {
+  .panel,
+  .weekFieldset,
+  .item,
+  .weekRow { border-color: CanvasText; }
+  .item { background: Canvas; }
+  .item strong,
+  .item span,
+  .weekday,
+  .checkboxRow { color: CanvasText; }
+  .checkboxRow input { accent-color: Highlight; }
+}

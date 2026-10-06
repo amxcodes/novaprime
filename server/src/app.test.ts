@@ -148,11 +148,38 @@ test("does not expose availability configuration without authentication configur
   expect(await response.json()).toEqual({ error: "AUTHENTICATION_CONFIGURATION_REQUIRED" });
 });
 
+test("does not expose the bounded availability agenda without authentication configuration", async () => {
+  const response = await handleRequest(new Request(
+    "http://nova.test/api/availability/agenda?startDate=2026-10-01&endDate=2026-10-31",
+  ));
+
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({ error: "AUTHENTICATION_CONFIGURATION_REQUIRED" });
+});
+
+test("does not expose office geofence selector data without authentication configuration", async () => {
+  const response = await handleRequest(new Request("http://nova.test/api/offices/geofence-options"));
+
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({ error: "AUTHENTICATION_CONFIGURATION_REQUIRED" });
+});
+
+test("keeps the general office directory behind its existing authentication contract", async () => {
+  const response = await handleRequest(new Request("http://nova.test/api/offices"));
+
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({ error: "AUTHENTICATION_CONFIGURATION_REQUIRED" });
+});
+
 test("does not expose attendance state without authentication configuration", async () => {
   const response = await handleRequest(new Request("http://nova.test/api/attendance/today"));
 
   expect(response.status).toBe(503);
   expect(await response.json()).toEqual({ error: "AUTHENTICATION_CONFIGURATION_REQUIRED" });
+
+  const actionContext = await handleRequest(new Request("http://nova.test/api/attendance/action-context"));
+  expect(actionContext.status).toBe(503);
+  expect(await actionContext.json()).toEqual({ error: "AUTHENTICATION_CONFIGURATION_REQUIRED" });
 });
 
 test("does not expose leave commands without authentication configuration", async () => {
@@ -179,8 +206,10 @@ test("does not expose collaboration or recovery commands without authentication 
     headers: { "content-type": "application/json" },
   }));
   const work = await handleRequest(new Request("http://nova.test/api/work/assignments/mine"));
+  const visibleTasks = await handleRequest(new Request("http://nova.test/api/work/tasks/visible"));
   const tasks = await handleRequest(new Request("http://nova.test/api/tasks"));
   const pendingReviews = await handleRequest(new Request("http://nova.test/api/reviews/pending"));
+  const reviewDetail = await handleRequest(new Request("http://nova.test/api/task-assignments/00000000-0000-4000-8000-000000000001/review"));
   const reviewerRequests = await handleRequest(new Request("http://nova.test/api/task-reviewer-requests"));
   const handoverRequests = await handleRequest(new Request("http://nova.test/api/task-handover-requests"));
   const authHandoffs = await handleRequest(new Request("http://nova.test/api/auth-handoffs"));
@@ -198,14 +227,82 @@ test("does not expose collaboration or recovery commands without authentication 
   expect(task.status).toBe(503);
   expect(recovery.status).toBe(503);
   expect(work.status).toBe(503);
+  expect(visibleTasks.status).toBe(503);
   expect(tasks.status).toBe(503);
   expect(pendingReviews.status).toBe(503);
+  expect(reviewDetail.status).toBe(503);
+  expect(reviewDetail.headers.get("cache-control")).toBe("no-store");
   expect(reviewerRequests.status).toBe(503);
   expect(handoverRequests.status).toBe(503);
   expect(authHandoffs.status).toBe(503);
   expect(candidates.status).toBe(503);
   expect(dueDateEdit.status).toBe(503);
   expect(submission.status).toBe(503);
+});
+
+test("review detail route accepts one UUID and rejects malformed or wrong-method requests", async () => {
+  const assignmentId = "00000000-0000-4000-8000-000000000001";
+  const valid = await handleRequest(new Request(`http://nova.test/api/task-assignments/${assignmentId}/review`));
+  expect(valid.status).toBe(503);
+  expect(valid.headers.get("cache-control")).toBe("no-store");
+
+  for (const path of [
+    "/api/task-assignments/not-a-uuid/review",
+    "/api/task-assignments/00000000-0000-4000-8000-00000000000z/review",
+    `/api/task-assignments/${assignmentId}/review/extra`,
+    `/api/task-assignments/${assignmentId}/review/`,
+    `/api/task-assignments/${assignmentId}%2Fextra/review`,
+  ]) {
+    expect((await handleRequest(new Request(`http://nova.test${path}`))).status).toBe(404);
+  }
+  expect((await handleRequest(new Request(`http://nova.test/api/task-assignments/${assignmentId}/review`, { method: "PATCH" }))).status).toBe(404);
+});
+
+test("routes only a strict task-detail UUID and keeps the detail read authenticated", async () => {
+  const taskId = "00000000-0000-4000-8000-000000000001";
+  const valid = await handleRequest(new Request(`http://nova.test/api/tasks/${taskId}`));
+  expect(valid.status).toBe(503);
+  expect(valid.headers.get("cache-control")).toBe("no-store");
+
+  for (const path of [
+    "/api/tasks/not-a-uuid",
+    "/api/tasks/00000000-0000-4000-8000-00000000000z",
+    `/api/tasks/${taskId}/extra`,
+    `/api/tasks/${taskId}/`,
+    `/api/tasks/${taskId}%2Fextra`,
+  ]) {
+    const response = await handleRequest(new Request(`http://nova.test${path}`));
+    expect(response.status).toBe(404);
+  }
+
+  const wrongMethod = await handleRequest(new Request(`http://nova.test/api/tasks/${taskId}`, {
+    method: "POST",
+    body: "{}",
+  }));
+  expect(wrongMethod.status).toBe(404);
+});
+
+test("routes task assignment options through the authenticated task command", async () => {
+  const taskId = "00000000-0000-4000-8000-000000000001";
+  const valid = await handleRequest(new Request(
+    `http://nova.test/api/tasks/${taskId}/assignment-options`,
+  ));
+  expect(valid.status).toBe(503);
+  expect(valid.headers.get("cache-control")).toBe("no-store");
+
+  for (const path of [
+    "/api/tasks/not-a-uuid/assignment-options",
+    `/api/tasks/${taskId}/assignment-options/extra`,
+    `/api/tasks/${taskId}/assignment-options/`,
+    `/api/tasks/${taskId}%2Fextra/assignment-options`,
+  ]) {
+    expect((await handleRequest(new Request(`http://nova.test${path}`))).status).toBe(404);
+  }
+
+  expect((await handleRequest(new Request(
+    `http://nova.test/api/tasks/${taskId}/assignment-options`,
+    { method: "POST" },
+  ))).status).toBe(404);
 });
 
 test("does not expose lifecycle offboarding without authentication configuration", async () => {

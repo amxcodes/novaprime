@@ -1,0 +1,29 @@
+.surface {
+  min-width: 0;
+  color: var(--nova-color-text-primary);
+  background: transparent;
+}
+
+.surface[data-level="subtle"] {
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.surface[data-level="raised"] {
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface-raised);
+  box-shadow: var(--nova-elevation-raised);
+}
+
+@media (forced-colors: active) {
+  .surface[data-level="subtle"],
+  .surface[data-level="raised"] {
+    border-color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
+  }
+}

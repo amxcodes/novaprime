@@ -1,0 +1,132 @@
+.root {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+  container-type: inline-size;
+  container-name: admin-work-operations;
+}
+
+.taskList,
+.assignmentList {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task,
+.assignment {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.taskHeader {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--nova-space-2) var(--nova-space-4);
+}
+
+.taskCopy { display: grid; min-width: 0; gap: var(--nova-space-1); }
+.taskCopy h3 { overflow-wrap: anywhere; color: var(--nova-color-text-primary); font-size: var(--nova-type-size-md); line-height: var(--nova-type-line-normal); }
+.meta,
+.policy,
+.detail,
+.description {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+}
+
+.policy { padding: var(--nova-space-2) var(--nova-space-3); border-radius: var(--nova-radius-control); background: var(--nova-color-surface-subtle); }
+.dueDate { color: var(--nova-color-text-primary); font-size: var(--nova-type-size-sm); font-variant-numeric: tabular-nums; }
+.assignmentSection { display: grid; min-width: 0; gap: var(--nova-space-2); padding-block-start: var(--nova-space-3); border-block-start: 1px solid var(--nova-color-border); }
+.assignmentSection h4 { color: var(--nova-color-text-primary); font-size: var(--nova-type-size-sm); }
+.assignment { gap: var(--nova-space-2); padding: var(--nova-space-3); border-radius: var(--nova-radius-control); background: var(--nova-color-canvas); }
+.assignmentSummary { color: var(--nova-color-text-secondary); font-size: var(--nova-type-size-sm); line-height: var(--nova-type-line-normal); overflow-wrap: anywhere; }
+.reassignForm,
+.assignmentEditor,
+.assignmentForm,
+.dueDateForm { display: grid; min-width: 0; gap: var(--nova-space-3); }
+.optionsPanel { display: grid; min-width: 0; gap: var(--nova-space-3); padding: var(--nova-space-3); border: 1px solid var(--nova-color-border); border-radius: var(--nova-radius-control); background: var(--nova-color-surface-subtle); }
+.optionsError { display: grid; min-width: 0; justify-items: start; gap: var(--nova-space-2); }
+.peopleFields { display: grid; min-width: 0; gap: var(--nova-space-3); }
+.reviewRequired { display: flex; min-height: var(--nova-control-touch-target); align-items: center; gap: var(--nova-space-2); color: var(--nova-color-text-secondary); font-size: var(--nova-type-size-sm); }
+.reviewRequired input { width: 1.125rem; height: 1.125rem; accent-color: var(--nova-color-action); }
+.formActions { display: flex; min-width: 0; justify-content: flex-start; flex-wrap: wrap; gap: var(--nova-space-2); }
+.cancelConfirmation { display: grid; min-width: 0; gap: var(--nova-space-2); padding: var(--nova-space-3); border: 1px solid var(--nova-color-danger); border-radius: var(--nova-radius-control); background: var(--nova-color-surface-subtle); }
+.cancelConfirmation p { margin: 0; color: var(--nova-color-text-primary); font-size: var(--nova-type-size-sm); line-height: var(--nova-type-line-normal); }
+.confirmActions { display: flex; min-width: 0; flex-wrap: wrap; gap: var(--nova-space-2); }
+.confirmActions > button { min-height: var(--nova-control-touch-target); }
+.dueDateEditor { padding-block-start: var(--nova-space-2); }
+.dueDateEditor summary {
+  display: inline-flex;
+  width: fit-content;
+  min-height: var(--nova-control-touch-target);
+  align-items: center;
+  gap: var(--nova-space-3);
+  color: var(--nova-color-action-text);
+  cursor: pointer;
+  list-style: none;
+}
+.dueDateEditor summary::-webkit-details-marker { display: none; }
+.dueDateEditor summary::after {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  content: "";
+  transform: translateY(-0.125rem) rotate(45deg);
+}
+.dueDateEditor[open] summary::after { transform: translateY(0.125rem) rotate(225deg); }
+.taskActions { display: grid; min-width: 0; gap: var(--nova-space-3); padding-block-start: var(--nova-space-3); border-block-start: 1px solid var(--nova-color-border); }
+.error { margin: var(--nova-space-2) 0 0; color: var(--nova-color-danger); font-size: var(--nova-type-size-sm); line-height: var(--nova-type-line-normal); }
+
+.root :global(:focus-visible) { outline: 2px solid var(--nova-color-focus); outline-offset: 2px; }
+.root :global(button) { min-height: var(--nova-control-touch-target); }
+
+@container admin-work-operations (min-width: 42rem) {
+  .peopleFields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reassignForm { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }
+  .reassignForm > .error,
+  .reassignForm .formActions { grid-column: 1 / -1; }
+  .reassignForm .formActions { justify-content: flex-end; }
+  .assignmentForm { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+  .assignmentForm .peopleFields { grid-column: 1 / -1; }
+  .assignmentForm .reviewRequired { grid-column: 1; }
+  .assignmentForm .formActions { grid-column: 2; }
+  .dueDateForm { grid-template-columns: minmax(12rem, 0.6fr) minmax(0, 1fr) auto; align-items: end; }
+  .dueDateForm .formActions { grid-column: 3; grid-row: 1; }
+}
+
+@container admin-work-operations (max-width: 26rem) {
+  .task { padding: var(--nova-space-3); }
+  .assignment { padding: var(--nova-space-2); }
+  .assignmentEditor > button,
+  .reassignForm > button,
+  .formActions > button,
+  .confirmActions > button { width: 100%; }
+}
+
+@media (forced-colors: active) {
+  .task,
+  .assignment { border-color: CanvasText; }
+  .policy,
+  .cancelConfirmation { border-color: CanvasText; }
+  .cancelConfirmation p { color: CanvasText; }
+  .root :global(:focus-visible) { outline-color: Highlight; }
+  .dueDateEditor summary { color: LinkText; }
+  .dueDateEditor summary::after { border-color: currentColor; }
+}

@@ -353,13 +353,30 @@ async function lockOperationalPerson(transaction: PoolClient, personId: string):
 }
 
 export async function readAttendanceToday(request: Request): Promise<Response> {
+  return readAttendanceProjection(request, false);
+}
+
+export async function readAttendanceActionContext(request: Request): Promise<Response> {
+  return readAttendanceProjection(request, true);
+}
+
+async function readAttendanceProjection(request: Request, actionContextOnly: boolean): Promise<Response> {
   const actor = await normalActor(request);
   if ("response" in actor) return actor.response;
   try {
     const result = await withDatabaseRequest(actor.context, async (transaction) => {
       const availability = await currentAvailability(transaction, actor.context);
       if (availability === "OFFICE_ASSIGNMENT_REQUIRED") return availability;
-      if (!await hasSelfPermission(
+      if (actionContextOnly) {
+        let canUseAttendanceAction = false;
+        for (const permissionKey of ["attendance.check_in", "attendance.check_out", "attendance.change_mode"]) {
+          if (await hasSelfPermission(transaction, actor.context.userId, permissionKey, availability.businessDate)) {
+            canUseAttendanceAction = true;
+            break;
+          }
+        }
+        if (!canUseAttendanceAction) return "PERMISSION_DENIED" as const;
+      } else if (!await hasSelfPermission(
         transaction,
         actor.context.userId,
         "attendance.view",
@@ -417,7 +434,7 @@ export async function readAttendanceToday(request: Request): Promise<Response> {
             return boundary < now ? boundary : now;
           })()).getTime() - new Date(row.checked_in_at).getTime()) / 60_000))
         : 0;
-      return {
+      const projection = {
         availability,
         onApprovedLeave,
         wfhApproved,
@@ -445,6 +462,7 @@ export async function readAttendanceToday(request: Request): Promise<Response> {
           closureReason: row.closure_reason,
         } : null,
       };
+      return actionContextOnly ? projectAttendanceActionContext(projection) : projection;
     });
     if (result === "PERMISSION_DENIED") return json({ error: result }, 403);
     if (result === "OFFICE_ASSIGNMENT_REQUIRED") return json({ error: result }, 409);
@@ -452,6 +470,51 @@ export async function readAttendanceToday(request: Request): Promise<Response> {
   } catch {
     return json({ error: "INTERNAL_ERROR" }, 500);
   }
+}
+
+export function projectAttendanceActionContext(result: {
+  availability: AvailabilityContext;
+  onApprovedLeave: boolean;
+  wfhApproved: boolean;
+  wfhPending: boolean;
+  provisionalAttendance: {
+    status: string;
+    checkedInAt: Date;
+    checkedOutAt: Date | null;
+  } | null;
+  attendance: {
+    mode: AttendanceMode;
+    checkedInAt: Date;
+    checkedOutAt: Date | null;
+  } | null;
+}) {
+  return {
+    actionContext: true,
+    availability: {
+      attendanceMode: result.availability.attendanceMode,
+      businessDate: result.availability.businessDate,
+      calendarId: result.availability.calendarId,
+      isHoliday: result.availability.isHoliday,
+      isWorkingDay: result.availability.isWorkingDay,
+      officeName: result.availability.officeName,
+      shiftId: result.availability.shiftId,
+      timezone: result.availability.timezone,
+      wfhAllowed: result.availability.wfhAllowed,
+    },
+    onApprovedLeave: result.onApprovedLeave,
+    wfhApproved: result.wfhApproved,
+    wfhPending: result.wfhPending,
+    provisionalAttendance: result.provisionalAttendance ? {
+      status: result.provisionalAttendance.status,
+      checkedInAt: result.provisionalAttendance.checkedInAt,
+      checkedOutAt: result.provisionalAttendance.checkedOutAt,
+    } : null,
+    attendance: result.attendance ? {
+      mode: result.attendance.mode,
+      checkedInAt: result.attendance.checkedInAt,
+      checkedOutAt: result.attendance.checkedOutAt,
+    } : null,
+  };
 }
 
 export async function checkIn(request: Request): Promise<Response> {

@@ -1,0 +1,224 @@
+.page {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+  container: collaboration / inline-size;
+  color: var(--nova-color-text-primary);
+}
+
+.groups {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+}
+
+.group {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+  container: request-group / inline-size;
+}
+
+.groupHeading {
+  min-width: 0;
+  gap: var(--nova-space-2) var(--nova-space-3);
+}
+
+.readFailure {
+  display: grid;
+  justify-items: start;
+  gap: var(--nova-space-3);
+}
+
+.scopeNote {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.requestList {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.requestSection {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+}
+
+.listHeading {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+}
+
+.resolvedList .requestCard {
+  background: var(--nova-color-surface);
+}
+
+.requestItem {
+  min-width: 0;
+}
+
+.requestCard {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-raised);
+}
+
+.requestCard:focus {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  .requestCard:focus {
+    outline-color: Highlight;
+  }
+}
+
+.requestContent {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--nova-space-2);
+}
+
+.requestHeading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--nova-space-2) var(--nova-space-3);
+}
+
+.requestTitle {
+  flex: 1 1 12rem;
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-md);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.reason {
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.metadata {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: var(--nova-space-2) var(--nova-space-4);
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+}
+
+.metadata > div {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  column-gap: var(--nova-space-1);
+}
+
+.metadata dt {
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.metadata dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.resolvedStatus {
+  align-self: center;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+}
+
+.requestActions {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: var(--nova-space-2);
+}
+
+.requestActions > button {
+  flex: 1 1 7rem;
+  min-height: var(--nova-control-height);
+}
+
+.noAction {
+  align-self: center;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+}
+
+.actionError {
+  grid-column: 1 / -1;
+}
+
+.empty {
+  min-width: 0;
+}
+
+@container collaboration (min-width: 58rem) {
+  .groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+@container request-group (min-width: 40rem) {
+  .requestCard {
+    grid-template-columns: minmax(0, 1fr) minmax(9rem, auto);
+    align-items: center;
+  }
+
+  .requestActions {
+    justify-content: flex-end;
+  }
+
+  .requestActions > button {
+    flex: 0 1 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .requestCard,
+  .requestActions > button {
+    scroll-behavior: auto;
+  }
+}

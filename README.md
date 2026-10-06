@@ -137,6 +137,21 @@ prompts for the management token with hidden input if setup has already removed
 it from the file. Confirm the displayed project ref before entering a token;
 the token is used only for that operator command and is not saved.
 
+## Updating an existing checkout
+
+The operator-run updater is in preview. `bun run nova:update --check` reads
+the stable release channel and checkout state; `--plan` stages a durable
+candidate worktree and inspects a selected database; running `bun run
+nova:update` guides through candidate checks, backup attestation, migrations,
+and an optional non-force push to a customer GitHub branch. Before a push, it
+checks schema and restricted `nova_app` access against the selected database.
+The candidate is separate from the running app, and a push does not confirm
+that a hosting provider has deployed it. This updater has not yet shipped in a
+stable NOVA release, so existing hosted customers need maintainers to publish
+the updater baseline and a later stable version before using it. See
+[`docs/update-manager.md`](docs/update-manager.md) for prerequisites and the
+current supported boundary.
+
 The local Compose defaults bind both services to loopback only. Keep these
 defaults for local installs; do not expose the API or PostgreSQL on a public
 interface. For WSL-only Docker, use the interactive-shell instructions above

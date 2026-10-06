@@ -1,0 +1,414 @@
+import { deploymentGuide, deploymentSchedulerActions } from "../../../../deployment-guide.js";
+import {
+  DEPLOYMENT_SCHEDULER_LABELS,
+  DEPLOYMENT_SCHEDULERS,
+  deploymentPathById,
+} from "./catalog";
+import type {
+  DeploymentGuide,
+  DeploymentGuideAction,
+  DeploymentPath,
+  DeploymentPathId,
+  DeploymentProbe,
+  DeploymentScheduler,
+} from "./contracts";
+import { deploymentProbePassed } from "./flow";
+
+export interface DeploymentStageCopy {
+  title: string;
+  where: string;
+  body: string;
+  items: string[];
+}
+
+export interface DeploymentSchedulerOutcome {
+  lives: string;
+  where: string;
+  action: string;
+  automatic: string;
+  activates: string;
+  check: string;
+  prepare?: string;
+  prepareAutomatic?: string;
+}
+
+export interface DeploymentPlace {
+  label: string;
+  title: string;
+  action: string;
+  automatic: string;
+  check: string;
+}
+
+export interface DeploymentActionRow {
+  part: string;
+  action: string;
+  result: string;
+}
+
+export interface DeploymentWiringPresentation {
+  summary: string;
+  source: string;
+  runtime: string;
+  database: string;
+  scheduler: string;
+  places: DeploymentPlace[];
+  rows: DeploymentActionRow[];
+}
+
+export interface DeploymentSchedulerPresentation {
+  title: string;
+  description: string;
+  choices: Array<{ value: DeploymentScheduler; label: string }>;
+  outcome: DeploymentSchedulerOutcome | null;
+  file: string;
+  actions: DeploymentGuideAction[];
+  actionLead: string;
+  emptyMessage: string;
+  verify: string;
+  warning?: string;
+  expanded: boolean;
+}
+
+export interface DeploymentPresentation {
+  selectedPath: DeploymentPath | null;
+  current: DeploymentStageCopy;
+  completed: boolean;
+  needsProbe: boolean;
+  probePassed: boolean;
+  probeWarning: boolean;
+  wiring: DeploymentWiringPresentation | null;
+  schedulerPanel: DeploymentSchedulerPresentation | null;
+  nextDisabled: boolean;
+  completionDisabled: boolean;
+}
+
+const schedulerOutcomes: Readonly<Record<DeploymentScheduler, DeploymentSchedulerOutcome>> = {
+  cloudflare: {
+    lives: "Your Cloudflare Worker",
+    where: "Cloudflare Worker → Settings → Build for the deploy command; Triggers shows the resulting Cron Trigger.",
+    action: "In Cloudflare → Workers & Pages → your NOVA Worker → Settings → Build, set the production Deploy command to the Cloudflare Cron Wrangler config shown below, then deploy.",
+    automatic: "That committed config sets the NOVA scheduler selector and five-minute Cron Trigger. Cloudflare registers it when the production deploy runs; do not also create Supabase Cron.",
+    activates: "A production Worker deploy using the Cloudflare Cron Wrangler config registers the five-minute trigger.",
+    check: "Cloudflare Cron Triggers and invocation logs, plus NOVA /api/ready. Allow up to 15 minutes after a config change for the trigger to propagate.",
+  },
+  netlify: {
+    lives: "Your Netlify site",
+    where: "Netlify → Site configuration → Environment variables; the published site’s Functions list shows the result.",
+    action: "In Netlify → Site configuration → Environment variables, set NOVA_BACKGROUND_SCHEDULER=netlify for Builds and Functions, then publish the production branch.",
+    automatic: "The NOVA build plugin selects and publishes the scheduled-function entrypoint. Netlify runs it on its schedule; previews do not get a production schedule.",
+    activates: "The production build reads NOVA_BACKGROUND_SCHEDULER: `netlify` bundles the scheduled function; `supabase` bundles only the API. Preview and branch builds never include a production schedule.",
+    check: "Netlify Functions and run history, plus NOVA /api/ready.",
+  },
+  vercel: {
+    lives: "Your Vercel production project",
+    where: "Vercel → Project Settings → Environment Variables → Production; Cron Jobs shows the result.",
+    action: "In Vercel → Project Settings → Environment Variables → Production, set NOVA_BACKGROUND_SCHEDULER=vercel and CRON_SECRET, then redeploy Production.",
+    automatic: "The deployed vercel.ts registers the five-minute Cron path. Vercel Hobby cannot run this cadence; choose Supabase Cron on Hobby.",
+    activates: "The Production deploy reads NOVA_BACKGROUND_SCHEDULER in vercel.ts: it registers Vercel Cron only when the value is vercel, and registers none when Supabase Cron is selected. Vercel Hobby cannot run the required five-minute cadence.",
+    check: "Vercel Cron Jobs and invocation logs, plus NOVA /api/ready.",
+  },
+  supabase: {
+    lives: "Your Supabase project (not the hosting provider)",
+    where: "The API host’s runtime settings, then your Supabase project (the guarded NOVA command creates the Cron job).",
+    prepare: "In the API host’s private settings, select NOVA_BACKGROUND_SCHEDULER=supabase and deploy the configuration that disables its native schedule. Do not create the Supabase job yet.",
+    prepareAutomatic: "The host deploy prepares the API to receive Supabase Cron and ensures its own schedule is off. NOVA shows the guarded Supabase command only after the live readiness check passes.",
+    action: "Set NOVA_BACKGROUND_SCHEDULER=supabase on the API host and deploy its no-native-Cron config. Once NOVA /api/ready passes, run bun run supabase:scheduler from the trusted repository checkout and confirm the displayed Supabase project ref.",
+    automatic: "That guarded command creates NOVA’s named pg_cron + pg_net job and stores its request URL/secret in Supabase Vault. No host-native schedule should remain enabled.",
+    activates: "After NOVA passes readiness, the trusted-operator command creates the job in Supabase; selecting the radio does not create it.",
+    check: "Check cron.job_run_details, then net._http_response: require HTTP 2xx, timed_out=false, and no error_msg; inspect the tick body/API logs for notification errors. Cron success alone only means pg_net queued the call. NOVA /api/ready must report supabase.",
+  },
+  vps: {
+    lives: "The VPS/local server running NOVA",
+    where: "The server’s private .env and Docker Compose maintenance service.",
+    action: "Run NOVA’s Docker bootstrap/upgrade with NOVA_BACKGROUND_SCHEDULER=vps in the private .env. Do not add a cloud schedule.",
+    automatic: "Compose starts one maintenance worker beside the API; it calls NOVA locally on its normal interval.",
+    activates: "The Docker Compose bootstrap starts one maintenance worker; no separate scheduler account or cloud job is used.",
+    check: "One maintenance service is running and its logs show a successful tick; NOVA /api/ready reports vps.",
+  },
+};
+
+function stageCopy(path: DeploymentPath | null, scheduler: DeploymentScheduler | "", stage: number, probe: DeploymentProbe | null): DeploymentStageCopy {
+  const id = path?.id ?? "";
+  const localOnly = id === "local-docker";
+  const guide = (deploymentGuide(id, scheduler) as DeploymentGuide | null) ?? null;
+  const instructions: DeploymentStageCopy[] = [
+    {
+      title: localOnly ? "Start NOVA on this computer" : id === "vps-postgres" ? "Prepare the VPS checkout and public address" : "Connect GitHub and choose the public address",
+      where: localOnly ? "This computer / interactive WSL shell and the local Docker setup." : id === "vps-postgres" ? "Your VPS checkout, DNS/domain provider, and one scheduler choice." : "Your GitHub repository and selected hosting account; public DNS/domain settings are applied in the hosting provider or domain registrar.",
+      body: localOnly
+        ? "Choose the local Docker setup. Bootstrap creates PostgreSQL, the NOVA API and one maintenance worker on this computer; no GitHub or public domain is needed."
+        : id === "vps-postgres"
+          ? "Clone the repository on your server and choose the public HTTPS address. A GitHub push does not update the VPS; the operator pulls/releases code and Compose starts one maintenance worker."
+          : scheduler === "supabase"
+            ? "Connect GitHub to the selected host and choose the public HTTPS address. Its production deploy publishes the NOVA API/UI with that host's native schedule disabled; after readiness, a separate operator command creates Supabase Cron."
+            : "Choose the public HTTPS address and scheduler. Connect GitHub to the selected host; its configured production deploy publishes the NOVA API/UI and registers the selected native schedule.",
+      items: [
+        guide?.host.connect ?? "Choose a deployment path first.",
+        `Repository configuration: ${guide?.host.files ?? "select a path first"}.`,
+        scheduler
+          ? `Selected scheduler: ${DEPLOYMENT_SCHEDULER_LABELS[scheduler]}. It runs in ${schedulerOutcomes[scheduler].lives ?? "the selected provider"}. The scheduler steps below show where and how to activate it; selecting this option only changes this browser checklist.`
+          : "Choose one scheduler below before deploying; the first production deploy must use the matching provider configuration.",
+        id === "local-docker"
+          ? "No GitHub or hosting account is needed; the local bootstrap starts services on this computer."
+          : id === "vps-postgres"
+            ? "A GitHub push does not update a VPS; the operator pulls/releases code on that server."
+            : "A GitHub push deploys code only after you connect the repository. It does not create the database, set runtime secrets, or configure DNS.",
+      ].filter(Boolean),
+    },
+    {
+      title: "Apply the canonical database",
+      where: id.endsWith("-supabase")
+        ? "The selected Supabase project plus a trusted operator computer running the setup command."
+        : "The local/VPS PostgreSQL host and its Docker bootstrap or external-database setup.",
+      body: guide?.host.database ?? "Run the documented database setup from a trusted operator computer. A GitHub deploy does not apply PostgreSQL migrations.",
+      items: id.endsWith("-supabase")
+        ? [
+            "Create/select the Supabase Cloud project, then run `bun run setup:supabase` on a trusted computer. It applies migrations, prepares `nova_app`, checks preflight and writes generated values to the private local `.env`.",
+            id === "cloudflare-supabase"
+              ? "Create Cloudflare Hyperdrive from Supabase's Direct connection endpoint using the generated restricted `nova_app` credentials. Do not paste the transaction-pooler `DATABASE_URL` into Hyperdrive; Hyperdrive supplies pooling."
+              : "Use the generated transaction-pooler `DATABASE_URL` for this Node API host. Keep the owner URL and Supabase management token on the trusted setup computer.",
+            "This command prepares the database only. It does not deploy/start the API or create host secrets; use the next stage for runtime settings.",
+            "Keep SUPABASE_ACCESS_TOKEN and migration-owner credentials on the trusted operator computer. Never put them in GitHub, a public build variable, or the runtime host.",
+          ]
+        : id === "local-docker"
+          ? [
+              "Run the local Docker bootstrap. It creates the private `.env`, starts PostgreSQL, applies migrations and starts NOVA with the restricted application role.",
+              "No Supabase project, access token, GitHub account, or hosted secret store is needed for this local-only path.",
+            ]
+          : [
+              "Use Docker Compose with the VPS bootstrap, or point the external setup at the PostgreSQL server you administer. The setup applies migrations using a separate owner connection.",
+              "Keep the migration-owner URL private; the deployed API and worker use only the restricted `nova_app` connection.",
+            ],
+    },
+    {
+      title: id === "local-docker" ? "Keep local runtime settings private" : id === "vps-postgres" ? "Configure private VPS runtime" : "Put runtime settings in the hosting provider",
+      where: localOnly || id === "vps-postgres"
+        ? "The private `.env` on the computer/server running NOVA."
+        : `${path?.title ?? "Selected host"} server-side Variables & Secrets settings; Cloudflare also needs its Hyperdrive database binding.`,
+      body: localOnly
+        ? "The local bootstrap creates a private `.env` and Docker Compose passes it to NOVA. Keep it on this computer; no hosted secret store is involved."
+        : id === "vps-postgres"
+          ? "Keep runtime values in the private `.env` on the VPS. Restrict access to the file and let Docker Compose pass the values to NOVA; no third-party secret store is involved."
+          : "The database setup wrote generated values to the operator's private `.env`. Copy only the listed runtime values into the API host's server-side environment settings, marking only credentials as secrets. This browser never collects or transfers them.",
+      items: [
+        ...(guide?.host.runtimeSetup ?? ["Choose a deployment path first."]),
+        id === "local-docker"
+          ? "Docker Compose reads the private `.env` on this computer; no GitHub deployment is involved."
+          : id === "vps-postgres"
+            ? "A GitHub push does not update a VPS. The operator pulls/releases code on the server and restarts the deployment."
+            : "The connected hosting provider deploys code from GitHub; its private Variables/Secrets settings supply runtime credentials. Neither GitHub nor a browser checklist transfers them.",
+        "After saving new host settings, redeploy or restart the runtime. Never add SUPABASE_ACCESS_TOKEN or migration-owner credentials there.",
+        id === "local-docker" ? "" : "Before inviting anyone, replace any `http://localhost:3001` default with your exact public HTTPS URL in `BETTER_AUTH_URL` and `NOVA_ALLOWED_ORIGINS`.",
+        guide?.host.domain ?? "Map HTTPS and allowlist the exact public origin before configuring email.",
+        id === "vps-postgres" ? "Set NOVA_TRUST_PROXY_HEADERS=true only behind a reverse proxy that strips and rewrites forwarded headers." : "",
+      ].filter(Boolean),
+    },
+    {
+      title: "Deploy and prove the runtime",
+      where: "The deployed NOVA public HTTPS origin and its `/api/health` and `/api/ready` checks; domain mapping remains in the host provider.",
+      body: "Now publish/restart the configured production runtime. Host-native schedules take effect as part of this deployment. An early import build is only a bootstrap; do not invite people until this final configured build passes both checks. The live check is read-only.",
+      items: [
+        guide?.host.publish ?? "Choose a deployment path first.",
+        "GET /api/health returns an ordinary liveness response.",
+        "GET /api/ready confirms the nova schema is present and reachable through the application role.",
+        "If using a custom domain, finish DNS/HTTPS and set the exact same HTTPS origin in BETTER_AUTH_URL, NOVA_ALLOWED_ORIGINS, and NOVA first-run before enabling invitations. The host setting is changed in the provider; the canonical application origin is confirmed inside NOVA.",
+      ],
+    },
+    {
+      title: "Verify exactly one scheduler",
+      where: "The selected provider/repository actions shown below. Choosing the radio option only changes this checklist; it does not change a provider account.",
+      body: scheduler === "supabase"
+        ? probe?.checking !== true && probe?.health === true && probe?.ready === true && probe?.scheduler === "supabase"
+          ? "The API is live with the Supabase selector and native hosting schedules disabled. The command below now creates the Supabase Cron job; after its first run, verify the pg_net HTTP response as well as Cron history."
+          : "First run the live API/database check. The Supabase Cron creation command appears only after health, readiness, and the selected scheduler all match."
+        : "The host-native trigger is activated by the configured production deploy in the previous step. This stage verifies the provider has exactly one active trigger and that its invocation reached NOVA successfully.",
+      items: [
+        scheduler ? `Selected: ${scheduler}. The radio selected the instructions only; the provider configuration/command below is what applies it.` : "Select a scheduler in Prerequisites before deploying.",
+        "All built-in triggers call the same NOVA background endpoint and runner; exactly one trigger should be active for this database.",
+        scheduler === "supabase"
+          ? "For an existing deployment, disable the old host schedule and deploy the no-native-Cron config before creating the Supabase job."
+          : "When switching from Supabase Cron, run `bun run supabase:scheduler:disable` from a trusted operator checkout before enabling the new trigger. A radio change alone never switches a live schedule.",
+        "Confirm the selected runtime value in /api/ready, then inspect the provider's own schedule and successful invocation. The checkbox is an operator attestation, not remote proof.",
+        "Keep previews/staging on another database or with scheduling disabled.",
+      ],
+    },
+    {
+      title: "Use the existing first-run workflow",
+      where: "NOVA's browser setup after runtime verification; Better Auth is built in, and email providers are configured later inside NOVA by an authorized Super Admin.",
+      body: guide?.host.postSetup ?? "After infrastructure is ready, NOVA guides the owner through first-run setup.",
+      items: [
+        "Choose hour-based or scheduled attendance once; the choice is effective-dated and does not create a second timeline.",
+        "Configure offices, timezone, working calendar and geofence before employee attendance begins.",
+        "Create roles by permission, scope and operational policy before inviting the team.",
+      ],
+    },
+    {
+      title: "Finish with a safe handoff",
+      where: "The one-time setup screen, NOVA's Super Admin settings, and the hosting provider's private secret store.",
+      body: "The deployment operator should leave the owner with only the public setup URL and normal application access. Bootstrap and migration material must not remain in a hosted runtime.",
+      items: [
+        "Rotate or remove the one-time NOVA_BOOTSTRAP_TOKEN after founder setup.",
+        "Remove SUPABASE_ACCESS_TOKEN and migration-owner credentials from the host after migrations and verification.",
+        "Record the selected scheduler, public origin, backup owner and secret-rotation owner.",
+      ],
+    },
+  ];
+  return instructions[stage] ?? instructions[0];
+}
+
+function wiringPresentation(path: DeploymentPath, stage: number, scheduler: DeploymentScheduler | "", probe: DeploymentProbe | null): DeploymentWiringPresentation {
+  const id = path.id;
+  const hosted = id.endsWith("-supabase");
+  const hostName = hosted ? path.title.split(" + ")[0] : id === "local-docker" ? "this computer" : "your VPS";
+  const codeAction = hosted
+    ? "Connect this repository to " + hostName + " and keep the repository root as the project root."
+    : id === "local-docker" ? "Run the Windows or WSL Docker bootstrap from this repository." : "Clone the repository on the VPS and run its Docker bootstrap.";
+  const codeResult = hosted
+    ? "After connection, a production-branch push builds and publishes NOVA’s UI and API. It does not migrate PostgreSQL or add secrets."
+    : id === "local-docker" ? "Compose starts PostgreSQL, the NOVA API, and one maintenance worker locally." : "A GitHub push alone does not update the VPS; pull/release the code and run the documented upgrade.";
+  const databaseAction = hosted
+    ? "On your trusted computer, run `bun run setup:supabase` for the intended project; NOVA displays its project ref and asks you to type it before applying migrations."
+    : "Run the Compose bootstrap; for an existing PostgreSQL server, use the external-database setup with separate owner and `nova_app` URLs.";
+  const databaseResult = hosted
+    ? "NOVA applies migrations and creates the restricted app role, then writes generated values to your private local `.env`. This does not deploy the API."
+    : "The same NOVA schema and PostgreSQL rules are installed; Compose also starts the API and one worker.";
+  const runtimeAction = id === "cloudflare-supabase"
+    ? "In Cloudflare Worker → Variables & Secrets, add runtime settings; create Hyperdrive from Supabase Connect → Direct using `nova_app` and bind its ID."
+    : hosted
+      ? "In " + hostName + " private Environment Variables, copy only runtime values (including the generated pooler `DATABASE_URL`) from your local `.env`, then redeploy."
+      : "Keep the bootstrap-generated `.env` private on the machine running NOVA; Compose supplies it to the API and worker.";
+  const runtimeResult = id === "cloudflare-supabase"
+    ? "The Worker connects through Hyperdrive. Do not set raw `DATABASE_URL` or place the Supabase token/migration-owner credentials on Cloudflare."
+    : hosted
+      ? "The hosted API uses the restricted app connection. The Supabase token and migration-owner URL stay on your setup computer."
+      : "The runtime and worker use the restricted app role; keep the migration-owner URL separate.";
+  const originAction = id === "local-docker"
+    ? "Use `http://localhost:3001` on this computer only."
+    : "Map DNS/HTTPS at your host or domain provider; set the same exact public origin in runtime settings and NOVA first-run.";
+  const originResult = id === "local-docker"
+    ? "Local links work only on this device; use a public HTTPS origin before inviting remote employees."
+    : "NOVA uses the canonical origin for sign-in, invitation, verification, reset, and notification links.";
+  const emailAction = "You do not choose or configure a separate identity provider. After first-run, a permitted Super Admin may configure and activate an email adapter inside NOVA.";
+  const emailResult = id === "cloudflare-supabase"
+    ? "Better Auth is included. Email starts off; Cloudflare supports Gmail API or Resend, not SMTP/Nodemailer. Credentials are encrypted in PostgreSQL; the encryption key stays in Worker secrets."
+    : "Better Auth is included. Email starts off; this Node runtime supports SMTP/Nodemailer, Gmail API, or Resend. Credentials are encrypted in PostgreSQL; the encryption key stays in runtime secrets.";
+  const outcome = scheduler ? schedulerOutcomes[scheduler] : null;
+  const supabaseActivationReady = stage === 4 && probe?.checking !== true && probe?.health === true && probe?.ready === true && probe?.scheduler === "supabase";
+  const schedulerAction = !outcome
+    ? "Choose one trigger below. The scheduler card gives the exact place and action; selecting it here changes only this guide."
+    : scheduler === "supabase" && !supabaseActivationReady ? outcome.prepare! : outcome.action;
+  const schedulerResult = !outcome
+    ? "Exactly one provider trigger must call NOVA's same protected background endpoint."
+    : scheduler === "supabase" && !supabaseActivationReady ? outcome.prepareAutomatic! : outcome.automatic;
+  const schedulerVerification = !outcome
+    ? "After choosing, use the provider-specific instructions and confirm the job reaches NOVA."
+    : scheduler === "supabase" && !supabaseActivationReady
+      ? "First pass the live API/database readiness check; the separate Supabase job command is not available yet."
+      : outcome.check;
+  const runtimePlace = id === "cloudflare-supabase"
+    ? "Cloudflare Worker → Variables & Secrets + Hyperdrive binding"
+    : hosted ? hostName + " → private server-side Environment Variables" : "Private .env on the computer/server; Docker Compose reads it";
+  const places: DeploymentPlace[] = [
+    { label: "1 · Code + API", title: hosted ? "GitHub → " + hostName : id === "local-docker" ? "This computer" : "VPS checkout", action: codeAction, automatic: codeResult, check: hosted ? "The host's production deployment history shows this commit published." : "Open NOVA locally or check the VPS deployment logs." },
+    { label: "2 · Database", title: hosted ? "Supabase Cloud" : id === "local-docker" ? "Local PostgreSQL" : "Your PostgreSQL", action: databaseAction, automatic: databaseResult, check: hosted ? "The setup command reports migrations and application-role preflight ready." : "The bootstrap reports healthy database/API readiness." },
+    { label: "3 · Runtime + secrets", title: runtimePlace, action: runtimeAction, automatic: runtimeResult, check: hosted ? "The host has the variables/binding, then NOVA /api/health and /api/ready return 200." : "The private .env is present; NOVA /api/health and /api/ready return 200." },
+    { label: "4 · Domain + links", title: "Host/domain settings, then NOVA", action: originAction, automatic: originResult, check: id === "local-docker" ? "Open localhost on this computer only." : "The exact HTTPS origin opens NOVA and is the same value used in first-run setup." },
+    { label: "5 · Authentication + email", title: id === "cloudflare-supabase" ? "NOVA Better Auth + optional Gmail API/Resend" : "NOVA Better Auth + optional SMTP/Gmail API/Resend", action: emailAction, automatic: emailResult, check: "Sign in with the founding account; if email is enabled, send and receive a test message before invitations." },
+    { label: "6 · Background scheduler", title: scheduler ? DEPLOYMENT_SCHEDULER_LABELS[scheduler] : "Choose one trigger below", action: schedulerAction, automatic: schedulerResult, check: schedulerVerification },
+  ];
+  const rows: DeploymentActionRow[] = [
+    { part: "Code + API", action: codeAction, result: codeResult },
+    { part: "PostgreSQL", action: databaseAction, result: databaseResult },
+    { part: "Runtime access", action: runtimeAction, result: runtimeResult },
+    { part: "Domain + links", action: originAction, result: originResult },
+    { part: "Login + email", action: emailAction, result: emailResult },
+    { part: "Background work", action: schedulerAction, result: schedulerResult + " Check: " + schedulerVerification },
+  ];
+  return {
+    summary: "GitHub delivers code; " + (hosted ? hostName + " runs NOVA" : id === "local-docker" ? "this computer runs NOVA" : "your server runs NOVA") + "; PostgreSQL stores the data. NOVA includes login, roles and permissions. Email is optional. One scheduler runs NOVA’s background work.",
+    source: id === "local-docker" ? "This computer" : id === "vps-postgres" ? "VPS checkout" : "GitHub repository",
+    runtime: id === "local-docker" ? "NOVA + PostgreSQL + worker" : id === "vps-postgres" ? "VPS runs NOVA + PostgreSQL" : hostName + " runs NOVA UI + API",
+    database: hosted ? "Supabase PostgreSQL" : id === "local-docker" ? "Local PostgreSQL" : "Your PostgreSQL",
+    scheduler: scheduler ? DEPLOYMENT_SCHEDULER_LABELS[scheduler] + " calls NOVA’s same protected background endpoint." : "Choose one scheduler; it calls NOVA’s same protected background endpoint.",
+    places,
+    rows,
+  };
+}
+
+function schedulerPresentation(path: DeploymentPath, stage: number, scheduler: DeploymentScheduler | "", probePassed: boolean): DeploymentSchedulerPresentation | null {
+  if (stage !== 0 && stage !== 4) return null;
+  const pathSchedulers = DEPLOYMENT_SCHEDULERS[path.id];
+  const guide = (deploymentGuide(path.id, scheduler) as DeploymentGuide | null) ?? null;
+  const plan = guide?.scheduler ?? null;
+  const actions = (deploymentSchedulerActions(path.id, scheduler, stage, probePassed) as DeploymentGuideAction[]) ?? [];
+  const emptyMessage = stage === 0
+    ? "Select a trigger to see its configuration. Nothing is changed in a provider by selecting it."
+    : path.id === "vercel-supabase" && scheduler === "supabase"
+      ? probePassed
+        ? "Vercel's Production config is confirmed for the Supabase selector. Run the separate Supabase setup command below, then check Supabase Cron history."
+        : "Set NOVA_BACKGROUND_SCHEDULER=supabase in Vercel Production before deploying; vercel.ts then publishes no Vercel Cron. Run the readiness check before creating Supabase Cron."
+      : scheduler === "supabase"
+        ? probePassed
+          ? "The API is ready with the Supabase scheduler selector."
+          : "First run the live API/database check above. The Supabase Cron creation command stays hidden until health, readiness, and the selected runtime value all pass."
+        : scheduler === "vps"
+          ? probePassed
+            ? "The Compose bootstrap starts one maintenance worker. Verify that exactly one worker is running and that its tick succeeded; do not add a second scheduler."
+            : "First pass the API/database readiness check above; then verify exactly one Compose maintenance worker and a successful tick."
+          : probePassed
+            ? "The selected trigger is registered by the production deployment. Do not create a second schedule; verify the provider shows one active trigger and a successful tick."
+            : "First pass the API/database readiness check above; then verify the deployment-registered trigger and a successful tick.";
+  const description = stage === 0
+    ? "This is a guide choice only; it does not change a provider account. The selected provider action below applies it. Hosted native schedules are registered by the configured production deploy; the VPS worker starts with Compose; Supabase Cron is created later by its protected setup command after readiness."
+    : !probePassed
+      ? "Run the live API/database check above first. The guide will show the apply or verify action only after health, readiness, and the runtime selector match."
+      : scheduler === "supabase"
+        ? "The Supabase setup command below creates the actual job in the exact Supabase project you confirm. First deploy NOVA with the Supabase selector and the hosting provider’s native schedule disabled."
+        : scheduler === "vps"
+          ? "The Docker bootstrap starts the local worker. Verify its process and successful tick; do not add a cloud schedule."
+          : "The final configured production deploy applies the host schedule. Verify it in the provider dashboard; this checklist itself does not change the account.";
+  const outcome = scheduler ? schedulerOutcomes[scheduler] : null;
+  return {
+    title: stage === 0 ? "Choose one trigger" : "Activate or verify the trigger",
+    description,
+    choices: (Object.entries(DEPLOYMENT_SCHEDULER_LABELS) as Array<[DeploymentScheduler, string]>)
+      .filter(([value]) => pathSchedulers.includes(value))
+      .map(([value, label]) => ({ value, label })),
+    outcome,
+    file: plan?.file ?? "Provider configuration",
+    actions,
+    actionLead: stage === 0 ? "Prepare before the final production deploy:" : "Do this now, after readiness passes:",
+    emptyMessage,
+    verify: plan?.verify ?? "",
+    warning: plan?.warning,
+    expanded: stage === 4 && actions.length > 0,
+  };
+}
+
+export function projectDeploymentPresentation(input: {
+  pathId: DeploymentPathId | "";
+  stage: number;
+  scheduler: DeploymentScheduler | "";
+  completed: Readonly<Record<number, boolean>>;
+  probe: DeploymentProbe | null;
+}): DeploymentPresentation {
+  const selectedPath = deploymentPathById(input.pathId);
+  const schedulerAllowed = selectedPath ? DEPLOYMENT_SCHEDULERS[selectedPath.id] : [];
+  const needsProbe = input.stage === 3 || input.stage === 4;
+  const probePassed = deploymentProbePassed(input.stage, input.scheduler, input.probe);
+  const completed = input.completed[input.stage] === true;
+  const current = stageCopy(selectedPath, input.scheduler, input.stage, input.probe);
+  return {
+    selectedPath,
+    current,
+    completed,
+    needsProbe,
+    probePassed,
+    probeWarning: Boolean(input.probe && !input.probe.checking && !(input.probe.health && input.probe.ready && (input.stage !== 4 || input.probe.scheduler === input.scheduler))),
+    wiring: selectedPath ? wiringPresentation(selectedPath, input.stage, input.scheduler, input.probe) : null,
+    schedulerPanel: selectedPath ? schedulerPresentation(selectedPath, input.stage, input.scheduler, probePassed) : null,
+    nextDisabled: !selectedPath || !completed || (needsProbe && !probePassed) || ((input.stage === 0 || input.stage === 4) && !schedulerAllowed.includes(input.scheduler as DeploymentScheduler)),
+    completionDisabled: (needsProbe && !probePassed) || (input.stage === 0 && !schedulerAllowed.includes(input.scheduler as DeploymentScheduler)),
+  };
+}

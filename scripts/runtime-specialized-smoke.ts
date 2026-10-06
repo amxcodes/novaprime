@@ -126,6 +126,11 @@ function assertStatus(label: string, result: ApiResult, expected: number): void 
   console.info(`${label}: ${result.status}`);
 }
 
+function assertFixture(condition: unknown, label: string): asserts condition {
+  if (!condition) throw new Error(`NOVA_SPECIALIZED_SMOKE_ASSERTION_FAILED_${label}`);
+  console.info(`${label}: passed`);
+}
+
 function requireField(label: string, result: ApiResult, field: string): string {
   const value = result.body?.[field];
   if (typeof value !== "string" || !value) throw new Error(`${label}_FIELD_MISSING_${field}`);
@@ -256,6 +261,173 @@ const workstreamBillingPolicy = await api(
   }, cookie,
 );
 assertStatus("client_workstream_billing_policy", workstreamBillingPolicy, 200);
+
+// Exercise the product's group-scoped create-only path through the authenticated
+// API against the disposable PostgreSQL fixture. The actor has only the exact
+// group create grant and no tasks.view grant. The mismatched-parent request keeps
+// that authorized group id so it reaches the server's parent/group integrity check.
+const group = await api("POST", "/work-groups", {
+  clientWorkstreamId,
+  name: `NOVA Smoke Task Group ${stamp}`,
+}, cookie);
+assertStatus("group_task_target_create", group, 201);
+const groupId = requireField("group_task_target_create", group, "groupId");
+const siblingGroup = await api("POST", "/work-groups", {
+  clientWorkstreamId,
+  name: `NOVA Smoke Sibling Task Group ${stamp}`,
+}, cookie);
+assertStatus("group_task_sibling_target_create", siblingGroup, 201);
+const siblingGroupId = requireField("group_task_sibling_target_create", siblingGroup, "groupId");
+const mismatchWorkstream = await api("POST", "/workstreams/client", {
+  clientId,
+  name: `NOVA Smoke Mismatch Parent ${stamp}`,
+}, cookie);
+assertStatus("group_task_mismatch_parent_create", mismatchWorkstream, 201);
+const mismatchWorkstreamId = requireField("group_task_mismatch_parent_create", mismatchWorkstream, "workstreamId");
+
+const groupCreatorRole = await api("POST", "/roles", {
+  key: `nova_group_creator_${stamp}`.slice(0, 63),
+  name: `NOVA Group-Scoped Task Creator ${stamp}`,
+  permissionGrants: [{ permissionKey: "tasks.create", scope: "group", groupId }],
+  operationalPolicy: {
+    workEnabled: true,
+    canReceiveAssignments: false,
+    attendanceRequired: false,
+    wfhAllowed: false,
+    canWorkWithoutAttendance: false,
+    payrollApplicable: false,
+    payrollAttendanceContributes: false,
+    payrollOvertimeApplicable: false,
+  },
+}, cookie);
+assertStatus("group_task_creator_role", groupCreatorRole, 201);
+const groupCreatorRoleId = requireField("group_task_creator_role", groupCreatorRole, "roleId");
+
+const groupCreatorEmail = `nova-group-creator-${stamp}@example.invalid`;
+const groupCreatorPassword = `N0vaGroupCreator-${stamp}-Aa1!`;
+const groupCreatorSubject = randomUUID();
+const groupCreatorPasswordHash = await hashPassword(groupCreatorPassword);
+await postSql(`
+  INSERT INTO nova_auth."user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
+  VALUES (${sqlLiteral(groupCreatorSubject)}, ${sqlLiteral(`NOVA Group Creator ${stamp}`)}, ${sqlLiteral(groupCreatorEmail)}, true, now(), now());
+  INSERT INTO nova_auth.account (id, "accountId", "providerId", "userId", password, "createdAt", "updatedAt")
+  VALUES (${sqlLiteral(randomUUID())}, ${sqlLiteral(groupCreatorSubject)}, 'credential', ${sqlLiteral(groupCreatorSubject)},
+          ${sqlLiteral(groupCreatorPasswordHash)}, now(), now());
+`);
+const groupCreatorPerson = (await postSql(`
+  INSERT INTO nova.people (organisation_id, email, display_name)
+  VALUES (${sqlLiteral(identity.organisation_id)}::uuid, ${sqlLiteral(groupCreatorEmail)}, ${sqlLiteral(`NOVA Group Creator ${stamp}`)})
+  RETURNING id
+`))[0] as { id?: string } | undefined;
+if (!groupCreatorPerson?.id) throw new Error("NOVA_GROUP_CREATOR_PERSON_MISSING");
+await postSql(`
+  INSERT INTO nova.person_identities (person_id, provider, subject)
+  VALUES (${sqlLiteral(groupCreatorPerson.id)}::uuid, 'better_auth', ${sqlLiteral(groupCreatorSubject)});
+  INSERT INTO nova.person_status_periods (person_id, status, effective_at)
+  VALUES (${sqlLiteral(groupCreatorPerson.id)}::uuid, 'active', now());
+  INSERT INTO nova.person_office_assignments (person_id, office_id, effective_on)
+  VALUES (${sqlLiteral(groupCreatorPerson.id)}::uuid, ${sqlLiteral(fixtureOfficeId)}::uuid, ${sqlLiteral(todayRow.today)}::date);
+  INSERT INTO nova.person_role_assignments (person_id, role_id, effective_on)
+  VALUES (${sqlLiteral(groupCreatorPerson.id)}::uuid, ${sqlLiteral(groupCreatorRoleId)}::uuid, ${sqlLiteral(todayRow.today)}::date);
+`);
+
+const groupCreatorGrantAudit = (await postSql(`
+  SELECT count(*) FILTER (WHERE grants.permission_key = 'tasks.create' AND grants.scope = 'group'
+                            AND grants.group_id = ${sqlLiteral(groupId)}::uuid)::text AS group_create_grants,
+         count(*) FILTER (WHERE grants.permission_key = 'tasks.view')::text AS task_view_grants,
+         count(*) FILTER (WHERE grants.permission_key = 'tasks.create')::text AS task_create_grants
+  FROM nova.person_role_assignments assignments
+  JOIN nova.role_permission_grants grants ON grants.role_id = assignments.role_id
+  WHERE assignments.person_id = ${sqlLiteral(groupCreatorPerson.id)}::uuid
+    AND assignments.role_id = ${sqlLiteral(groupCreatorRoleId)}::uuid
+`))[0] as { group_create_grants?: string; task_view_grants?: string; task_create_grants?: string } | undefined;
+assertFixture(groupCreatorGrantAudit?.group_create_grants === "1"
+  && groupCreatorGrantAudit.task_view_grants === "0"
+  && groupCreatorGrantAudit.task_create_grants === "1", "group_creator_has_only_group_create_without_task_view");
+
+const groupCreatorSignIn = await api("POST", "/auth/sign-in/email", {
+  email: groupCreatorEmail,
+  password: groupCreatorPassword,
+});
+assertStatus("group_creator_sign_in", groupCreatorSignIn, 200);
+const groupCreatorCookie = groupCreatorSignIn.cookie;
+if (!groupCreatorCookie) throw new Error("NOVA_GROUP_CREATOR_SESSION_COOKIE_MISSING");
+assertStatus("group_creator_session", await api("GET", "/auth/get-session", undefined, groupCreatorCookie), 200);
+
+const groupTaskTitle = `NOVA Smoke Group-Scoped Task ${stamp}`;
+const groupTask = await api("POST", "/tasks", {
+  clientWorkstreamId,
+  workGroupId: groupId,
+  title: groupTaskTitle,
+}, groupCreatorCookie);
+assertStatus("group_scoped_task_create_without_task_view", groupTask, 201);
+const groupTaskId = requireField("group_scoped_task_create_without_task_view", groupTask, "taskId");
+const createdGroupTask = (await postSql(`
+  SELECT organisation_id, client_workstream_id, work_group_id, created_by_person_id
+  FROM nova.tasks
+  WHERE id = ${sqlLiteral(groupTaskId)}::uuid
+`))[0] as {
+  organisation_id?: string;
+  client_workstream_id?: string;
+  work_group_id?: string;
+  created_by_person_id?: string;
+} | undefined;
+assertFixture(createdGroupTask?.organisation_id === identity.organisation_id
+  && createdGroupTask.client_workstream_id === clientWorkstreamId
+  && createdGroupTask.work_group_id === groupId
+  && createdGroupTask.created_by_person_id === groupCreatorPerson.id,
+"group_task_persists_exact_parent_and_creator");
+assertStatus("group_creator_cannot_read_task_without_task_view", await api("GET", `/tasks/${groupTaskId}`, undefined, groupCreatorCookie), 404);
+
+const noGroupTaskTitle = `NOVA Smoke Group Required Task ${stamp}`;
+const noGroupTask = await api("POST", "/tasks", {
+  clientWorkstreamId,
+  title: noGroupTaskTitle,
+}, groupCreatorCookie);
+assertStatus("group_creator_without_group_denied", noGroupTask, 403);
+if (noGroupTask.body?.error !== "PERMISSION_DENIED") {
+  throw new Error(`GROUP_CREATOR_WITHOUT_GROUP_WRONG_ERROR_${noGroupTask.body?.error}`);
+}
+const noGroupTaskCount = (await postSql(`
+  SELECT count(*)::text AS count FROM nova.tasks
+  WHERE organisation_id = ${sqlLiteral(identity.organisation_id)}::uuid
+    AND title = ${sqlLiteral(noGroupTaskTitle)}
+`))[0] as { count?: string } | undefined;
+if (noGroupTaskCount?.count !== "0") throw new Error("GROUP_CREATOR_WITHOUT_GROUP_WROTE_TASK");
+
+const siblingGroupTaskTitle = `NOVA Smoke Sibling Group Task ${stamp}`;
+const siblingGroupTask = await api("POST", "/tasks", {
+  clientWorkstreamId,
+  workGroupId: siblingGroupId,
+  title: siblingGroupTaskTitle,
+}, groupCreatorCookie);
+assertStatus("group_creator_sibling_group_denied", siblingGroupTask, 403);
+if (siblingGroupTask.body?.error !== "PERMISSION_DENIED") {
+  throw new Error(`GROUP_CREATOR_SIBLING_GROUP_WRONG_ERROR_${siblingGroupTask.body?.error}`);
+}
+const siblingTaskCount = (await postSql(`
+  SELECT count(*)::text AS count FROM nova.tasks
+  WHERE organisation_id = ${sqlLiteral(identity.organisation_id)}::uuid
+    AND title = ${sqlLiteral(siblingGroupTaskTitle)}
+`))[0] as { count?: string } | undefined;
+if (siblingTaskCount?.count !== "0") throw new Error("GROUP_CREATOR_SIBLING_GROUP_WROTE_TASK");
+
+const mismatchedTaskTitle = `NOVA Smoke Mismatched Group Task ${stamp}`;
+const mismatchedGroupTask = await api("POST", "/tasks", {
+  clientWorkstreamId: mismatchWorkstreamId,
+  workGroupId: groupId,
+  title: mismatchedTaskTitle,
+}, groupCreatorCookie);
+assertStatus("mismatched_group_parent_rejected", mismatchedGroupTask, 409);
+assertFixture(mismatchedGroupTask.body?.error === "TASK_CONTEXT_INVALID", "mismatched_group_parent_returns_context_error");
+const mismatchTaskCount = (await postSql(`
+  SELECT count(*)::text AS count FROM nova.tasks
+  WHERE organisation_id = ${sqlLiteral(identity.organisation_id)}::uuid
+    AND title = ${sqlLiteral(mismatchedTaskTitle)}
+`))[0] as { count?: string } | undefined;
+assertFixture(mismatchTaskCount?.count === "0", "mismatched_group_parent_writes_no_task");
+console.info("group_scoped_task_create_gate: passed");
+
 const task = await api("POST", "/tasks", {
   clientWorkstreamId,
   title: `NOVA Smoke Assignment Gate ${stamp}`,

@@ -1,0 +1,307 @@
+.root {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  container: landing / inline-size;
+}
+
+.layout {
+  display: grid;
+  min-width: 0;
+  gap: clamp(var(--nova-space-8), 7cqi, var(--nova-space-12));
+}
+
+.hero {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1.12fr) minmax(18rem, 0.88fr);
+  align-items: stretch;
+  gap: clamp(var(--nova-space-6), 5cqi, var(--nova-space-12));
+}
+
+.heroCopy {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  justify-items: start;
+  gap: var(--nova-space-4);
+  padding-block: clamp(var(--nova-space-4), 4cqi, var(--nova-space-8));
+}
+
+.eyebrow,
+.pathsEyebrow,
+.principlesLabel {
+  margin: 0;
+  color: var(--nova-color-action-text);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: 0.09em;
+  line-height: var(--nova-type-line-normal);
+  text-transform: uppercase;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--nova-space-2);
+}
+
+.eyebrowMark {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  border-radius: var(--nova-radius-pill);
+  background: var(--nova-color-action);
+}
+
+.hero h1 {
+  max-width: 13ch;
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: clamp(2.35rem, 6.5cqi, 4.5rem);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: -0.055em;
+  line-height: 1.04;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.lede {
+  max-width: 42rem;
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: clamp(var(--nova-type-size-md), 1.55cqi, var(--nova-type-size-lg));
+  line-height: var(--nova-type-line-relaxed);
+  text-wrap: pretty;
+}
+
+.principles {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: var(--nova-space-5);
+  padding: clamp(var(--nova-space-5), 4cqi, var(--nova-space-8));
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.principles h2 {
+  max-width: 20ch;
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: clamp(var(--nova-type-size-lg), 2.5cqi, var(--nova-type-size-xl));
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: -0.025em;
+  line-height: var(--nova-type-line-tight);
+  text-wrap: balance;
+}
+
+.principleList {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.principleList li {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  align-items: start;
+  gap: var(--nova-space-3);
+  padding-block: var(--nova-space-4);
+  border-top: 1px solid var(--nova-color-border);
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+}
+
+.principleList li > span:first-child {
+  color: var(--nova-color-action-text);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.paths {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-5);
+}
+
+.pathsHeader {
+  display: flex;
+  min-width: 0;
+  align-items: end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--nova-space-4);
+}
+
+.pathsHeader > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+}
+
+.pathsHeader h2 {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: clamp(var(--nova-type-size-xl), 3.2cqi, 1.75rem);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: -0.035em;
+  line-height: var(--nova-type-line-tight);
+  text-wrap: balance;
+}
+
+.pathsHeader > p {
+  max-width: 32rem;
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+}
+
+.pathList {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border-block: 1px solid var(--nova-color-border);
+  list-style: none;
+}
+
+.pathList li + li {
+  border-top: 1px solid var(--nova-color-border);
+}
+
+.pathAction {
+  display: grid;
+  width: 100%;
+  min-height: var(--nova-control-touch-target);
+  align-items: center;
+  justify-content: initial;
+  padding: var(--nova-space-3) var(--nova-space-4);
+  text-align: start;
+  white-space: normal;
+}
+
+.pathAction > span {
+  display: block;
+  width: 100%;
+}
+
+.pathRow {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--nova-space-4);
+}
+
+.pathCopy {
+  display: grid;
+  min-width: 0;
+  justify-items: start;
+  gap: 0.25rem;
+}
+
+.pathIntent {
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-md);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  text-wrap: pretty;
+}
+
+.pathDescription {
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-regular);
+  line-height: var(--nova-type-line-normal);
+  text-wrap: pretty;
+}
+
+.pathActionLabel {
+  color: var(--nova-color-action-text);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-normal);
+}
+
+.pathArrow {
+  color: var(--nova-color-action-text);
+  font-size: var(--nova-type-size-lg);
+  line-height: 1;
+}
+
+.root :focus-visible {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 3px;
+}
+
+.root h1[tabindex="-1"]:focus {
+  outline: none;
+}
+
+@container landing (max-width: 46rem) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .heroCopy {
+    padding-block: 0;
+  }
+
+  .principles {
+    padding: var(--nova-space-5);
+  }
+
+  .pathsHeader {
+    align-items: start;
+    flex-direction: column;
+  }
+}
+
+@container landing (max-width: 36rem) {
+  .layout {
+    gap: var(--nova-space-8);
+  }
+
+  .hero h1 {
+    font-size: clamp(2rem, 10cqi, 2.75rem);
+  }
+
+  .pathRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--nova-space-2) var(--nova-space-3);
+  }
+
+  .pathActionLabel {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .pathArrow {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+}
+
+@media (forced-colors: active) {
+  .principles,
+  .pathList,
+  .pathList li + li {
+    border-color: CanvasText;
+  }
+
+  .eyebrowMark {
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
+
+  .root :focus-visible {
+    outline-color: Highlight;
+  }
+}

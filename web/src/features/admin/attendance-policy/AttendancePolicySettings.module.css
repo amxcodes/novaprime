@@ -1,0 +1,266 @@
+.feature {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-5);
+  container: attendance-policy / inline-size;
+  color: var(--nova-color-text-primary);
+}
+
+.content {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+}
+
+.current,
+.form {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--nova-space-4);
+}
+
+.current {
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface-subtle);
+}
+
+.form {
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.subheading {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-md);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+}
+
+.formHeading {
+  display: grid;
+  gap: var(--nova-space-1);
+}
+
+.formHeading p,
+.snapshotLabel,
+.snapshotDetail,
+.snapshotDate,
+.scheduleNote p {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+}
+
+.policySnapshot {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--nova-space-2);
+  padding-inline-start: var(--nova-space-4);
+  border-inline-start: 3px solid var(--nova-color-action);
+}
+
+.snapshotLabel {
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.snapshotValue {
+  font-size: var(--nova-type-size-lg);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.snapshotDate {
+  font-size: var(--nova-type-size-xs);
+}
+
+.emptyPolicy {
+  padding: var(--nova-space-3) 0;
+}
+
+.modeFieldset {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.modeFieldset legend {
+  margin-block-end: var(--nova-space-3);
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.modeChoices {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--nova-space-3);
+}
+
+.modeChoice {
+  display: flex;
+  min-width: 0;
+  min-height: var(--nova-control-touch-target);
+  align-items: flex-start;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+  cursor: pointer;
+}
+
+.modeChoice[data-selected="true"] {
+  border-color: var(--nova-color-action);
+  background: var(--nova-color-action-subtle);
+}
+
+.modeChoice input {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: none;
+  margin: 0.15rem 0 0;
+  accent-color: var(--nova-color-action);
+}
+
+.modeCopy {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-1);
+}
+
+.modeCopy strong {
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.modeCopy > span {
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.policyFields {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--nova-space-4);
+}
+
+.scheduleNote {
+  display: flex;
+  min-width: 0;
+  min-height: var(--nova-control-height);
+  align-items: flex-start;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+}
+
+.scheduleMark {
+  display: grid;
+  width: 1.6rem;
+  height: 1.6rem;
+  flex: none;
+  place-items: center;
+  border-radius: var(--nova-radius-pill);
+  color: var(--nova-color-action);
+  background: var(--nova-color-action-subtle);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.fieldError {
+  margin: 0;
+  color: var(--nova-color-danger);
+  font-size: var(--nova-type-size-sm);
+}
+
+.feedback:focus,
+.feature :global(:focus-visible) {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+.actions {
+  display: flex;
+  min-width: 0;
+  justify-content: flex-start;
+}
+
+.actions > * {
+  min-height: var(--nova-control-touch-target);
+}
+
+@container attendance-policy (min-width: 42rem) {
+  .content {
+    grid-template-columns: minmax(14rem, 0.72fr) minmax(0, 1.5fr);
+    align-items: start;
+  }
+
+  .current {
+    position: sticky;
+    inset-block-start: var(--nova-space-4);
+  }
+
+  .form {
+    padding: var(--nova-space-5);
+  }
+
+  .modeChoices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .policyFields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .actions {
+    justify-content: flex-end;
+  }
+}
+
+@container attendance-policy (max-width: 41.999rem) {
+  .actions > * {
+    width: 100%;
+  }
+}
+
+@media (forced-colors: active) {
+  .current,
+  .form,
+  .modeChoice,
+  .scheduleNote {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+
+  .modeChoice[data-selected="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .modeChoice input {
+    accent-color: Highlight;
+  }
+}

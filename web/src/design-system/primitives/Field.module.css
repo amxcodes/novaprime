@@ -1,0 +1,100 @@
+.field {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-2);
+}
+
+.label {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: baseline;
+  gap: var(--nova-space-1);
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-medium);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.required {
+  color: var(--nova-color-danger);
+}
+
+.control {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--nova-control-height);
+  padding: 0 var(--nova-space-3);
+  border: 1px solid var(--nova-control-border);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-control-background);
+  font-size: var(--nova-type-size-md);
+  line-height: var(--nova-type-line-normal);
+  transition:
+    border-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    background-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+
+.control::placeholder {
+  color: var(--nova-color-text-muted);
+  opacity: 1;
+}
+
+.control:hover:not(:disabled) {
+  border-color: var(--nova-color-text-muted);
+}
+
+.control[aria-invalid="true"] {
+  border-color: var(--nova-color-danger);
+}
+
+.control:disabled {
+  color: var(--nova-color-text-muted);
+  background: var(--nova-control-background-disabled);
+  opacity: 1;
+}
+
+.hint,
+.error {
+  min-width: 0;
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.hint {
+  color: var(--nova-color-text-secondary);
+}
+
+.error {
+  color: var(--nova-color-danger);
+}
+
+@media (any-pointer: coarse) {
+  .control {
+    min-height: var(--nova-control-touch-target);
+  }
+}
+
+@media (forced-colors: active) {
+  .control {
+    border-color: FieldText;
+    color: FieldText;
+    background: Field;
+  }
+
+  .control:disabled {
+    border-color: GrayText;
+    color: GrayText;
+  }
+
+  .control[aria-invalid="true"] {
+    border-color: Mark;
+  }
+
+  .error {
+    color: Mark;
+  }
+}

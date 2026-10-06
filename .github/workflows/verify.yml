@@ -20,6 +20,7 @@ jobs:
       - run: bun run test
       - run: bun run typecheck
       - run: bun run typecheck:operator
+      - run: bun run update:manifest --check
       - run: bun run typecheck:cloudflare
       - name: Smoke Cloudflare Worker Gmail delivery in workerd
         shell: bash

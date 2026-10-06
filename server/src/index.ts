@@ -1,19 +1,122 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { isAbsolute, relative, resolve } from "node:path";
+import { extname, isAbsolute, relative, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { handleRequest } from "./app.js";
 
 const serveWeb = process.env.NOVA_SERVE_WEB === "true";
 const webRoot = fileURLToPath(new URL("../../web/", import.meta.url));
+const generatedWebRoot = fileURLToPath(new URL("../../web/dist/", import.meta.url));
 const contentTypes: Readonly<Record<string, string>> = {
+  ".avif": "image/avif",
+  ".gif": "image/gif",
+  ".ico": "image/x-icon",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".map": "application/json; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".otf": "font/otf",
+  ".png": "image/png",
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
+  ".ttf": "font/ttf",
+  ".webmanifest": "application/manifest+json",
+  ".webp": "image/webp",
+  ".wasm": "application/wasm",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
 };
+const immutableAssetCache = "public, max-age=31536000, immutable";
+const noStoreCache = "no-store";
+
+type StaticWebRoots = Readonly<{ generated: string; legacy: string }>;
+
+async function readFileFromRoot(root: string, route: string): Promise<Buffer | undefined> {
+  const filename = resolve(root, route);
+  const relativeFilename = relative(root, filename);
+  if (relativeFilename.startsWith("..") || isAbsolute(relativeFilename)) return undefined;
+
+  try {
+    return await readFile(filename);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR") return undefined;
+    throw error;
+  }
+}
+
+/**
+ * Read the built Vite graph first while retaining the source tree as a
+ * compatibility fallback until each deployment has a verified dist build.
+ */
+export async function staticWebResponse(
+  pathname: string,
+  method: string,
+  roots: StaticWebRoots = { generated: generatedWebRoot, legacy: webRoot },
+): Promise<Response | undefined> {
+  if (!new Set(["GET", "HEAD"]).has(method.toUpperCase()) || pathname === "/api" ||
+      pathname.startsWith("/api/") || pathname === "/health") return undefined;
+
+  let route = pathname === "/"
+    ? "index.html"
+    : pathname === "/accept-invite" || pathname === "/accept-invite/"
+      ? "accept-invite/index.html"
+      : pathname === "/reset-password" || pathname === "/reset-password/"
+        ? "reset-password/index.html"
+        : pathname.slice(1);
+
+  try {
+    route = decodeURIComponent(route);
+  } catch {
+    return new Response("Invalid path", {
+      status: 400,
+      headers: { "cache-control": noStoreCache, "content-type": "text/plain; charset=utf-8" },
+    });
+  }
+  if (route.includes("\0")) {
+    return new Response("Invalid path", {
+      status: 400,
+      headers: { "cache-control": noStoreCache, "content-type": "text/plain; charset=utf-8" },
+    });
+  }
+
+  for (const root of [roots.generated, roots.legacy]) {
+    const filename = resolve(root, route);
+    const relativeFilename = relative(root, filename);
+    if (relativeFilename.startsWith("..") || isAbsolute(relativeFilename)) {
+      return new Response("Forbidden", {
+        status: 403,
+        headers: { "cache-control": noStoreCache, "content-type": "text/plain; charset=utf-8" },
+      });
+    }
+  }
+
+  const generatedContent = await readFileFromRoot(roots.generated, route);
+  const legacyContent = generatedContent ? undefined : await readFileFromRoot(roots.legacy, route);
+  const content = generatedContent ?? legacyContent;
+  if (!content) {
+    return new Response("Not found", {
+      status: 404,
+      headers: { "cache-control": noStoreCache, "content-type": "text/plain; charset=utf-8" },
+    });
+  }
+
+  const extension = extname(route).toLowerCase();
+  const isHashedBuildAsset = Boolean(generatedContent) && route.startsWith("assets/") &&
+    /-[a-z0-9_-]{8}\.[a-z0-9]+$/i.test(route);
+  return new Response(method.toUpperCase() === "HEAD" ? null : new Uint8Array(content), {
+    status: 200,
+    headers: {
+      "cache-control": isHashedBuildAsset ? immutableAssetCache : noStoreCache,
+      "content-type": contentTypes[extension] ?? "application/octet-stream",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
 
 function requestFromNode(request: IncomingMessage): Request {
   const headers = new Headers();
@@ -61,51 +164,12 @@ async function respond(
     "http://" + (request.headers.host ?? "localhost"),
   ).pathname;
 
-  if (
-    serveWeb &&
-    (request.method === "GET" || request.method === "HEAD") &&
-    !pathname.startsWith("/api/") &&
-    pathname !== "/api" &&
-    pathname !== "/health"
-  ) {
-    let route = pathname === "/"
-      ? "index.html"
-      : pathname === "/accept-invite" || pathname === "/accept-invite/"
-        ? "accept-invite/index.html"
-        : pathname === "/reset-password" || pathname === "/reset-password/"
-          ? "reset-password/index.html"
-          : pathname.slice(1);
-
-    try {
-      route = decodeURIComponent(route);
-    } catch {
-      response.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
-      response.end("Invalid path");
-      return;
-    }
-
-    const filename = resolve(webRoot, route);
-    const relativeFilename = relative(webRoot, filename);
-    if (relativeFilename.startsWith("..") || isAbsolute(relativeFilename)) {
-      response.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
-      response.end("Forbidden");
-      return;
-    }
-
-    try {
-      const content = await readFile(filename);
-      response.writeHead(200, {
-        "cache-control": "no-store",
-        "content-type": contentTypes[filename.slice(filename.lastIndexOf("."))] ?? "application/octet-stream",
-      });
-      response.end(request.method === "HEAD" ? undefined : content);
-      return;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        throw error;
-      }
-      response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-      response.end("Not found");
+  if (serveWeb && (request.method === "GET" || request.method === "HEAD")) {
+    const staticResponse = await staticWebResponse(pathname, request.method);
+    if (staticResponse) {
+      staticResponse.headers.forEach((value, name) => response.setHeader(name, value));
+      response.statusCode = staticResponse.status;
+      response.end(request.method === "HEAD" ? undefined : Buffer.from(await staticResponse.arrayBuffer()));
       return;
     }
   }
@@ -118,13 +182,17 @@ async function respond(
   response.end(Buffer.from(await result.arrayBuffer()));
 }
 
-const port = Number(process.env.PORT ?? 3001);
+function startServer(): void {
+  const port = Number(process.env.PORT ?? 3001);
+  createServer((request, response) => {
+    void respond(request, response).catch(() => {
+      response.writeHead(500, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "INTERNAL_ERROR" }));
+    });
+  }).listen(port);
 
-createServer((request, response) => {
-  void respond(request, response).catch(() => {
-    response.writeHead(500, { "content-type": "application/json" });
-    response.end(JSON.stringify({ error: "INTERNAL_ERROR" }));
-  });
-}).listen(port);
+  console.info(`NOVA API listening on http://localhost:${port}`);
+}
 
-console.info(`NOVA API listening on http://localhost:${port}`);
+// Keep the adapter importable for focused static-response tests.
+if (serveWeb || (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))) startServer();

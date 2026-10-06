@@ -5,6 +5,7 @@ import { isNormalOperationalActor, requestActor } from "../request-actor.js";
 import { idempotent, isIdempotencyReplay, requestIdempotencyKey } from "../idempotency.js";
 import { enqueueNotification } from "./notifications.js";
 import { lockAvailabilityDates } from "./availability-lock.js";
+import { canReviewRequest } from "./review-capability.js";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -71,6 +72,26 @@ export function leaveRequestInput(body: unknown): LeaveRequestInput | undefined 
 
 function duplicateError(error: unknown): boolean {
   return error instanceof Error && /duplicate key|unique|exclusion|LEAVE_REQUEST_OVERLAP/i.test(error.message);
+}
+
+/** Presentation hint only. cancelLeave repeats every condition in its write transaction. */
+export function canCancelLeaveRequest(
+  status: string,
+  endDate: string,
+  businessDate: string,
+  hasAttendance: boolean,
+): boolean {
+  return (status === "pending" || status === "requested" || status === "approved") &&
+    endDate >= businessDate && hasAttendance === false;
+}
+
+/** Presentation hint only: the conflict command requires both review and recovery grants. */
+export function canResolveLeaveAttendanceConflict(
+  hasConflict: boolean,
+  canReview: boolean,
+  canRecoverAttendance: boolean,
+): boolean {
+  return hasConflict === true && canReview === true && canRecoverAttendance === true;
 }
 
 async function normalActor(
@@ -175,8 +196,11 @@ function presentLeave(row: {
   start_date: string; end_date: string; reason: string | null;
   reviewer_person_id: string | null; reviewed_at: Date | null; review_reason: string | null; days: unknown;
   has_conflict?: boolean;
+  can_cancel?: boolean;
+  can_review?: boolean;
+  can_resolve_conflict?: boolean;
 }) {
-  return {
+  const result = {
     id: row.id,
     personId: row.person_id,
     leaveType: row.leave_type,
@@ -189,6 +213,12 @@ function presentLeave(row: {
     reviewReason: row.review_reason,
     days: row.days,
     hasConflict: row.has_conflict === true,
+  };
+  return {
+    ...result,
+    ...(typeof row.can_cancel === "boolean" ? { canCancel: row.can_cancel } : {}),
+    ...(typeof row.can_review === "boolean" ? { canReview: row.can_review } : {}),
+    ...(typeof row.can_resolve_conflict === "boolean" ? { canResolveConflict: row.can_resolve_conflict } : {}),
   };
 }
 
@@ -279,7 +309,7 @@ export async function readLeaveMine(request: Request): Promise<Response> {
         "leave.request", actor.context.userId, permissionDate)) return "PERMISSION_DENIED" as const;
       const rows = await transaction.query(
         `SELECT requests.id, requests.person_id, requests.leave_type, requests.status,
-                requests.start_date, requests.end_date, requests.reason,
+                requests.start_date, requests.end_date::text AS end_date, requests.reason,
                 requests.reviewer_person_id, requests.reviewed_at, requests.review_reason,
                 EXISTS (
                   SELECT 1 FROM nova.historical_exceptions exceptions
@@ -288,6 +318,14 @@ export async function readLeaveMine(request: Request): Promise<Response> {
                     AND exceptions.status = 'open'
                     AND exceptions.details->>'leave_request_id' = requests.id::text
                 ) AS has_conflict,
+                EXISTS (
+                  SELECT 1
+                  FROM nova.leave_request_days leave_days
+                  JOIN nova.attendance_days attendance
+                    ON attendance.person_id = leave_days.person_id
+                   AND attendance.business_date = leave_days.business_date
+                  WHERE leave_days.request_id = requests.id
+                ) AS has_attendance,
                 COALESCE(json_agg(json_build_object('date', days.business_date, 'portion', days.portion)
                   ORDER BY days.business_date) FILTER (WHERE days.id IS NOT NULL), '[]'::json) AS days
          FROM nova.leave_requests requests
@@ -296,7 +334,15 @@ export async function readLeaveMine(request: Request): Promise<Response> {
          GROUP BY requests.id ORDER BY requests.start_date DESC, requests.created_at DESC`,
         [actor.context.organisationId, actor.context.userId],
       );
-      return rows.rows.map(presentLeave);
+      return rows.rows.map((row) => presentLeave({
+        ...row,
+        can_cancel: canCancelLeaveRequest(
+          row.status,
+          row.end_date,
+          permissionDate,
+          row.has_attendance,
+        ),
+      }));
     });
     if (result === "PERMISSION_DENIED") return json({ error: result }, 403);
     return json({ requests: result });
@@ -330,8 +376,29 @@ export async function readPendingLeaveRequests(request: Request): Promise<Respon
       const permissionDate = await databaseToday(transaction, actor.context.userId);
       const visible = [];
       for (const row of rows.rows) {
-        if (await hasLeavePermission(transaction, actor.context.userId, actor.context.organisationId,
-          "leave.review", row.person_id, permissionDate)) visible.push(presentLeave(row));
+        const permitted = await hasLeavePermission(transaction, actor.context.userId, actor.context.organisationId,
+          "leave.review", row.person_id, permissionDate);
+        if (permitted) {
+          const canReview = canReviewRequest(actor.context.userId, row.person_id, permitted);
+          const canRecoverAttendance = row.has_conflict === true && canReview && await hasLeavePermission(
+            transaction,
+            actor.context.userId,
+            actor.context.organisationId,
+            "attendance.recover",
+            row.person_id,
+            permissionDate,
+          );
+          const canResolveConflict = canResolveLeaveAttendanceConflict(
+            row.has_conflict === true,
+            canReview,
+            canRecoverAttendance,
+          );
+          visible.push(presentLeave({
+            ...row,
+            can_review: canReview,
+            can_resolve_conflict: canResolveConflict,
+          }));
+        }
       }
       return visible;
     });

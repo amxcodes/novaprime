@@ -1,0 +1,46 @@
+.page {
+  container: unavailable-page / inline-size;
+  width: 100%;
+  min-width: 0;
+  max-width: var(--nova-content-max);
+  margin-inline: auto;
+}
+
+.content {
+  display: grid;
+  min-width: 0;
+}
+
+.header {
+  min-width: 0;
+  padding-block: 0 var(--nova-space-5);
+  border-block-end: 1px solid var(--nova-color-border);
+}
+
+.feedback {
+  min-width: 0;
+  margin-block-start: var(--nova-space-4);
+  overflow-wrap: anywhere;
+}
+
+.content > .feedback:empty {
+  display: none;
+}
+
+@container unavailable-page (max-width: 60rem) {
+  .header {
+    gap: var(--nova-space-5);
+  }
+}
+
+@container unavailable-page (max-width: 40rem) {
+  .header {
+    padding-block-end: var(--nova-space-4);
+  }
+}
+
+@media (forced-colors: active) {
+  .header {
+    border-color: CanvasText;
+  }
+}

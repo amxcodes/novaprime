@@ -1,0 +1,274 @@
+/*
+ * NOVA design-system foundations.
+ * Private palette values live above semantic roles; product modules should
+ * consume only the --nova-color-*, --nova-space-*, --nova-type-* and related
+ * semantic tokens below.
+ */
+
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --nova-palette-white: #ffffff;
+  --nova-palette-canvas-light: #f7faf8;
+  --nova-palette-surface-light: #ffffff;
+  --nova-palette-surface-subtle-light: #f0f5f1;
+  --nova-palette-surface-raised-light: #ffffff;
+  --nova-palette-text-light: #17231c;
+  --nova-palette-text-secondary-light: #536259;
+  --nova-palette-text-muted-light: #69766e;
+  --nova-palette-border-light: #dce5de;
+  --nova-palette-green-800: #145638;
+  --nova-palette-green-700: #176a43;
+  --nova-palette-green-100: #e8f4ec;
+  --nova-palette-green-050: #f2f8f4;
+  --nova-palette-focus-light: #087b4b;
+  --nova-palette-success-light: #176a43;
+  --nova-palette-success-surface-light: #e8f4ec;
+  --nova-palette-warning-light: #805700;
+  --nova-palette-warning-surface-light: #fff4d6;
+  --nova-palette-danger-light: #a12b2b;
+  --nova-palette-danger-surface-light: #fff0ee;
+  --nova-palette-info-light: #245d82;
+  --nova-palette-info-surface-light: #edf6fc;
+  --nova-palette-canvas-dark: #0b100d;
+  --nova-palette-surface-dark: #121a15;
+  --nova-palette-surface-subtle-dark: #19241d;
+  --nova-palette-surface-raised-dark: #18221b;
+  --nova-palette-text-dark: #f1f6f2;
+  --nova-palette-text-secondary-dark: #bdc9c0;
+  --nova-palette-text-muted-dark: #9aa89e;
+  --nova-palette-border-dark: #344238;
+  --nova-palette-green-dark: #58d391;
+  --nova-palette-green-hover-dark: #7de1a8;
+  --nova-palette-green-contrast-dark: #07140c;
+  --nova-palette-green-subtle-dark: #183725;
+  --nova-palette-focus-dark: #72dfa2;
+  --nova-palette-success-dark: #79dba0;
+  --nova-palette-success-surface-dark: #163323;
+  --nova-palette-warning-dark: #f4ca70;
+  --nova-palette-warning-surface-dark: #382d17;
+  --nova-palette-danger-dark: #ff9990;
+  --nova-palette-danger-contrast-dark: #2b0a08;
+  --nova-palette-danger-surface-dark: #3c1b19;
+  --nova-palette-info-dark: #8bc9ef;
+  --nova-palette-info-surface-dark: #172c39;
+  --nova-palette-shadow-light: 0 18px 48px rgb(19 39 27 / 14%), 0 3px 10px rgb(19 39 27 / 8%);
+  --nova-palette-shadow-dark: 0 18px 52px rgb(0 0 0 / 48%), 0 3px 12px rgb(0 0 0 / 28%);
+  --nova-palette-raised-shadow-light: 0 1px 2px rgb(19 39 27 / 6%), 0 4px 12px rgb(19 39 27 / 6%);
+  --nova-palette-raised-shadow-dark: 0 4px 14px rgb(0 0 0 / 24%);
+
+  --nova-color-canvas: var(--nova-palette-canvas-light);
+  --nova-color-surface: var(--nova-palette-surface-light);
+  --nova-color-surface-subtle: var(--nova-palette-surface-subtle-light);
+  --nova-color-surface-raised: var(--nova-palette-surface-raised-light);
+  --nova-color-text-primary: var(--nova-palette-text-light);
+  --nova-color-text-secondary: var(--nova-palette-text-secondary-light);
+  --nova-color-text-muted: var(--nova-palette-text-muted-light);
+  --nova-color-border: var(--nova-palette-border-light);
+  --nova-color-action: var(--nova-user-accent, var(--nova-palette-green-700));
+  --nova-color-action-hover: var(--nova-user-accent-hover, var(--nova-palette-green-800));
+  --nova-color-action-contrast: var(--nova-user-accent-contrast, var(--nova-palette-white));
+  --nova-color-action-text: var(--nova-user-accent-text-light, var(--nova-palette-green-800));
+  --nova-color-action-text-hover: var(--nova-user-accent-text-light-hover, var(--nova-palette-green-800));
+  --nova-color-action-subtle: color-mix(in srgb, var(--nova-color-action) 10%, var(--nova-color-canvas));
+  --nova-color-focus: var(--nova-palette-focus-light);
+  --nova-color-success: var(--nova-palette-success-light);
+  --nova-color-success-surface: var(--nova-palette-success-surface-light);
+  --nova-color-warning: var(--nova-palette-warning-light);
+  --nova-color-warning-surface: var(--nova-palette-warning-surface-light);
+  --nova-color-danger: var(--nova-palette-danger-light);
+  --nova-color-danger-contrast: var(--nova-palette-white);
+  --nova-color-danger-surface: var(--nova-palette-danger-surface-light);
+  --nova-color-info: var(--nova-palette-info-light);
+  --nova-color-info-surface: var(--nova-palette-info-surface-light);
+
+  --nova-type-family-custom: "Geist Variable";
+  --nova-type-family-sans: var(--nova-type-family-custom), Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --nova-type-family-mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --nova-type-size-xs: 0.75rem;
+  --nova-type-size-sm: 0.875rem;
+  --nova-type-size-md: 1rem;
+  --nova-type-size-lg: 1.125rem;
+  --nova-type-size-xl: 1.375rem;
+  --nova-type-size-display: clamp(1.75rem, 1.35rem + 1.2vw, 2.125rem);
+  --nova-type-weight-regular: 400;
+  --nova-type-weight-medium: 500;
+  --nova-type-weight-semibold: 600;
+  --nova-type-weight-bold: 700;
+  --nova-type-line-tight: 1.2;
+  --nova-type-line-normal: 1.5;
+  --nova-type-line-relaxed: 1.65;
+  --nova-type-body: var(--nova-type-weight-regular) var(--nova-type-size-md)/var(--nova-type-line-normal) var(--nova-type-family-sans);
+  --nova-type-label: var(--nova-type-weight-medium) var(--nova-type-size-sm)/var(--nova-type-line-normal) var(--nova-type-family-sans);
+  --nova-type-title: var(--nova-type-weight-semibold) var(--nova-type-size-xl)/var(--nova-type-line-tight) var(--nova-type-family-sans);
+  --nova-type-heading: var(--nova-type-weight-semibold) var(--nova-type-size-lg)/var(--nova-type-line-tight) var(--nova-type-family-sans);
+
+  --nova-space-0: 0;
+  --nova-space-1: 0.25rem;
+  --nova-space-2: 0.5rem;
+  --nova-space-3: 0.75rem;
+  --nova-space-4: 1rem;
+  --nova-space-5: 1.25rem;
+  --nova-space-6: 1.5rem;
+  --nova-space-7: 1.75rem;
+  --nova-space-8: 2rem;
+  --nova-space-10: 2.5rem;
+  --nova-space-12: 3rem;
+
+  --nova-radius-control: 0.625rem;
+  --nova-radius-surface: 0.875rem;
+  --nova-radius-overlay: 1rem;
+  --nova-radius-pill: 999px;
+
+  --nova-control-height: 2.5rem;
+  --nova-control-height-compact: 2.25rem;
+  --nova-control-touch-target: 2.75rem;
+  --nova-control-border: var(--nova-color-border);
+  --nova-control-border-focus: var(--nova-color-focus);
+  --nova-control-background: var(--nova-color-surface);
+  --nova-control-background-disabled: var(--nova-color-surface-subtle);
+
+  --nova-select-popup-background: var(--nova-color-surface-raised);
+  --nova-select-popup-border: var(--nova-color-border);
+  --nova-select-popup-text: var(--nova-color-text-primary);
+  --nova-select-option-hover: var(--nova-color-action-subtle);
+  --nova-select-option-selected: var(--nova-color-action-subtle);
+  --nova-select-option-selected-text: var(--nova-color-action-text);
+  --nova-select-popup-shadow: var(--nova-elevation-overlay);
+
+  --nova-elevation-raised: var(--nova-palette-raised-shadow-light);
+  --nova-elevation-overlay: var(--nova-palette-shadow-light);
+  --nova-motion-duration-fast: 120ms;
+  --nova-motion-duration-standard: 180ms;
+  --nova-motion-duration-reduced-feedback: 120ms;
+  --nova-motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --nova-layer-menu: 20;
+  --nova-layer-overlay: 40;
+  --nova-layer-toast: 60;
+  --nova-content-max: 72rem;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --nova-color-canvas: var(--nova-palette-canvas-dark);
+  --nova-color-surface: var(--nova-palette-surface-dark);
+  --nova-color-surface-subtle: var(--nova-palette-surface-subtle-dark);
+  --nova-color-surface-raised: var(--nova-palette-surface-raised-dark);
+  --nova-color-text-primary: var(--nova-palette-text-dark);
+  --nova-color-text-secondary: var(--nova-palette-text-secondary-dark);
+  --nova-color-text-muted: var(--nova-palette-text-muted-dark);
+  --nova-color-border: var(--nova-palette-border-dark);
+  --nova-color-action: var(--nova-user-accent, var(--nova-palette-green-dark));
+  --nova-color-action-hover: var(--nova-user-accent-hover, var(--nova-palette-green-hover-dark));
+  --nova-color-action-contrast: var(--nova-user-accent-contrast, var(--nova-palette-green-contrast-dark));
+  --nova-color-action-text: var(--nova-user-accent-text-dark, var(--nova-palette-green-dark));
+  --nova-color-action-text-hover: var(--nova-user-accent-text-dark-hover, var(--nova-palette-green-hover-dark));
+  --nova-color-action-subtle: color-mix(in srgb, var(--nova-color-action) 16%, var(--nova-color-canvas));
+  --nova-color-focus: var(--nova-palette-focus-dark);
+  --nova-color-success: var(--nova-palette-success-dark);
+  --nova-color-success-surface: var(--nova-palette-success-surface-dark);
+  --nova-color-warning: var(--nova-palette-warning-dark);
+  --nova-color-warning-surface: var(--nova-palette-warning-surface-dark);
+  --nova-color-danger: var(--nova-palette-danger-dark);
+  --nova-color-danger-contrast: var(--nova-palette-danger-contrast-dark);
+  --nova-color-danger-surface: var(--nova-palette-danger-surface-dark);
+  --nova-color-info: var(--nova-palette-info-dark);
+  --nova-color-info-surface: var(--nova-palette-info-surface-dark);
+  --nova-elevation-raised: var(--nova-palette-raised-shadow-dark);
+  --nova-elevation-overlay: var(--nova-palette-shadow-dark);
+}
+
+:root[data-theme="system"] {
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark;
+    --nova-color-canvas: var(--nova-palette-canvas-dark);
+    --nova-color-surface: var(--nova-palette-surface-dark);
+    --nova-color-surface-subtle: var(--nova-palette-surface-subtle-dark);
+    --nova-color-surface-raised: var(--nova-palette-surface-raised-dark);
+    --nova-color-text-primary: var(--nova-palette-text-dark);
+    --nova-color-text-secondary: var(--nova-palette-text-secondary-dark);
+    --nova-color-text-muted: var(--nova-palette-text-muted-dark);
+    --nova-color-border: var(--nova-palette-border-dark);
+    --nova-color-action: var(--nova-user-accent, var(--nova-palette-green-dark));
+    --nova-color-action-hover: var(--nova-user-accent-hover, var(--nova-palette-green-hover-dark));
+    --nova-color-action-contrast: var(--nova-user-accent-contrast, var(--nova-palette-green-contrast-dark));
+    --nova-color-action-text: var(--nova-user-accent-text-dark, var(--nova-palette-green-dark));
+    --nova-color-action-text-hover: var(--nova-user-accent-text-dark-hover, var(--nova-palette-green-hover-dark));
+    --nova-color-action-subtle: color-mix(in srgb, var(--nova-color-action) 16%, var(--nova-color-canvas));
+    --nova-color-focus: var(--nova-palette-focus-dark);
+    --nova-color-success: var(--nova-palette-success-dark);
+    --nova-color-success-surface: var(--nova-palette-success-surface-dark);
+    --nova-color-warning: var(--nova-palette-warning-dark);
+    --nova-color-warning-surface: var(--nova-palette-warning-surface-dark);
+    --nova-color-danger: var(--nova-palette-danger-dark);
+    --nova-color-danger-contrast: var(--nova-palette-danger-contrast-dark);
+    --nova-color-danger-surface: var(--nova-palette-danger-surface-dark);
+    --nova-color-info: var(--nova-palette-info-dark);
+    --nova-color-info-surface: var(--nova-palette-info-surface-dark);
+    --nova-elevation-raised: var(--nova-palette-raised-shadow-dark);
+    --nova-elevation-overlay: var(--nova-palette-shadow-dark);
+  }
+}
+
+:root[data-density="compact"] {
+  --nova-space-1: 0.2rem;
+  --nova-space-2: 0.4rem;
+  --nova-space-3: 0.6rem;
+  --nova-space-4: 0.8rem;
+  --nova-space-5: 1rem;
+  --nova-space-6: 1.2rem;
+  --nova-space-7: 1.4rem;
+  --nova-space-8: 1.6rem;
+  --nova-space-10: 2rem;
+  --nova-space-12: 2.4rem;
+  --nova-control-height: 2.25rem;
+  --nova-control-height-compact: 2rem;
+}
+
+:root[data-type-scale="large"] {
+  --nova-type-size-xs: 0.8125rem;
+  --nova-type-size-sm: 0.9375rem;
+  --nova-type-size-md: 1.0625rem;
+  --nova-type-size-lg: 1.1875rem;
+  --nova-type-size-xl: 1.5rem;
+  --nova-type-size-display: clamp(1.95rem, 1.5rem + 1.35vw, 2.4rem);
+}
+
+:root[data-font="inter"] { --nova-type-family-custom: "Inter"; }
+:root[data-font="system"] { --nova-type-family-custom: system-ui; }
+
+:root[data-contrast="high"] {
+  --nova-color-border: var(--nova-color-text-secondary);
+  --nova-color-text-muted: var(--nova-color-text-secondary);
+}
+
+:root[data-surface="soft"] {
+  --nova-color-surface: var(--nova-color-surface-subtle);
+}
+
+:root[data-content-width="wide"] { --nova-content-max: 88rem; }
+
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  /* Keep brief state feedback, while removing movement and looping animation. */
+  animation: none !important;
+  transition-property: color, background-color, border-color, outline-color, box-shadow, opacity, fill, stroke, text-decoration-color !important;
+  transition-duration: var(--nova-motion-duration-reduced-feedback) !important;
+  transition-delay: 0ms !important;
+  scroll-behavior: auto !important;
+}
+
+:root[data-motion="off"] *,
+:root[data-motion="off"] *::before,
+:root[data-motion="off"] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}

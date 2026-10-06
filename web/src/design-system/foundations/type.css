@@ -1,0 +1,38 @@
+:where(h1, h2, h3, h4, h5, h6) {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: var(--nova-type-size-display);
+  letter-spacing: -0.035em;
+}
+
+h2 {
+  font-size: var(--nova-type-size-xl);
+  letter-spacing: -0.02em;
+}
+
+h3,
+h4 {
+  font-size: var(--nova-type-size-lg);
+  letter-spacing: -0.01em;
+}
+
+:where(p) {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  line-height: var(--nova-type-line-relaxed);
+}
+
+:where(small, .nova-meta) {
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+}
+
+:where(code, pre, kbd, samp) {
+  font-family: var(--nova-type-family-mono);
+}

@@ -2,6 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool, type PoolClient } from "pg";
+import { migrationSha256 } from "./migration-checksum.js";
 
 const migrationDirectory = fileURLToPath(
   new URL("../../database/migrations/", import.meta.url),
@@ -152,14 +153,23 @@ async function applyMigration(
   database: PoolClient,
   filename: string,
   source: string,
+  storeChecksum: boolean,
 ): Promise<void> {
   try {
     await database.query("BEGIN");
     await database.query(source);
-    await database.query(
-      "INSERT INTO public.nova_schema_migrations (filename) VALUES ($1)",
-      [filename],
-    );
+    if (storeChecksum) {
+      const checksum = migrationSha256(source);
+      await database.query(
+        "INSERT INTO public.nova_schema_migrations (filename, sha256) VALUES ($1, $2)",
+        [filename, checksum],
+      );
+    } else {
+      await database.query(
+        "INSERT INTO public.nova_schema_migrations (filename) VALUES ($1)",
+        [filename],
+      );
+    }
     await database.query("COMMIT");
   } catch (error) {
     await database.query("ROLLBACK").catch(() => undefined);
@@ -201,6 +211,16 @@ async function migrate(): Promise<void> {
       throw new Error("MIGRATION_THROUGH_FILENAME_NOT_FOUND");
     }
 
+    const checksumMigration = "0076_operator_update_checksums.sql";
+    let checksumColumnExists = (await migrationConnection.query<{ exists: boolean }>(`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'nova_schema_migrations'
+          AND column_name = 'sha256'
+      ) AS exists
+    `)).rows[0]?.exists === true;
+
     for (const filename of filenames) {
       const applied = await migrationConnection.query<{ exists: boolean }>(
         `SELECT EXISTS (
@@ -212,13 +232,18 @@ async function migrate(): Promise<void> {
       );
 
       if (applied.rows[0]?.exists) {
+        if (filename === checksumMigration && !checksumColumnExists) {
+          throw new Error("MIGRATION_CHECKSUM_COLUMN_MISSING");
+        }
         if (filename === stopAfter) break;
         continue;
       }
 
       const source = await readFile(join(migrationDirectory, filename), "utf8");
 
-      await applyMigration(migrationConnection, filename, source);
+      const storesChecksum = checksumColumnExists || filename === checksumMigration;
+      await applyMigration(migrationConnection, filename, source, storesChecksum);
+      if (filename === checksumMigration) checksumColumnExists = true;
 
       console.info(`Applied ${filename}`);
       if (filename === stopAfter) break;

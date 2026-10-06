@@ -1,0 +1,66 @@
+.root {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-4);
+  container: owner-transfer / inline-size;
+  padding: clamp(var(--nova-space-4), 2vw, var(--nova-space-6));
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.header,
+.heading,
+.form,
+.fields,
+.readState {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-3);
+}
+
+.title {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-lg);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.description {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.targetField { min-width: 0; }
+
+.feedback { min-width: 0; }
+.feedback:focus { outline: 2px solid var(--nova-color-focus); outline-offset: 3px; }
+
+.actions {
+  display: flex;
+  min-width: 0;
+  justify-content: flex-start;
+}
+
+.actions > button,
+.readState > button { width: 100%; }
+
+@container owner-transfer (min-width: 42rem) {
+  .fields { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .actions > button,
+  .readState > button { width: auto; }
+}
+
+@media (any-pointer: coarse) {
+  .actions > button,
+  .readState > button { min-height: var(--nova-control-touch-target); }
+}
+
+@media (forced-colors: active) {
+  .root { border-color: CanvasText; }
+}

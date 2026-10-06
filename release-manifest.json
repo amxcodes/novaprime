@@ -1,0 +1,320 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.1",
+  "migrations": [
+    {
+      "filename": "0001_people_identity.sql",
+      "sha256": "6b87d5ce54e589d909ee09ba019931f48011ba8da55a3f2de0e7f0d23b5beda5"
+    },
+    {
+      "filename": "0002_authentication_bootstrap.sql",
+      "sha256": "45dd7567a39fcca8dbd524fc6729234b4b8399a5c438a2c4b01d50614dd08268"
+    },
+    {
+      "filename": "0003_roles_command.sql",
+      "sha256": "0fe9b702e873cffb950bacdeaa959c3b80ad559c4ea5dc9336d5fee4e50e89ff"
+    },
+    {
+      "filename": "0004_email_delivery_and_account_lifecycle.sql",
+      "sha256": "47f49e152ddf2a92cf8c6401cea75db2b943d71f6ec0900f7b48b6d04be8766d"
+    },
+    {
+      "filename": "0005_fix_invitation_status_transition.sql",
+      "sha256": "7a8ea5a4f492c751cd9d8d15fbeb5eb9121dfbeb16894862f53b5ecab2d54591"
+    },
+    {
+      "filename": "0006_auth_session_lifecycle_gate.sql",
+      "sha256": "e2bb58702c5cf2eb3a6c60c3e9f768114941042f48b387cade5979268150f69d"
+    },
+    {
+      "filename": "0007_organisation_setup_and_onboarding.sql",
+      "sha256": "0feecbb086a72f3ed00f02324c8260763a11c2ff5231be7411914ee7f4b26a07"
+    },
+    {
+      "filename": "0008_availability_configuration.sql",
+      "sha256": "8e4a954116944503c0296d22af4585520e011baf0f7dd099e20596520ff76210"
+    },
+    {
+      "filename": "0009_attendance_state.sql",
+      "sha256": "16dbbb3636c497ccd08a66f85a0dbdc94444bd351b30978032bd51597bbc9eed"
+    },
+    {
+      "filename": "0010_leave_requests.sql",
+      "sha256": "5fb41f913d0c31371fd6ad9808351bf4509a5160f9abd54ed5cca06c7edabbb7"
+    },
+    {
+      "filename": "0011_fix_leave_overlap_trigger.sql",
+      "sha256": "b7043caaaca3a237841567c45ab01e1da8dca39ea8333aa405166f7bf89a72b8"
+    },
+    {
+      "filename": "0012_wfh_policy_overrides.sql",
+      "sha256": "9cb7a6ffad7934c3c956309d7cd2b999d123700913ceb6d60b5ed10ae3010870"
+    },
+    {
+      "filename": "0013_historical_exceptions.sql",
+      "sha256": "426d6525e1836673430758c5930b6d8afdea842ece5ddadfc3aab87ff2f3d649"
+    },
+    {
+      "filename": "0014_wfh_approval_and_geofence.sql",
+      "sha256": "7f9a1993d8b4dbd7dec3125354bdbb79624c9a7cafa5cd560a5b65f649858773"
+    },
+    {
+      "filename": "0015_office_geofence_permission.sql",
+      "sha256": "75510177a397568dd6b30299cd36bfb49d2603bda62507dace808380327da62a"
+    },
+    {
+      "filename": "0016_work_context_collaboration.sql",
+      "sha256": "ce5b542e804e4925cc9c415f6668a7cef24e7fd369791e73cd144261ffea5acb"
+    },
+    {
+      "filename": "0017_role_grant_constraint_fix.sql",
+      "sha256": "f4ce7a09407ec24ae452037149e2253e256edf2818abf103975a801523fd0cb2"
+    },
+    {
+      "filename": "0018_attendance_recovery.sql",
+      "sha256": "7a60bb0f26eb7e05522b6a12add9783d04180a1f445e1db997e8a66ce6d472fb"
+    },
+    {
+      "filename": "0019_location_evidence_retention.sql",
+      "sha256": "f1c099735d45b0db092265ffe020ef7b9a0942ece7843ae7a56cadeb8de7efca"
+    },
+    {
+      "filename": "0020_location_evidence_expiry_fix.sql",
+      "sha256": "5062f6b3fc4a7f38aaefcff2a24cda0690d60a8a7f9e28ed92606eeec9531e01"
+    },
+    {
+      "filename": "0021_notifications_inbox.sql",
+      "sha256": "6713d33b66e539d3b36ee51bd42f698fb17126351c650529b022619ce071fc36"
+    },
+    {
+      "filename": "0022_notification_preference_function.sql",
+      "sha256": "21caa6cf51a23a6341705582ba8a8e4aa436eb1c375e0679e918550a222b2f9a"
+    },
+    {
+      "filename": "0023_notification_preference_function_acl.sql",
+      "sha256": "b9f9c8cc5ae0da203763874336f33599bb52e81eadf040b73979369e753cb242"
+    },
+    {
+      "filename": "0024_permission_scope_catalogue.sql",
+      "sha256": "8a9be3e30647ca7c9b1bef7a679e52821acd6afb16e78fa1c86d0df86ff97825"
+    },
+    {
+      "filename": "0025_notification_worker_functions.sql",
+      "sha256": "1b433a42672e3255b5ff376d1b79937f83eec9b08408af9c20bf0a02ae85c3fe"
+    },
+    {
+      "filename": "0026_notification_staging_function.sql",
+      "sha256": "0ddaaaa4d5e5552469fa20e482c9263bdcddc449398d02ac6f9a5ec6811bc14d"
+    },
+    {
+      "filename": "0027_maintenance_access.sql",
+      "sha256": "7c9dabb40aa0731ea80e8235f432859459e4edc1bc509d9de1a7c4f7c087ff02"
+    },
+    {
+      "filename": "0028_work_sessions.sql",
+      "sha256": "1734c31773668e38ea9cb058058faaa00a054e266a66aa44670997a0b2d40d07"
+    },
+    {
+      "filename": "0029_person_business_date.sql",
+      "sha256": "70ff79a6a2534f20ac8dcfa1ce1fc71f7ee80de64030d4f5ffd388f8dd371387"
+    },
+    {
+      "filename": "0030_client_departments_memberships.sql",
+      "sha256": "c9ac8c111b998f8ec471c7a2f14ddbf73705430f65529e6ace8185d9bce057fe"
+    },
+    {
+      "filename": "0031_client_access_permission_scopes.sql",
+      "sha256": "ec989d9f5fe089e53965ec75ec2036945823b06d9fe5730306a5a1d71b102ed4"
+    },
+    {
+      "filename": "0032_client_access_trigger_fix.sql",
+      "sha256": "19f36944a1ac6d4e6614d6185088649fdff0fe8690806c2b0e6602e9c3d05fde"
+    },
+    {
+      "filename": "0033_client_membership_overlap.sql",
+      "sha256": "2a6bd26710cc6c0d7d835a9fd4b1245f81b0d990293f4526a4d6b21f6d290569"
+    },
+    {
+      "filename": "0034_review_cycles.sql",
+      "sha256": "250c18430959980138f62b5ef48b9ae007a55ec9fc1f567eb03103a3eb9c40fc"
+    },
+    {
+      "filename": "0035_timeline_adjustments.sql",
+      "sha256": "80708f5343cf2dd529ccd14b87d15417796892558f8dafccd2f42109352ef31e"
+    },
+    {
+      "filename": "0036_notification_delivery_operations.sql",
+      "sha256": "29b79c9f5ba1e394c42d8da8c623540015c6361bc9f09f2a3ce8998809696339"
+    },
+    {
+      "filename": "0037_reviewer_exceptions.sql",
+      "sha256": "6646bb24ce00f40770adce6d187debca06d62fe878fbba87e764200e2c052c2f"
+    },
+    {
+      "filename": "0038_reviewer_exception_constraint_fix.sql",
+      "sha256": "367bec619881b125781497e2cb8bb20048f05f23e187f800dac03c56b1a73172"
+    },
+    {
+      "filename": "0039_timeline_view_own_scope.sql",
+      "sha256": "e55103a862e6b90fa09dbe399660f28bd04b3bb3ac78b4de5377590f9a2e7927"
+    },
+    {
+      "filename": "0040_due_task_notifications.sql",
+      "sha256": "e1ad6b5289b3f98a708b6d72b7219278ff492d5a4341f6297c29df08b0421611"
+    },
+    {
+      "filename": "0041_office_business_date_authorization.sql",
+      "sha256": "4d179e1deaa7b0f537b656a7f7e54c49863edb897c2e178a320d925d27a64bb8"
+    },
+    {
+      "filename": "0042_notification_enqueue_function.sql",
+      "sha256": "4f03e93fdb79b351f20ffbf6d8201af29b4799bd4aeb72ad846e5e49654d1d0c"
+    },
+    {
+      "filename": "0043_work_session_boundary_join.sql",
+      "sha256": "6707b2f2b4352ed46e42d94e5ab3d058fd05df5efb492a1ea583fa2970e9226a"
+    },
+    {
+      "filename": "0044_collaboration_scope_catalogue.sql",
+      "sha256": "fa3ee50e0327ae9afcaa4e5b30f278e4946518b04d8e3ec365fb7c9e4cb62089"
+    },
+    {
+      "filename": "0045_tasks_create_client_scope.sql",
+      "sha256": "06e60669dffd7920f9dd4cc41226c49b0e19161fc2cbf0f709d37673806b1a2b"
+    },
+    {
+      "filename": "0046_attendance_policy_and_lifecycle.sql",
+      "sha256": "f1c1184fd2ca600ee9684348e0d079f221bbb9eca173284d3d3059a029bb59d2"
+    },
+    {
+      "filename": "0047_assignment_session_closure.sql",
+      "sha256": "4ea08fb7bd56c5b2582796785a9807c1ebea0f08ff2b97f5a15caa6916cdc948"
+    },
+    {
+      "filename": "0048_review_blocking_and_reviewer_change.sql",
+      "sha256": "7af98ff6fbc2643312241a131fd407a12350b48e8d9df1d0cbfb1aa8e762c496"
+    },
+    {
+      "filename": "0049_operational_actor_rls_gate.sql",
+      "sha256": "b23d05b71db9a7fcc1954da132350f604cb597f4355e4b471ec2a6e32be9014b"
+    },
+    {
+      "filename": "0050_review_cycle_integrity.sql",
+      "sha256": "6f388af0c429c0b091991bce5444ee120b344dc68414f6c0bc95b5ea8d33dffc"
+    },
+    {
+      "filename": "0051_workstream_requests_and_resolution.sql",
+      "sha256": "2bbe8562dff0f40fd8cc36915a17c28f9a3549c6169b504fe2d6dfba34d8ff0d"
+    },
+    {
+      "filename": "0052_auth_system_handoffs.sql",
+      "sha256": "5f2853c66616d86dbbdd74b456bf1fd1a81389f3bab6b1589b3694aaee529e1a"
+    },
+    {
+      "filename": "0053_restrict_actor_context_function.sql",
+      "sha256": "503d90bfecf75ff37567e331438bbeb841778ee40316646f825b2856d3a6de44"
+    },
+    {
+      "filename": "0054_super_admin_business_date.sql",
+      "sha256": "23c1767a19e3e365005b69daa23fa042273f43e4f99d8a02feea82ea87593d1c"
+    },
+    {
+      "filename": "0055_super_admin_operational_status.sql",
+      "sha256": "b12aad4f03f69e99cb018d0aeeae9d8ee8ba69b2eb8ab52a2d46b73d47dbf6a6"
+    },
+    {
+      "filename": "0056_public_origin_settings.sql",
+      "sha256": "4a3ed8659ebe90928fd50f892f324fdee478aace0fa60772a57b200c59aa1607"
+    },
+    {
+      "filename": "0057_public_origin_constraint_fix.sql",
+      "sha256": "3abd3cc3bf2d4c2d0aa1accf8b53a01b122f3ed3734df08b813dcdd01fa3a43e"
+    },
+    {
+      "filename": "0058_public_origin_actor_integrity.sql",
+      "sha256": "36320d68b087e988e028aae7c06dbca5872883e7d69b5e127753443cfbc92a4d"
+    },
+    {
+      "filename": "0059_boundary_closure_and_office_snapshots.sql",
+      "sha256": "ae08faca02e8370ab9f3c3982d672a629446e7937bdd7c736bc7eb6406628daf"
+    },
+    {
+      "filename": "0060_operational_hardening.sql",
+      "sha256": "5dbcb1bf3049ec330627b1d4f76315c53275296f3ae37978905499508f4c4713"
+    },
+    {
+      "filename": "0061_better_auth_rate_limits.sql",
+      "sha256": "c350ee6bd5ba679cd8833efa3389533f8300ffdd726ae6596cff358a447eef06"
+    },
+    {
+      "filename": "0062_assignment_handover_history.sql",
+      "sha256": "657668370dcb7de6a784f2c4ba9eff855c171c6a9698008fe4e7fac9cf69683a"
+    },
+    {
+      "filename": "0063_task_billing_and_corrections.sql",
+      "sha256": "99a24de6b5e718654fc09455b9cc37af2f6e8f4a00efb7124b93a5181d8e0352"
+    },
+    {
+      "filename": "0064_wfh_provisional_attendance.sql",
+      "sha256": "acaa3aae398011cc079d1eedb93b9f7e3e5fb43647fb7a8bb9fda20cfbd3f96d"
+    },
+    {
+      "filename": "0065_role_revision_concurrency.sql",
+      "sha256": "a7b142d591afddf6d19353f2ad45298fb1c176786b67afb1b6aa6b2dbd84ad54"
+    },
+    {
+      "filename": "0066_task_due_date_edits.sql",
+      "sha256": "bc22d9ab3e2c6e401ceb97b8e8d71925f5cdddff9ea465f385bfec41a24dc9da"
+    },
+    {
+      "filename": "0067_consistent_office_business_clock.sql",
+      "sha256": "cf094f84c7478ad909a88487e1ac26e88bcd9737954d662d644b9964b8221896"
+    },
+    {
+      "filename": "0068_task_catalog.sql",
+      "sha256": "f693a42c561511717ca2d0288ab19f110c9c31426c9d2332f2dbabab17abebff"
+    },
+    {
+      "filename": "0069_task_billing_provenance.sql",
+      "sha256": "a422cc458feae636a8d263924b4e7de9de0fd67ab9828df43aebeb0c9e6f9c08"
+    },
+    {
+      "filename": "0070_correction_task_billing_source.sql",
+      "sha256": "7cca55e6d21da6569397edc9e3bdc2cce3ca9251c4fd382777e7f1d7909b47c9"
+    },
+    {
+      "filename": "0071_workstream_task_billing_policy.sql",
+      "sha256": "d7cf477c45d79f296c2ee2ce9d4e7a71e43e907a1718ec0d66ae9fe90e5bbc25"
+    },
+    {
+      "filename": "0072_workstream_task_billing_rules.sql",
+      "sha256": "da33693fc692151a30b58bb919a564c3e78322b5dc174a140c1caff409e6b362"
+    },
+    {
+      "filename": "0073_unified_workstream_billing_policy.sql",
+      "sha256": "3c0f35703748e2ed5ee980d23892c699beeab1e601ed87341016de8cfeafaefd"
+    },
+    {
+      "filename": "0074_predefined_task_billing_rules.sql",
+      "sha256": "3efba208ba5730b0a757f717e4d4b881dbda238bf6a024224fde8f6b2ecb33bc"
+    },
+    {
+      "filename": "0075_personal_ui_preferences.sql",
+      "sha256": "57a67d13de3a3698f352843fa599223ae069df66af087dadc8e6782460ce8165"
+    },
+    {
+      "filename": "0076_operator_update_checksums.sql",
+      "sha256": "20b143da846b3a198eb697c1d1bebad72bb1158857b9dd8d6cbe5389acbbaeb1"
+    },
+    {
+      "filename": "0077_personal_task_views.sql",
+      "sha256": "0fd902eb0853ee594029d81e432278657e8a0f78bfd2663f7065fdab2e9ca5d7"
+    },
+    {
+      "filename": "0078_organisation_access_revisions.sql",
+      "sha256": "279247bedd96ca16789d384f609306a12a2b039ed4980c33cf080c5777b360eb"
+    }
+  ],
+  "migrationClass": "online-compatible",
+  "impact": "Adds owner-scoped saved task views and organization-scoped Availability cursor invalidation using private revision triggers. Existing configurations and operational data remain intact."
+}

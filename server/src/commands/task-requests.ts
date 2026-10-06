@@ -20,6 +20,69 @@ function id(value: unknown): string | undefined {
   return typeof value === "string" && uuidPattern.test(value) ? value : undefined;
 }
 
+/** Returns null when absent and undefined when the optional query parameter is invalid. */
+export function parseCollaborationRequestIdFilter(request: Request): string | null | undefined {
+  const values = new URL(request.url).searchParams.getAll("requestId");
+  if (values.length === 0) return null;
+  if (values.length !== 1) return undefined;
+  return id(values[0]);
+}
+
+export type CollaborationRequestKind = "reviewer" | "handover";
+
+export function collaborationRequestNotificationTarget(
+  kind: CollaborationRequestKind,
+  requestId: string,
+): Readonly<{ aggregateType: string; aggregateId: string; deepLink: string }> {
+  if (!uuidPattern.test(requestId)) throw new Error("COLLABORATION_REQUEST_ID_INVALID");
+  return {
+    aggregateType: kind === "reviewer" ? "task_reviewer_request" : "task_handover_request",
+    aggregateId: requestId,
+    deepLink: `/?view=work&${kind}Request=${encodeURIComponent(requestId)}`,
+  };
+}
+
+export const reviewerRequestsReadSql = `
+  SELECT requests.id, requests.assignment_id, requests.requester_person_id,
+         requests.candidate_reviewer_person_id, requests.request_kind, requests.reason,
+         requests.status, requests.created_at, requests.expires_at, requests.resolved_at,
+         tasks.title, tasks.id AS task_id, tasks.status AS task_status,
+         assignments.status AS assignment_status,
+         clients.id AS client_id, tasks.client_workstream_id, tasks.work_group_id,
+         requests.expires_at <= clock_timestamp() AS is_expired
+  FROM nova.task_reviewer_requests requests
+  JOIN nova.task_assignments assignments ON assignments.id = requests.assignment_id
+  JOIN nova.tasks tasks ON tasks.id = assignments.task_id
+  LEFT JOIN nova.client_workstreams workstreams ON workstreams.id = tasks.client_workstream_id
+  LEFT JOIN nova.clients clients ON clients.id = workstreams.client_id
+  WHERE requests.organisation_id = $1
+    AND ($3::uuid IS NULL OR requests.id = $3)
+    AND (requests.requester_person_id = $2 OR requests.candidate_reviewer_person_id = $2)
+  ORDER BY requests.created_at DESC LIMIT 100`;
+
+export const handoverRequestsReadSql = `
+  SELECT requests.id, requests.assignment_id, requests.requester_person_id,
+         requests.target_person_id, requests.reason, requests.status,
+         requests.created_at, requests.expires_at, requests.resolved_at, tasks.title,
+         tasks.id AS task_id, tasks.status AS task_status,
+         assignments.person_id AS assignment_person_id, assignments.status AS assignment_status,
+         clients.id AS client_id, tasks.client_workstream_id, tasks.work_group_id,
+         EXISTS (
+           SELECT 1 FROM nova.task_assignments existing
+           WHERE existing.task_id = tasks.id AND existing.person_id = $2
+             AND existing.id <> assignments.id AND existing.status <> 'cancelled'
+         ) AS actor_already_assigned,
+         requests.expires_at <= clock_timestamp() AS is_expired
+  FROM nova.task_assignment_handover_requests requests
+  JOIN nova.task_assignments assignments ON assignments.id = requests.assignment_id
+  JOIN nova.tasks tasks ON tasks.id = assignments.task_id
+  LEFT JOIN nova.client_workstreams workstreams ON workstreams.id = tasks.client_workstream_id
+  LEFT JOIN nova.clients clients ON clients.id = workstreams.client_id
+  WHERE requests.organisation_id = $1
+    AND ($3::uuid IS NULL OR requests.id = $3)
+    AND (requests.requester_person_id = $2 OR requests.target_person_id = $2)
+  ORDER BY requests.created_at DESC LIMIT 100`;
+
 function reason(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const result = value.trim();
@@ -79,6 +142,65 @@ function invalidState(row: Assignment): boolean {
   return row.task_status === "cancelled" || ["cancelled", "approved"].includes(row.status);
 }
 
+type RequestActionFlags = Readonly<{
+  canAccept: boolean;
+  canDecline: boolean;
+  canWithdraw: boolean;
+}>;
+
+type ReviewerRequestActionInput = Readonly<{
+  actorPersonId: string;
+  requesterPersonId: string;
+  candidateReviewerPersonId: string;
+  requestStatus: string;
+  expired: boolean;
+  assignmentStatus: string;
+  taskStatus: string;
+  canReviewTarget: boolean;
+}>;
+
+/** Current display capabilities for a request; resolveReviewerRequest remains authoritative. */
+export function reviewerRequestActionFlags(input: ReviewerRequestActionInput): RequestActionFlags {
+  const assignmentActive = input.taskStatus !== "cancelled" &&
+    !["cancelled", "approved"].includes(input.assignmentStatus);
+  const requestOpen = input.requestStatus === "pending" && !input.expired && assignmentActive;
+  const isRecipient = input.candidateReviewerPersonId === input.actorPersonId;
+  return {
+    canAccept: requestOpen && isRecipient && input.canReviewTarget,
+    canDecline: requestOpen && isRecipient,
+    canWithdraw: requestOpen && input.requesterPersonId === input.actorPersonId,
+  };
+}
+
+type HandoverRequestActionInput = Readonly<{
+  actorPersonId: string;
+  requesterPersonId: string;
+  targetPersonId: string;
+  assignmentPersonId: string;
+  requestStatus: string;
+  expired: boolean;
+  assignmentStatus: string;
+  taskStatus: string;
+  canReceiveAssignments: boolean;
+  canAcceptTarget: boolean;
+  alreadyAssigned: boolean;
+}>;
+
+/** Current display capabilities for a handover; resolveHandoverRequest remains authoritative. */
+export function handoverRequestActionFlags(input: HandoverRequestActionInput): RequestActionFlags {
+  const assignmentHandoverable = input.assignmentPersonId === input.requesterPersonId &&
+    input.taskStatus !== "cancelled" &&
+    ["assigned", "in_progress", "changes_requested"].includes(input.assignmentStatus);
+  const requestOpen = input.requestStatus === "pending" && !input.expired && assignmentHandoverable;
+  const isRecipient = input.targetPersonId === input.actorPersonId;
+  return {
+    canAccept: requestOpen && isRecipient && input.canReceiveAssignments &&
+      input.canAcceptTarget && !input.alreadyAssigned,
+    canDecline: requestOpen && isRecipient,
+    canWithdraw: requestOpen && input.requesterPersonId === input.actorPersonId,
+  };
+}
+
 async function notify(
   transaction: PoolClient,
   organisationId: string,
@@ -86,19 +208,21 @@ async function notify(
   eventKey: "task.reviewer_request" | "task.reviewer_accepted" | "task.reviewer_declined" | "task.handover_requested" | "task.handover_accepted" | "task.handover_declined",
   title: string,
   bodyText: string,
+  requestId: string,
   assignmentId: string,
-  taskId: string,
   suffix: string,
 ): Promise<void> {
+  const kind = eventKey.startsWith("task.reviewer_") ? "reviewer" : "handover";
+  const target = collaborationRequestNotificationTarget(kind, requestId);
   await enqueueNotification(transaction, {
     organisationId,
     recipientPersonId,
     eventKey,
     title,
     body: bodyText,
-    aggregateType: "task_assignment",
-    aggregateId: assignmentId,
-    deepLink: "/?view=today&task=" + taskId,
+    aggregateType: target.aggregateType,
+    aggregateId: target.aggregateId,
+    deepLink: target.deepLink,
     idempotencyKey: `${eventKey}:${assignmentId}:${suffix}`,
   });
 }
@@ -137,7 +261,7 @@ export async function createReviewerRequest(request: Request, assignmentId: stri
       await audit(transaction, actor.context.organisationId, actor.context.userId, "tasks.reviewer_requested", "task_reviewer_request", requestId, {
         assignment_id: assignmentId, candidate_reviewer_person_id: candidatePersonId,
       });
-      await notify(transaction, actor.context.organisationId, candidatePersonId, "task.reviewer_request", "Reviewer request", `You were asked to review: ${row.title}.`, assignmentId, row.task_id, requestId);
+      await notify(transaction, actor.context.organisationId, candidatePersonId, "task.reviewer_request", "Reviewer request", `You were asked to review: ${row.title}.`, requestId, assignmentId, requestId);
       return { requestId, assignmentId, candidateReviewerPersonId: candidatePersonId };
     });
     if (result === "PERMISSION_DENIED") return json({ error: result }, 403);
@@ -181,9 +305,7 @@ export async function resolveReviewerRequest(request: Request, requestId: string
           eventKey: "task.reviewer_request_expired",
           title: "Reviewer request expired",
           body: "Your reviewer request expired. Choose another reviewer.",
-          aggregateType: "task_reviewer_request",
-          aggregateId: requestId,
-          deepLink: "/?view=work&assignment=" + requestRow.assignment_id,
+          ...collaborationRequestNotificationTarget("reviewer", requestId),
           idempotencyKey: "task.reviewer_request_expired:" + requestId,
         });
         return "REQUEST_EXPIRED" as const;
@@ -216,9 +338,9 @@ export async function resolveReviewerRequest(request: Request, requestId: string
       );
       await audit(transaction, actor.context.organisationId, actor.context.userId, `tasks.reviewer_request_${decision === "accept" ? "accepted" : decision === "decline" ? "declined" : "withdrawn"}`, "task_reviewer_request", requestId, { assignment_id: row.id, reason: resolutionReason });
       if (decision === "accept") {
-        await notify(transaction, actor.context.organisationId, row.person_id, "task.reviewer_accepted", "Reviewer accepted", `A reviewer accepted your task: ${row.title}.`, row.id, row.task_id, requestId);
+        await notify(transaction, actor.context.organisationId, row.person_id, "task.reviewer_accepted", "Reviewer accepted", `A reviewer accepted your task: ${row.title}.`, requestId, row.id, requestId);
       } else if (decision === "decline") {
-        await notify(transaction, actor.context.organisationId, row.person_id, "task.reviewer_declined", "Reviewer declined", `The requested reviewer declined: ${row.title}.`, row.id, row.task_id, requestId);
+        await notify(transaction, actor.context.organisationId, row.person_id, "task.reviewer_declined", "Reviewer declined", `The requested reviewer declined: ${row.title}.`, requestId, row.id, requestId);
       }
       return { requestId, assignmentId: row.id, status: nextStatus };
     });
@@ -231,25 +353,64 @@ export async function resolveReviewerRequest(request: Request, requestId: string
 export async function readReviewerRequests(request: Request): Promise<Response> {
   const actor = await normalActor(request);
   if ("response" in actor) return actor.response;
+  const requestId = parseCollaborationRequestIdFilter(request);
+  if (requestId === undefined) return json({ error: "REQUEST_ID_INVALID" }, 400);
   try {
     const result = await withDatabaseRequest(actor.context, async (transaction) => {
-      const rows = await transaction.query(
-        `SELECT requests.id, requests.assignment_id, requests.requester_person_id,
-                requests.candidate_reviewer_person_id, requests.request_kind, requests.reason,
-                requests.status, requests.created_at, requests.expires_at, requests.resolved_at,
-                tasks.title
-         FROM nova.task_reviewer_requests requests
-         JOIN nova.task_assignments assignments ON assignments.id = requests.assignment_id
-         JOIN nova.tasks tasks ON tasks.id = assignments.task_id
-         WHERE requests.organisation_id = $1
-           AND (requests.requester_person_id = $2 OR requests.candidate_reviewer_person_id = $2)
-         ORDER BY requests.created_at DESC LIMIT 100`,
-        [actor.context.organisationId, actor.context.userId],
+      const rows = await transaction.query<{
+        id: string; assignment_id: string; requester_person_id: string;
+        candidate_reviewer_person_id: string; request_kind: string; reason: string;
+        status: string; created_at: Date; expires_at: Date; resolved_at: Date | null;
+        title: string; task_id: string; task_status: string; assignment_status: string;
+        client_id: string | null; client_workstream_id: string | null; work_group_id: string | null;
+        is_expired: boolean;
+      }>(
+        reviewerRequestsReadSql,
+        [actor.context.organisationId, actor.context.userId, requestId],
       );
-      return rows.rows.map((row) => ({
-        ...row,
-        isRecipient: row.candidate_reviewer_person_id === actor.context.userId,
-      }));
+      const requests = [];
+      for (const row of rows.rows) {
+        const isRecipient = row.candidate_reviewer_person_id === actor.context.userId;
+        const canCheckReviewPermission = reviewerRequestActionFlags({
+          actorPersonId: actor.context.userId,
+          requesterPersonId: row.requester_person_id,
+          candidateReviewerPersonId: row.candidate_reviewer_person_id,
+          requestStatus: row.status,
+          expired: row.is_expired,
+          assignmentStatus: row.assignment_status,
+          taskStatus: row.task_status,
+          canReviewTarget: true,
+        }).canAccept;
+        const canReviewTarget = canCheckReviewPermission && await personCanReviewTarget(
+          transaction,
+          actor.context.userId,
+          actor.context.organisationId,
+          {
+            ...(row.client_id ? { clientId: row.client_id } : {}),
+            ...(row.client_workstream_id ? { clientWorkstreamId: row.client_workstream_id } : {}),
+            ...(row.work_group_id ? { groupId: row.work_group_id } : {}),
+            taskId: row.task_id,
+          },
+        );
+        const { task_id: _taskId, task_status: _taskStatus, assignment_status: _assignmentStatus,
+          client_id: _clientId, client_workstream_id: _clientWorkstreamId, work_group_id: _workGroupId,
+          is_expired: _isExpired, ...requestData } = row;
+        requests.push({
+          ...requestData,
+          isRecipient,
+          ...reviewerRequestActionFlags({
+            actorPersonId: actor.context.userId,
+            requesterPersonId: row.requester_person_id,
+            candidateReviewerPersonId: row.candidate_reviewer_person_id,
+            requestStatus: row.status,
+            expired: row.is_expired,
+            assignmentStatus: row.assignment_status,
+            taskStatus: row.task_status,
+            canReviewTarget,
+          }),
+        });
+      }
+      return requests;
     });
     return json({ requests: result });
   } catch { return json({ error: "INTERNAL_ERROR" }, 500); }
@@ -317,7 +478,7 @@ export async function createHandoverRequest(request: Request, assignmentId: stri
       const requestId = created.rows[0]?.id;
       if (!requestId) throw new Error("HANDOVER_REQUEST_CREATE_RESULT_MISSING");
       await audit(transaction, actor.context.organisationId, actor.context.userId, "tasks.handover_requested", "task_handover_request", requestId, { assignment_id: assignmentId, target_person_id: targetPersonId });
-      await notify(transaction, actor.context.organisationId, targetPersonId, "task.handover_requested", "Handover request", `You were asked to take over: ${row.title}.`, assignmentId, row.task_id, requestId);
+      await notify(transaction, actor.context.organisationId, targetPersonId, "task.handover_requested", "Handover request", `You were asked to take over: ${row.title}.`, requestId, assignmentId, requestId);
       return { requestId, assignmentId, targetPersonId };
     });
     if (result === "PERMISSION_DENIED") return json({ error: result }, 403);
@@ -360,9 +521,7 @@ export async function resolveHandoverRequest(request: Request, requestId: string
           eventKey: "task.handover_request_expired",
           title: "Handover request expired",
           body: "Your handover request expired. Choose another person.",
-          aggregateType: "task_handover_request",
-          aggregateId: requestId,
-          deepLink: "/?view=work&assignment=" + requestRow.assignment_id,
+          ...collaborationRequestNotificationTarget("handover", requestId),
           idempotencyKey: "task.handover_request_expired:" + requestId,
         });
         return "REQUEST_EXPIRED" as const;
@@ -400,8 +559,8 @@ export async function resolveHandoverRequest(request: Request, requestId: string
         const newAssignmentId = created.rows[0]?.id;
         if (!newAssignmentId) throw new Error("HANDOVER_ASSIGNMENT_CREATE_RESULT_MISSING");
         await transaction.query(`UPDATE nova.tasks SET status = 'in_progress' WHERE id = $1 AND status NOT IN ('cancelled', 'done')`, [row.task_id]);
-        await notify(transaction, actor.context.organisationId, row.person_id, "task.handover_accepted", "Handover accepted", `Your handover was accepted: ${row.title}.`, newAssignmentId, row.task_id, requestId + ":requester");
-        await notify(transaction, actor.context.organisationId, actor.context.userId, "task.handover_accepted", "Task handed over", `You accepted the handover: ${row.title}.`, newAssignmentId, row.task_id, requestId + ":target");
+        await notify(transaction, actor.context.organisationId, row.person_id, "task.handover_accepted", "Handover accepted", `Your handover was accepted: ${row.title}.`, requestId, newAssignmentId, requestId + ":requester");
+        await notify(transaction, actor.context.organisationId, actor.context.userId, "task.handover_accepted", "Task handed over", `You accepted the handover: ${row.title}.`, requestId, newAssignmentId, requestId + ":target");
         await audit(transaction, actor.context.organisationId, actor.context.userId, "tasks.handover_accepted", "task_assignment", newAssignmentId, { previous_assignment_id: row.id, previous_person_id: row.person_id });
         await transaction.query(`UPDATE nova.task_assignment_handover_requests SET status = 'accepted', resolved_at = clock_timestamp(), resolved_by_person_id = $2, resolution_reason = $3 WHERE id = $1`, [requestId, actor.context.userId, resolutionReason]);
         return { requestId, assignmentId: newAssignmentId, previousAssignmentId: row.id, status: "accepted" };
@@ -409,7 +568,7 @@ export async function resolveHandoverRequest(request: Request, requestId: string
       const nextStatus = decision === "decline" ? "declined" : "withdrawn";
       await transaction.query(`UPDATE nova.task_assignment_handover_requests SET status = $2::nova.task_handover_request_status, resolved_at = clock_timestamp(), resolved_by_person_id = $3, resolution_reason = $4 WHERE id = $1`, [requestId, nextStatus, actor.context.userId, resolutionReason]);
       await audit(transaction, actor.context.organisationId, actor.context.userId, `tasks.handover_request_${decision === "decline" ? "declined" : "withdrawn"}`, "task_handover_request", requestId, { assignment_id: row.id, reason: resolutionReason });
-      if (decision === "decline") await notify(transaction, actor.context.organisationId, row.person_id, "task.handover_declined", "Handover declined", `The handover was declined: ${row.title}.`, row.id, row.task_id, requestId);
+      if (decision === "decline") await notify(transaction, actor.context.organisationId, row.person_id, "task.handover_declined", "Handover declined", `The handover was declined: ${row.title}.`, requestId, row.id, requestId);
       return { requestId, assignmentId: row.id, status: nextStatus };
     });
     if (result === "REQUEST_NOT_FOUND" || result === "ASSIGNMENT_NOT_FOUND") return json({ error: result }, 404);
@@ -428,24 +587,75 @@ export async function resolveHandoverRequest(request: Request, requestId: string
 export async function readHandoverRequests(request: Request): Promise<Response> {
   const actor = await normalActor(request);
   if ("response" in actor) return actor.response;
+  const requestId = parseCollaborationRequestIdFilter(request);
+  if (requestId === undefined) return json({ error: "REQUEST_ID_INVALID" }, 400);
   try {
     const result = await withDatabaseRequest(actor.context, async (transaction) => {
-      const rows = await transaction.query(
-        `SELECT requests.id, requests.assignment_id, requests.requester_person_id,
-                requests.target_person_id, requests.reason, requests.status,
-                requests.created_at, requests.expires_at, requests.resolved_at, tasks.title
-         FROM nova.task_assignment_handover_requests requests
-         JOIN nova.task_assignments assignments ON assignments.id = requests.assignment_id
-         JOIN nova.tasks tasks ON tasks.id = assignments.task_id
-         WHERE requests.organisation_id = $1
-           AND (requests.requester_person_id = $2 OR requests.target_person_id = $2)
-         ORDER BY requests.created_at DESC LIMIT 100`,
-        [actor.context.organisationId, actor.context.userId],
+      const rows = await transaction.query<{
+        id: string; assignment_id: string; requester_person_id: string; target_person_id: string;
+        reason: string; status: string; created_at: Date; expires_at: Date; resolved_at: Date | null;
+        title: string; task_id: string; task_status: string; assignment_status: string;
+        assignment_person_id: string; client_id: string | null; client_workstream_id: string | null;
+        work_group_id: string | null; actor_already_assigned: boolean; is_expired: boolean;
+      }>(
+        handoverRequestsReadSql,
+        [actor.context.organisationId, actor.context.userId, requestId],
       );
-      return rows.rows.map((row) => ({
-        ...row,
-        isRecipient: row.target_person_id === actor.context.userId,
-      }));
+      const requests = [];
+      for (const row of rows.rows) {
+        const isRecipient = row.target_person_id === actor.context.userId;
+        const canCheckAcceptance = handoverRequestActionFlags({
+          actorPersonId: actor.context.userId,
+          requesterPersonId: row.requester_person_id,
+          targetPersonId: row.target_person_id,
+          assignmentPersonId: row.assignment_person_id,
+          requestStatus: row.status,
+          expired: row.is_expired,
+          assignmentStatus: row.assignment_status,
+          taskStatus: row.task_status,
+          canReceiveAssignments: true,
+          canAcceptTarget: true,
+          alreadyAssigned: row.actor_already_assigned,
+        }).canAccept;
+        const target = {
+          ...(row.client_id ? { clientId: row.client_id } : {}),
+          ...(row.client_workstream_id ? { clientWorkstreamId: row.client_workstream_id } : {}),
+          ...(row.work_group_id ? { groupId: row.work_group_id } : {}),
+          taskId: row.task_id,
+        };
+        const canReceiveAssignments = canCheckAcceptance && await personCanReceiveAssignments(
+          transaction, actor.context.userId, actor.context.organisationId,
+        );
+        const canAcceptTarget = canReceiveAssignments && await hasPermission(
+          transaction,
+          actor.context.userId,
+          actor.context.organisationId,
+          "tasks.handover_accept",
+          target,
+        );
+        const { task_id: _taskId, task_status: _taskStatus, assignment_status: _assignmentStatus,
+          assignment_person_id: _assignmentPersonId, client_id: _clientId,
+          client_workstream_id: _clientWorkstreamId, work_group_id: _workGroupId,
+          actor_already_assigned: _actorAlreadyAssigned, is_expired: _isExpired, ...requestData } = row;
+        requests.push({
+          ...requestData,
+          isRecipient,
+          ...handoverRequestActionFlags({
+            actorPersonId: actor.context.userId,
+            requesterPersonId: row.requester_person_id,
+            targetPersonId: row.target_person_id,
+            assignmentPersonId: row.assignment_person_id,
+            requestStatus: row.status,
+            expired: row.is_expired,
+            assignmentStatus: row.assignment_status,
+            taskStatus: row.task_status,
+            canReceiveAssignments,
+            canAcceptTarget,
+            alreadyAssigned: row.actor_already_assigned,
+          }),
+        });
+      }
+      return requests;
     });
     return json({ requests: result });
   } catch { return json({ error: "INTERNAL_ERROR" }, 500); }

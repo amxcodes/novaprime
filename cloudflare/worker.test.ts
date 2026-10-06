@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import worker from "./worker";
 
 const environmentKeys = [
@@ -16,6 +17,19 @@ const environmentKeys = [
   "NOVA_SERVE_WEB",
 ] as const;
 const previousEnvironment = new Map(environmentKeys.map((key) => [key, process.env[key]]));
+
+test("both Cloudflare scheduler configs build and serve the same Vite asset graph", () => {
+  for (const file of ["./wrangler.toml", "./wrangler.supabase-cron.toml"]) {
+    const configuration = readFileSync(new URL(file, import.meta.url), "utf8");
+    expect(configuration).toContain('command = "bun run build:web"');
+    expect(configuration).toContain('directory = "../web/dist"');
+    expect(configuration).toContain('run_worker_first = ["/api/*"]');
+  }
+
+  const supabaseCron = readFileSync(new URL("./wrangler.supabase-cron.toml", import.meta.url), "utf8");
+  expect(supabaseCron).toContain('NOVA_BACKGROUND_SCHEDULER = "supabase"');
+  expect(supabaseCron).toContain("crons = []");
+});
 
 afterEach(() => {
   for (const key of environmentKeys) {

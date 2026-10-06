@@ -6,6 +6,13 @@ import { idempotent, isIdempotencyReplay, requestIdempotencyKey } from "../idemp
 import { enqueueNotification } from "./notifications.js";
 import { lockAvailabilityDates } from "./availability-lock.js";
 import { discardWfhProvisionalEvidence } from "./wfh-provisional.js";
+import { canReviewRequest } from "./review-capability.js";
+import {
+  cancellableWfhPredicate,
+  presentWfhRequest,
+  wfhMineReadSql,
+  type WfhRequestReadRow,
+} from "./wfh-request-read-model.js";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -226,24 +233,6 @@ async function wfhEligibility(
   return { allowed: true };
 }
 
-function presentRequest(row: {
-  id: string; person_id: string; start_date: string; end_date: string;
-  reason: string | null; status: string; reviewer_person_id: string | null;
-  reviewed_at: Date | null; review_reason: string | null;
-}) {
-  return {
-    id: row.id,
-    personId: row.person_id,
-    startDate: row.start_date,
-    endDate: row.end_date,
-    reason: row.reason,
-    status: row.status,
-    reviewerPersonId: row.reviewer_person_id,
-    reviewedAt: row.reviewed_at,
-    reviewReason: row.review_reason,
-  };
-}
-
 export async function createWfhRequest(request: Request): Promise<Response> {
   const actor = await normalActor(request);
   if ("response" in actor) return actor.response;
@@ -338,15 +327,11 @@ export async function readWfhMine(request: Request): Promise<Response> {
       const today = await databaseToday(transaction, actor.context.userId);
       if (!await hasWfhPermission(transaction, actor.context.userId, actor.context.organisationId,
         "availability.wfh.request", actor.context.userId, today)) return "PERMISSION_DENIED" as const;
-      const rows = await transaction.query(
-        `SELECT id, person_id, start_date, end_date, reason, status,
-                reviewer_person_id, reviewed_at, review_reason
-         FROM nova.wfh_requests
-         WHERE organisation_id = $1 AND person_id = $2
-         ORDER BY start_date DESC, created_at DESC`,
-        [actor.context.organisationId, actor.context.userId],
+      const rows = await transaction.query<WfhRequestReadRow>(
+        wfhMineReadSql,
+        [actor.context.organisationId, actor.context.userId, today],
       );
-      return rows.rows.map(presentRequest);
+      return rows.rows.map(presentWfhRequest);
     });
     if (result === "PERMISSION_DENIED") return json({ error: result }, 403);
     return json({ requests: result });
@@ -369,8 +354,12 @@ export async function readPendingWfhRequests(request: Request): Promise<Response
       );
       const visible = [];
       for (const row of rows.rows) {
-        if (await hasWfhPermission(transaction, actor.context.userId, actor.context.organisationId,
-          "availability.wfh.review", row.person_id, today)) visible.push(presentRequest(row));
+        const permitted = await hasWfhPermission(transaction, actor.context.userId, actor.context.organisationId,
+          "availability.wfh.review", row.person_id, today);
+        if (permitted) visible.push(presentWfhRequest({
+          ...row,
+          can_review: canReviewRequest(actor.context.userId, row.person_id, permitted),
+        }));
       }
       return visible;
     });
@@ -553,20 +542,11 @@ export async function cancelWfhRequest(request: Request, requestId: string): Pro
       const reviewedAt = clock.rows[0]?.reviewed_at;
       if (!reviewedAt) throw new Error("WFH_CANCEL_CLOCK_MISSING");
       const updated = await transaction.query<{ id: string }>(
-        `UPDATE nova.wfh_requests
+        `UPDATE nova.wfh_requests AS requests
          SET status = 'cancelled', reviewer_person_id = $2, reviewed_at = $5::timestamptz
-         WHERE id = $1 AND organisation_id = $3 AND person_id = $2
-           AND status IN ('pending', 'approved')
-           AND end_date >= $4::date
-           AND NOT EXISTS (
-             SELECT 1
-             FROM nova.attendance_days attendance
-             WHERE attendance.person_id = nova.wfh_requests.person_id
-               AND attendance.mode = 'wfh'
-               AND attendance.business_date BETWEEN nova.wfh_requests.start_date
-                 AND nova.wfh_requests.end_date
-           )
-         RETURNING id`,
+         WHERE requests.id = $1 AND requests.organisation_id = $3 AND requests.person_id = $2
+           AND (${cancellableWfhPredicate("requests", "$4")})
+         RETURNING requests.id`,
          [requestId, actor.context.userId, actor.context.organisationId, today, reviewedAt],
       );
       if (!updated.rows[0]) return "WFH_REQUEST_NOT_CANCELLABLE" as const;

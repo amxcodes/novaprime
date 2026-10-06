@@ -1,0 +1,379 @@
+.root {
+  container: email-delivery / inline-size;
+  display: grid;
+  gap: var(--nova-space-5);
+  min-width: 0;
+  color: var(--nova-color-text-primary);
+}
+
+.header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--nova-space-4);
+  min-width: 0;
+}
+
+.header h2,
+.sectionHeading h3,
+.connection h4 {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  line-height: var(--nova-type-line-tight);
+}
+
+.header h2 {
+  font-size: var(--nova-type-size-xl);
+}
+
+.eyebrow {
+  margin: 0 0 var(--nova-space-1);
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.intro {
+  max-width: 58rem;
+  margin: var(--nova-space-2) 0 0;
+  color: var(--nova-color-text-secondary);
+}
+
+.content {
+  display: grid;
+  gap: var(--nova-space-5);
+  min-width: 0;
+}
+
+.connectionSection,
+.createSection {
+  display: grid;
+  align-content: start;
+  gap: var(--nova-space-4);
+  min-width: 0;
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--nova-space-3);
+  min-width: 0;
+}
+
+.sectionHeading h3 {
+  font-size: var(--nova-type-size-lg);
+}
+
+.sectionHeading p {
+  margin: var(--nova-space-1) 0 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+}
+
+.connectionList {
+  display: grid;
+  gap: var(--nova-space-3);
+  min-width: 0;
+}
+
+.connection {
+  display: grid;
+  gap: var(--nova-space-3);
+  min-width: 0;
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+}
+
+.connectionHeader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--nova-space-3);
+  min-width: 0;
+}
+
+.connectionIdentity {
+  display: grid;
+  gap: var(--nova-space-1);
+  min-width: 0;
+}
+
+.connection h4 {
+  font-size: var(--nova-type-size-md);
+  overflow-wrap: anywhere;
+}
+
+.connectionMeta,
+.testSummary,
+.actionHint,
+.providerHint,
+.callbackUri,
+.secretNote {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.activeStatus,
+.inactiveStatus {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  min-height: var(--nova-control-height-compact);
+  padding-inline: var(--nova-space-2);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-pill);
+  color: var(--nova-color-text-secondary);
+  background: var(--nova-color-surface);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-medium);
+  white-space: nowrap;
+}
+
+.activeStatus {
+  border-color: var(--nova-color-success);
+  color: var(--nova-color-success);
+  background: var(--nova-color-success-surface);
+}
+
+.connectionActions,
+.confirmActions,
+.formFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nova-space-2);
+  min-width: 0;
+}
+
+.testForm,
+.deactivateConfirm {
+  display: grid;
+  gap: var(--nova-space-3);
+  max-width: 34rem;
+  padding-block-start: var(--nova-space-3);
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.testForm[hidden],
+.deactivateConfirm[hidden] {
+  display: none;
+}
+
+.deactivateConfirm p {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+}
+
+.actionHint {
+  color: var(--nova-color-text-muted);
+}
+
+.originNotice {
+  display: grid;
+  gap: var(--nova-space-2);
+  min-width: 0;
+}
+
+.callbackUri {
+  padding-inline-start: var(--nova-space-3);
+  border-inline-start: 2px solid var(--nova-color-border);
+}
+
+.callbackUri code {
+  color: var(--nova-color-text-primary);
+  font-family: var(--nova-type-family-mono);
+  overflow-wrap: anywhere;
+}
+
+.createForm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: var(--nova-space-4);
+  min-width: 0;
+}
+
+.createForm > :nth-child(1),
+.createForm > :nth-child(2),
+.credentials,
+.createForm > [data-kind],
+.actionFeedback,
+.formFooter {
+  grid-column: 1 / -1;
+}
+
+.actionFeedback {
+  display: grid;
+  gap: var(--nova-space-2);
+  min-width: 0;
+}
+
+.actionFeedback p {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+}
+
+.credentials {
+  display: grid;
+  gap: var(--nova-space-3);
+  min-width: 0;
+  margin: 0;
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+}
+
+.credentials legend {
+  padding-inline: var(--nova-space-1);
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.providerFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--nova-space-4);
+  min-width: 0;
+}
+
+.checkboxField {
+  display: flex;
+  align-items: start;
+  gap: var(--nova-space-3);
+  min-height: var(--nova-control-touch-target);
+  padding: var(--nova-space-2);
+  border-radius: var(--nova-radius-control);
+  color: var(--nova-color-text-primary);
+  cursor: pointer;
+}
+
+.checkboxField input {
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0.2rem 0 0;
+  accent-color: var(--nova-color-action);
+}
+
+.checkboxField span {
+  display: grid;
+  gap: var(--nova-space-1);
+}
+
+.checkboxField strong {
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-medium);
+}
+
+.checkboxField small {
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+}
+
+.checkboxField:focus-within {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+.formFooter {
+  justify-content: space-between;
+  align-items: end;
+  padding-block-start: var(--nova-space-2);
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.secretNote {
+  max-width: 40rem;
+}
+
+.readError {
+  display: grid;
+  justify-items: start;
+  gap: var(--nova-space-3);
+}
+
+.root button {
+  max-width: 100%;
+}
+
+.root :focus-visible {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+@container email-delivery (min-width: 68rem) {
+  .content {
+    grid-template-columns: minmax(0, 1fr) minmax(24rem, 0.9fr);
+    align-items: start;
+  }
+
+  .createSection {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+@container email-delivery (max-width: 44rem) {
+  .connectionSection,
+  .createSection {
+    padding: var(--nova-space-3);
+  }
+
+  .createForm,
+  .providerFields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sectionHeading,
+  .connectionHeader,
+  .formFooter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sectionHeading > button,
+  .formFooter > button {
+    width: 100%;
+  }
+}
+
+@media (any-pointer: coarse) {
+  .connectionActions > button,
+  .confirmActions > button,
+  .testForm > button,
+  .readError > button,
+  .formFooter > button,
+  .sectionHeading > button {
+    min-height: var(--nova-control-touch-target);
+  }
+}
+
+@media (forced-colors: active) {
+  .connectionSection,
+  .createSection,
+  .connection,
+  .credentials,
+  .checkboxField {
+    border-color: CanvasText;
+  }
+
+  .activeStatus,
+  .inactiveStatus {
+    border-color: CanvasText;
+    color: CanvasText;
+    background: Canvas;
+  }
+}

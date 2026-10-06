@@ -1,0 +1,210 @@
+.editor {
+  min-width: 0;
+  container: role-editor / inline-size;
+}
+
+.layout {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--nova-space-5);
+}
+
+.roleList,
+.form,
+.presetPanel,
+.policySection {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--nova-space-4);
+}
+
+.roleList,
+.form {
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.listHeading,
+.formHeader,
+.sectionHeading,
+.roleCard,
+.roleCopy,
+.formActions,
+.presetControls {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nova-space-3);
+}
+
+.listHeading > div,
+.formHeader > div,
+.sectionHeading > div,
+.roleCopy {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-1);
+}
+
+.sectionTitle {
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-lg);
+  font-weight: var(--nova-type-weight-semibold);
+  line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
+}
+
+.sectionHint,
+.sectionHeading p,
+.presetHint,
+.liveHint,
+.roleKey,
+.policyChoice small {
+  min-width: 0;
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+  letter-spacing: 0.08em;
+}
+
+.roleCard {
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+}
+
+.roleCard > :last-child { min-height: var(--nova-control-touch-target); }
+
+.roleName,
+.policyChoice strong {
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.roleKey {
+  font-family: var(--nova-type-family-mono);
+  overflow-wrap: anywhere;
+}
+
+.presetPanel {
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+}
+
+.presetControls {
+  justify-content: flex-start;
+}
+
+.presetControls > * {
+  min-width: min(100%, 18rem);
+}
+
+.identityGrid,
+.policyGrid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--nova-space-3);
+}
+
+.sectionHeading {
+  align-items: flex-start;
+}
+
+.sectionHeading h4 {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-md);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.policyChoice {
+  display: flex;
+  min-width: 0;
+  min-height: var(--nova-control-touch-target);
+  align-items: flex-start;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+  cursor: pointer;
+}
+
+.policyChoice input {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+  margin: 0.125rem 0 0;
+  accent-color: var(--nova-color-action);
+}
+
+.policyChoice span {
+  display: grid;
+  min-width: 0;
+  gap: var(--nova-space-1);
+}
+
+.feedback,
+.readErrors { min-width: 0; }
+.feedback:focus,
+.formHeader h3:focus,
+.editor :global(:focus-visible) {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
+.formActions { justify-content: flex-start; }
+.formActions > * { min-height: var(--nova-control-touch-target); }
+
+@container role-editor (min-width: 40rem) and (max-width: 63.999rem) {
+  .roleList, .form { padding: var(--nova-space-5); }
+  .identityGrid, .policyGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@container role-editor (min-width: 64rem) {
+  .editor[data-has-draft="true"] .layout { grid-template-columns: minmax(16rem, 0.72fr) minmax(0, 1.65fr); }
+  .roleList { position: sticky; inset-block-start: var(--nova-space-4); }
+  .identityGrid, .policyGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .formActions { justify-content: flex-end; }
+}
+
+@container role-editor (max-width: 39.999rem) {
+  .listHeading, .formHeader, .sectionHeading { align-items: flex-start; }
+  .presetControls { align-items: stretch; }
+  .presetControls > * { width: 100%; min-width: 0; }
+  .formActions { align-items: stretch; }
+  .formActions > * { width: 100%; }
+  .roleCard > :last-child { width: 100%; }
+}
+
+@media (forced-colors: active) {
+  .roleList, .form, .presetPanel, .roleCard, .policyChoice {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+  .policyChoice input { accent-color: Highlight; }
+}
