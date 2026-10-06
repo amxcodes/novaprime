@@ -57,12 +57,19 @@ export async function loadAdminPageData<TLifetime>(
   pageReady: Promise<boolean>,
   services: AdminPageLoaderServices<TLifetime>,
 ): Promise<AdminPageData | undefined> {
-  if (!await pageReady || !services.isCurrentPageRequest(lifetime)) return undefined;
+  if (!services.isCurrentPageRequest(lifetime)) return undefined;
 
-  const actorGrants = await services.readOrError(
+  // The initial Admin shell import and the actor's own grant projection are
+  // independent. Start the small server-authorized grant read immediately,
+  // but do not plan any protected feature reads or imports until both are
+  // ready and this request still owns the page.
+  const actorGrantsRead = services.readOrError(
     services.pageApi("/api/me/permission-grants", lifetime),
     { grants: [], isSuperAdmin: false, actorPersonId: null },
-  ) as AdminActorRead;
+  );
+  const [pageIsReady, actorGrantsResult] = await Promise.all([pageReady, actorGrantsRead]);
+  if (!pageIsReady || !services.isCurrentPageRequest(lifetime)) return undefined;
+  const actorGrants = actorGrantsResult as AdminActorRead;
   if (!services.isCurrentPageRequest(lifetime)) return undefined;
 
   // Feature imports are client-side view code, gated by the same effective

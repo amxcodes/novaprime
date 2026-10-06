@@ -150,6 +150,46 @@ describe("Admin page route data", () => {
     expect(requests).toEqual(["/api/me/permission-grants"]);
   });
 
+  it("starts only the actor grant read while the Admin shell module is loading", async () => {
+    const { requests, services } = createServices({
+      grants: [{ permissionKey: "roles.view", scope: "organisation" }],
+    });
+    let resolvePageReady!: (ready: boolean) => void;
+    const pageReady = new Promise<boolean>((resolve) => { resolvePageReady = resolve; });
+    let settled = false;
+    const load = loadAdminPageData("page-1", pageReady, services).then((data) => {
+      settled = true;
+      return data;
+    });
+
+    expect(requests).toEqual(["/api/me/permission-grants"]);
+    expect(settled).toBe(false);
+
+    resolvePageReady(true);
+    const data = await load;
+    expect(data).toBeDefined();
+    expect(requests).toContain("/api/roles");
+  });
+
+  it("does not start protected reads or feature imports when the Admin shell fails", async () => {
+    const { requests, services } = createServices({
+      grants: [{ permissionKey: "roles.view", scope: "organisation" }],
+    });
+    let resolvePageReady!: (ready: boolean) => void;
+    const pageReady = new Promise<boolean>((resolve) => { resolvePageReady = resolve; });
+    const imports: string[] = [];
+    services.onEffectiveGrantsResolved = (actorGrants) => {
+      void preloadAdminPageFeatureModules({ actorGrants }, createImporters(imports));
+    };
+    const load = loadAdminPageData("page-1", pageReady, services);
+
+    expect(requests).toEqual(["/api/me/permission-grants"]);
+    resolvePageReady(false);
+    expect(await load).toBeUndefined();
+    expect(requests).toEqual(["/api/me/permission-grants"]);
+    expect(imports).toEqual([]);
+  });
+
   it("starts only authorized Admin modules before the protected read batch settles", async () => {
     const actorGrants = { grants: [{ permissionKey: "roles.view", scope: "organisation" }] };
     const { requests, services } = createServices(actorGrants);
