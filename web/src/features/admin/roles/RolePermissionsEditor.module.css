@@ -189,7 +189,7 @@
 .readErrors { min-width: 0; }
 .feedback:focus,
 .formHeader h3:focus,
-.editor :global(:focus-visible) {
+.editor :global(:focus-visible):not(button[data-variant]) {
   outline: 2px solid var(--nova-color-focus);
   outline-offset: 2px;
 }

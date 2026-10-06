@@ -614,7 +614,7 @@
   border-block-start: 1px solid var(--nova-color-border);
 }
 
-.root :global(:focus-visible) {
+.root :global(:focus-visible):not(button[data-variant]) {
   outline: 3px solid var(--nova-color-focus);
   outline-offset: 2px;
 }

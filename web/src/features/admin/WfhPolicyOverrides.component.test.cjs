@@ -258,7 +258,7 @@ test("feature root does not add a duplicate named landmark under its heading-own
 
 test("allowed checkbox uses its labeled row as the single focus-ring owner", () => {
   const css = fs.readFileSync(path.join(__dirname, "WfhPolicyOverrides.module.css"), "utf8");
-  assert.match(css, /\.allowedControl:has\(input:focus-visible\)\s*,\s*\.section :global\(:focus-visible\):not\(input\[type="checkbox"\]\):not\(input\[type="radio"\]\)/s);
+  assert.match(css, /\.allowedControl:has\(input:focus-visible\)\s*,\s*\.section :global\(:focus-visible\):not\(input\[type="checkbox"\]\):not\(input\[type="radio"\]\):not\(button\[data-variant\]\)/s);
   assert.match(css, /\.allowedControl:has\(input:focus-visible\) input\s*\{\s*outline:\s*none;/s);
   assert.match(css, /@media \(forced-colors: active\)[\s\S]*?\.allowedControl:has\(input:focus-visible\)\s*\{\s*outline:\s*2px solid Highlight;/s);
 });

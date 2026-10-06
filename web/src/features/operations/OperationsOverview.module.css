@@ -273,7 +273,7 @@
   grid-column: 1 / -1;
 }
 
-.overview :global(:focus-visible) { outline: 2px solid var(--nova-color-focus); outline-offset: 2px; }
+.overview :global(:focus-visible):not(button[data-variant]) { outline: 2px solid var(--nova-color-focus); outline-offset: 2px; }
 
 @media (any-pointer: coarse) {
   .taskIdentity a {

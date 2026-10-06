@@ -112,7 +112,7 @@
   padding-block-start: var(--nova-space-2);
 }
 
-.agenda :global(:focus-visible) {
+.agenda :global(:focus-visible):not(button[data-variant]) {
   outline: 2px solid var(--nova-color-focus);
   outline-offset: 2px;
 }

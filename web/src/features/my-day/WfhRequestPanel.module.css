@@ -152,7 +152,7 @@
 .requestItem > button { width: 100%; }
 .readFailure { display: grid; min-width: 0; justify-items: start; gap: var(--nova-space-3); }
 
-.panel :global(:focus-visible) {
+.panel :global(:focus-visible):not(button[data-variant]) {
   outline: 2px solid var(--nova-color-focus);
   outline-offset: 2px;
 }

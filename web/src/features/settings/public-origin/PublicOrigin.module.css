@@ -115,7 +115,7 @@
   max-width: 100%;
 }
 
-.root :focus-visible {
+.root :focus-visible:not(button[data-variant]) {
   outline: 2px solid var(--nova-color-focus);
   outline-offset: 2px;
 }

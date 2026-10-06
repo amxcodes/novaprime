@@ -540,7 +540,7 @@
 }
 
 .lifecycleReason:focus-visible,
-.lifecycleActions :is(button, textarea):focus-visible,
+.lifecycleActions textarea:focus-visible,
 .lifecycleOutcomeFocus:focus-visible {
   outline: 3px solid var(--nova-color-focus);
   outline-offset: 2px;

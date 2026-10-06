@@ -101,7 +101,7 @@
   min-height: var(--nova-control-touch-target);
 }
 
-.panel :global(:focus-visible) {
+.panel :global(:focus-visible):not(button[data-variant]) {
   outline: 2px solid var(--nova-color-focus);
   outline-offset: 2px;
 }

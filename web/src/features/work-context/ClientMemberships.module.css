@@ -124,7 +124,7 @@
   border: 0;
 }
 
-.feature :is(button, input, select):focus-visible {
+.feature :is(input, select):focus-visible {
   outline: 3px solid var(--nova-color-focus);
   outline-offset: 2px;
 }

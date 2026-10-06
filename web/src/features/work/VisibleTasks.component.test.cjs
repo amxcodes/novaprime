@@ -240,5 +240,5 @@ test("comparison rows keep aligned task and fact tracks with compact labeled lay
   assert.match(css, /@container visible-tasks\s*\(max-width:\s*60rem\)[\s\S]*?\.facts dt\s*\{\s*position:\s*static/);
   assert.match(css, /@container visible-tasks\s*\(max-width:\s*40rem\)[\s\S]*?\.facts\s*\{\s*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(css, /@media \(any-pointer: coarse\)[\s\S]*?\.title a\s*\{[^}]*min-height:\s*var\(--nova-control-touch-target\)/);
-  assert.match(css, /\.section :global\(:focus-visible\)/);
+  assert.match(css, /\.section :global\(:focus-visible\):not\(button\[data-variant\]\)/);
 });

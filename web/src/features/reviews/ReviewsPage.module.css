@@ -216,11 +216,7 @@
 }
 
 .feedbackInput:focus-visible,
-.confirmation input:focus-visible,
-.rowActions button:focus-visible,
-.decisionFormRegion button:focus-visible,
-.formActions button:focus-visible,
-.stateWithAction button:focus-visible {
+.confirmation input:focus-visible {
   outline: 3px solid var(--nova-color-focus);
   outline-offset: 2px;
 }

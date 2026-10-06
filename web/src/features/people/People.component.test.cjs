@@ -416,7 +416,9 @@ test("lifecycle controls retain keyboard focus cues and switch to full-width tou
   const css = fs.readFileSync(require.resolve("./People.module.css"), "utf8");
   const compact = css.match(/@container\s*\(max-width:\s*40rem\)\s*\{([\s\S]*?)(?=\n@container|\n@media)/)?.[1] || "";
 
-  assert.match(css, /\.lifecycleActions :is\(button, textarea\):focus-visible/);
+  assert.match(css, /\.lifecycleActions textarea:focus-visible/);
+  assert.doesNotMatch(css, /\.lifecycleActions :is\(button, textarea\):focus-visible/,
+    "shared buttons keep the Figma focus underline instead of a feature-level ring");
   assert.match(css, /\.lifecycleActionGroup > button,[\s\S]*?min-height:\s*var\(--nova-control-touch-target\)/);
   assert.match(compact, /\.lifecycleActionGroup,[\s\S]*?display:\s*grid/);
   assert.match(compact, /\.lifecyclePanelActions > button\s*\{\s*width:\s*100%/);

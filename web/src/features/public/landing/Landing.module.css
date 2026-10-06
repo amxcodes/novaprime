@@ -236,7 +236,7 @@
   line-height: 1;
 }
 
-.root :focus-visible {
+.root :focus-visible:not(button[data-variant]) {
   outline: 2px solid var(--nova-color-focus);
   outline-offset: 3px;
 }
@@ -301,7 +301,7 @@
     background: Canvas;
   }
 
-  .root :focus-visible {
+  .root :focus-visible:not(button[data-variant]) {
     outline-color: Highlight;
   }
 }

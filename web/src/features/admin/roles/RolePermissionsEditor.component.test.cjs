@@ -285,7 +285,7 @@ test("layout is responsive, tokenized, and provides touch-sized controls", () =>
     "permission modules must not clip the shared outward focus ring");
   assert.match(matrixCss, /\.permissionModule:not\(\[open\]\)\s*>\s*\.moduleSummary\s*\{[^}]*border-end-start-radius:/s,
     "closed disclosures retain their rounded shape without clipping focus");
-  assert.match(css, /\.editor :global\(:focus-visible\)\s*\{[^}]*outline:\s*2px solid var\(--nova-color-focus\)/s);
+  assert.match(css, /\.editor :global\(:focus-visible\):not\(button\[data-variant\]\)\s*\{[^}]*outline:\s*2px solid var\(--nova-color-focus\)/s);
   assert.match(css, /\.roleList\s*\{[^}]*max-block-size:\s*min\(72dvh, 52rem\)[^}]*overflow-y:\s*auto/s,
     "long role catalogues scroll within the desktop list while the editor stays in view");
   assert.match(css, /@container role-editor \(min-width: 40rem\) and \(max-width: 47\.999rem\)\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,

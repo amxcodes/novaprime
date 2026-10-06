@@ -91,7 +91,7 @@
 }
 
 .allowedControl:has(input:focus-visible),
-.section :global(:focus-visible):not(input[type="checkbox"]):not(input[type="radio"]) {
+.section :global(:focus-visible):not(input[type="checkbox"]):not(input[type="radio"]):not(button[data-variant]) {
   outline: 2px solid var(--nova-color-focus);
   outline-offset: 2px;
 }

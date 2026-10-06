@@ -148,7 +148,7 @@
 }
 
 .email:focus-visible,
-.section :global(:focus-visible) {
+.section :global(:focus-visible):not(button[data-variant]) {
   outline: 3px solid var(--nova-color-focus);
   outline-offset: 2px;
 }
@@ -302,7 +302,7 @@
 .onboarding .formActions { grid-column: 1 / -1; }
 .validationSummary { grid-column: 1 / -1; }
 
-.section :is(button, input, select, textarea):focus-visible {
+.section :is(input, select, textarea):focus-visible {
   outline: 3px solid var(--nova-color-focus);
   outline-offset: 2px;
 }

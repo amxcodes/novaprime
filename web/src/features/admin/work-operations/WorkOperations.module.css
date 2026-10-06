@@ -94,7 +94,7 @@
 .taskActions { display: grid; min-width: 0; gap: var(--nova-space-3); padding-block-start: var(--nova-space-3); border-block-start: 1px solid var(--nova-color-border); }
 .error { margin: var(--nova-space-2) 0 0; color: var(--nova-color-danger); font-size: var(--nova-type-size-sm); line-height: var(--nova-type-line-normal); }
 
-.root :global(:focus-visible) { outline: 2px solid var(--nova-color-focus); outline-offset: 2px; }
+.root :global(:focus-visible):not(button[data-variant]) { outline: 2px solid var(--nova-color-focus); outline-offset: 2px; }
 .root :global(button) { min-height: var(--nova-control-touch-target); }
 
 @container admin-work-operations (min-width: 42rem) {
@@ -126,7 +126,7 @@
   .policy,
   .cancelConfirmation { border-color: CanvasText; }
   .cancelConfirmation p { color: CanvasText; }
-  .root :global(:focus-visible) { outline-color: Highlight; }
+  .root :global(:focus-visible):not(button[data-variant]) { outline-color: Highlight; }
   .dueDateEditor summary { color: LinkText; }
   .dueDateEditor summary::after { border-color: currentColor; }
 }

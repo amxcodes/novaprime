@@ -283,7 +283,7 @@
   padding-block-start: var(--nova-space-2);
 }
 
-.section :global(:focus-visible) {
+.section :global(:focus-visible):not(button[data-variant]) {
   outline: 2px solid var(--nova-color-focus);
   outline-offset: 2px;
 }
