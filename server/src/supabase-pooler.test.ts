@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   assertSupabaseDatabaseUrlBinding,
-  configuredSupabasePoolerHost,
   resolveSupabasePoolerHost,
+  selectSupabasePoolerHost,
   supabasePoolerHostFromConfiguration,
   validateSupabasePoolerHost,
 } from "./supabase-pooler";
@@ -32,28 +32,15 @@ describe("Supabase transaction pooler discovery", () => {
       .toThrow("SUPABASE_POOLER_HOST_INVALID");
   });
 
-  test("does not carry a saved pooler host across an explicit project change", () => {
-    expect(configuredSupabasePoolerHost({
-      projectRef: "newprojectref00000001",
-      environmentProjectRef: "oldprojectref00000001",
-      environmentHost: "aws-0-ap-south-1.pooler.supabase.com",
-      savedProjectRef: "oldprojectref00000001",
-      savedHost: "aws-0-ap-south-1.pooler.supabase.com",
-    })).toBeUndefined();
-    expect(configuredSupabasePoolerHost({
-      projectRef: "newprojectref00000001",
-      environmentProjectRef: "newprojectref00000001",
-      environmentHost: "aws-0-ap-south-1.pooler.supabase.com",
-      savedProjectRef: "oldprojectref00000001",
-      savedHost: "aws-0-ap-south-1.pooler.supabase.com",
-    })).toBeUndefined();
-    expect(configuredSupabasePoolerHost({
-      projectRef: "oldprojectref00000001",
-      environmentProjectRef: "oldprojectref00000001",
-      environmentHost: "aws-2-ap-south-1.pooler.supabase.com",
-      savedProjectRef: "oldprojectref00000001",
-      savedHost: "aws-0-ap-south-1.pooler.supabase.com",
-    })).toBe("aws-2-ap-south-1.pooler.supabase.com");
+  test("uses only the pooler host resolved from the selected project", () => {
+    expect(selectSupabasePoolerHost({
+      verifiedHost: "aws-3-ap-south-1.pooler.supabase.com",
+      explicitHost: "aws-3-ap-south-1.pooler.supabase.com",
+    })).toBe("aws-3-ap-south-1.pooler.supabase.com");
+    expect(() => selectSupabasePoolerHost({
+      verifiedHost: "aws-3-ap-south-1.pooler.supabase.com",
+      explicitHost: "aws-0-ap-south-1.pooler.supabase.com",
+    })).toThrow("SUPABASE_POOLER_HOST_PROJECT_MISMATCH");
   });
 
   test("rejects malformed, mismatched, and absent transaction pooler config", () => {

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { configuredSupabasePoolerHost, resolveSupabasePoolerHost } from "../server/src/supabase-pooler.ts";
+import { resolveSupabasePoolerHost, selectSupabasePoolerHost } from "../server/src/supabase-pooler.ts";
 import { isSecretsEncryptionKeyValid } from "../server/src/secrets.ts";
 import { confirmSupabaseProject } from "../server/src/supabase-project-confirmation.ts";
 
@@ -144,15 +144,13 @@ async function configureSupabaseEnvironment(): Promise<Record<string, string>> {
   if (!accessToken) throw new Error("SUPABASE_ACCESS_TOKEN_REQUIRED");
   if (appPassword.length < 24) throw new Error("NOVA_APP_PASSWORD_TOO_SHORT");
 
-  const configuredHost = configuredSupabasePoolerHost({
-    projectRef,
+  // A shared-pooler hostname contains a cluster index that cannot be inferred
+  // from a region or project ref. Re-resolve it from this project's Supabase
+  // configuration instead of trusting a saved host that may belong elsewhere.
+  const poolerHost = selectSupabasePoolerHost({
+    verifiedHost: await resolveSupabasePoolerHost(projectRef, accessToken),
     explicitHost: optionalArgument("--pooler-host"),
-    environmentProjectRef: process.env.NOVA_SUPABASE_PROJECT_REF,
-    environmentHost: process.env.NOVA_SUPABASE_POOLER_HOST,
-    savedProjectRef: existing.NOVA_SUPABASE_PROJECT_REF,
-    savedHost: existing.NOVA_SUPABASE_POOLER_HOST,
   });
-  const poolerHost = configuredHost ?? await resolveSupabasePoolerHost(projectRef, accessToken);
   const values: Record<string, string> = {
     ...existing,
     NOVA_SUPABASE_PROJECT_REF: projectRef,

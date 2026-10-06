@@ -53,6 +53,9 @@ does not match the confirmed project. The latter was checked against the
 current QA env file without displaying or transmitting its credentials and
 failed before any database write. GitHub Actions `Verify NOVA` passed for
 commit `cfb3c761bbbd79d4f48cfa653f6ba7e7dc1ec3b7` ([run 37521496578](https://github.com/amxcodes/novaprime/actions/runs/37521496578)).
+The subsequent baseline commit `e4351562b060450840376a3b0c1238d5a35120f7`
+also passed the full GitHub Actions checks and PostgreSQL lifecycle gate
+([run 37522254064](https://github.com/amxcodes/novaprime/actions/runs/37522254064)).
 
 The hosted app is still not ready: the live readiness/session checks remain
 503/500. An operator must set Netlify Functions `DATABASE_URL` to a credential
@@ -60,6 +63,26 @@ and connection URL for the same confirmed Supabase project, deploy, and repeat
 the readiness/auth smoke before healthy-route latency or Super Admin workflows
 can be accepted. The observed migration sequence has no pending schema change
 for this incident.
+
+The supplied detailed Supabase export confirms migrations 0075–0078 completed
+and `ALTER ROLE nova_app ... PASSWORD` succeeded at 18:44 UTC; the earlier
+`42P01` missing-table events precede those migrations. Netlify then reported
+`28P01` at 19:17 UTC and later, consistent with a hosted runtime password that
+was not updated after the successful role-password change. A separate
+read-only QA connection attempt returned Supavisor `ENOTFOUND tenant/user`, a
+host/username routing failure rather than a bad-password result. The QA URL's
+pooler username suffix did not match its declared project, and the currently
+configured management token returned 403 for the project's pooler-config
+endpoint. No migration or password rotation was attempted during this check.
+
+Setup now always resolves the shared transaction-pooler host from the selected
+project's read-only Supabase configuration endpoint; it no longer trusts a
+saved host for the same project ref, and rejects a conflicting explicit host.
+The focused pooler tests (9/9) and `bun run typecheck` pass. Netlify remains
+blocked until its Functions `DATABASE_URL` is updated to the current
+target-project `nova_app` credentials and exact transaction-pooler endpoint,
+then redeployed and checked through readiness and sign-in. Do not rotate the
+role password again until the hosted secret can be updated in the same change.
 
 ## Verified evidence (database and host-local scopes)
 

@@ -92,11 +92,17 @@ For Supabase Cloud without installing PostgreSQL locally, run
 `bun run setup:supabase`. It asks for the exact project ref and
 project-scoped management token (create one from the [Supabase account token
 page](https://supabase.com/dashboard/account/tokens)), resolves the
-transaction-pooler host, applies
-the canonical migrations, creates the restricted `nova_app` login if absent,
+transaction-pooler host from that project's read-only configuration endpoint,
+applies the canonical migrations, creates the restricted `nova_app` login if
+absent,
 writes the local runtime URL, and runs the same preflight. Bootstrap and
 preflight verify that the database URL is bound to the selected Supabase
-project before making writes or opening a connection. It prepares the
+project before making writes or opening a connection. Setup does not reuse a
+saved pooler hostname: Supabase pooler cluster indexes cannot be inferred from
+region, so it re-resolves the selected project's host each time and rejects a
+conflicting explicit `--pooler-host`. The management token must be allowed to
+read that project's pooler configuration; if the lookup is denied, setup stops
+before touching the database. It prepares the
 database only: it does not deploy or start the API. For a local API check, run
 `bun run dev` and open `http://localhost:3001`. For a hosted path, copy only
 runtime values from the private `.env` into the selected host's server-side

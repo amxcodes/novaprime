@@ -72,19 +72,15 @@ export function assertSupabaseDatabaseUrlBinding(
   }
 }
 
-export function configuredSupabasePoolerHost(input: Readonly<{
-  projectRef: string;
+export function selectSupabasePoolerHost(input: Readonly<{
+  verifiedHost: string;
   explicitHost?: string;
-  environmentProjectRef?: string;
-  environmentHost?: string;
-  savedProjectRef?: string;
-  savedHost?: string;
-}>): string | undefined {
-  const savedProjectMatches = !input.savedProjectRef || input.savedProjectRef === input.projectRef;
-  const configured = input.explicitHost ??
-    (savedProjectMatches && input.environmentProjectRef === input.projectRef ? input.environmentHost : undefined) ??
-    (input.savedProjectRef === input.projectRef ? input.savedHost : undefined);
-  return configured ? validateSupabasePoolerHost(configured) : undefined;
+}>): string {
+  const verifiedHost = validateSupabasePoolerHost(input.verifiedHost);
+  if (input.explicitHost && validateSupabasePoolerHost(input.explicitHost) !== verifiedHost) {
+    throw new Error("SUPABASE_POOLER_HOST_PROJECT_MISMATCH");
+  }
+  return verifiedHost;
 }
 
 function connectionDetails(configuration: PoolerConfiguration): { host: string; port: number } | undefined {

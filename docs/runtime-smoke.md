@@ -216,9 +216,10 @@ PostgreSQL; Netlify/Vercel are hosting adapters only.
    `uselibpqcompat=true`. `bun run setup:supabase` reads the exact
    transaction-pooler host from the read-only Management API endpoint
    `/v1/projects/{ref}/config/database/pooler`; it does not infer a cluster
-   index from region. If API access is unavailable, copy the host from that
-   project's Connect panel and pass `--pooler-host` or set
-   `NOVA_SUPABASE_POOLER_HOST` for that same project.
+   index from region or trust a previously saved host. The token must be able
+   to read that endpoint, and an explicit `--pooler-host` must match its
+   response. If the endpoint returns 403, fix the token's project access before
+   running setup; it stops before any database write.
 2. Set `BETTER_AUTH_URL=http://localhost:3001`, the existing Better Auth,
    bootstrap and encryption secrets, then run `bun run --cwd server dev:local`.
 3. Check `GET http://localhost:3001/api/health` and verify an unauthenticated
