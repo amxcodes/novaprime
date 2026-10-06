@@ -116,6 +116,19 @@
 
 .module[data-my-day-module="assignments"] { grid-column: 1 / -1; }
 
+.module[data-my-day-module="assignments"] .moduleHeader {
+  display: grid;
+  justify-content: start;
+  gap: var(--nova-space-1);
+  padding-block-end: 0;
+  border-block-end: 0;
+}
+
+.module[data-my-day-module="assignments"] .moduleHeader p {
+  margin-inline-start: 0;
+  text-align: start;
+}
+
 .shortcuts {
   display: grid;
   min-width: 0;

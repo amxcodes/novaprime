@@ -474,7 +474,7 @@ export function MyAssignments({
                   </div>
                   <div className={styles.status}>
                     <span className={styles.fieldLabel}>Status</span>
-                    <Badge tone={status.tone} showDot>{status.label}</Badge>
+                    <Badge tone={status.tone}>{status.label}</Badge>
                   </div>
                   <div className={styles.due}>
                     <span className={styles.fieldLabel}>Due date</span>

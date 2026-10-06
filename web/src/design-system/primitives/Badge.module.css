@@ -1,12 +1,12 @@
 .badge {
   display: inline-flex;
   max-width: 100%;
-  min-height: 1.5rem;
+  min-height: 1.75rem;
   align-items: center;
   gap: var(--nova-space-2);
   padding: 0 var(--nova-space-2);
   border: 1px solid transparent;
-  border-radius: var(--nova-radius-pill);
+  border-radius: var(--nova-radius-status);
   color: var(--nova-color-text-secondary);
   background: var(--nova-color-surface-subtle);
   font-size: var(--nova-type-size-xs);
@@ -40,22 +40,10 @@
   overflow-wrap: anywhere;
 }
 
-.dot {
-  width: 0.375rem;
-  height: 0.375rem;
-  flex: none;
-  border-radius: 50%;
-  background: currentColor;
-}
-
 @media (forced-colors: active) {
   .badge {
     border-color: currentColor;
     color: CanvasText;
     background: Canvas;
-  }
-
-  .dot {
-    background: currentColor;
   }
 }

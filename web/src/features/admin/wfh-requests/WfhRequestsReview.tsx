@@ -123,7 +123,7 @@ function RequestCard({
           <h3 className={styles.requestTitle} id={`${reasonId}-title`}>Work from home</h3>
           <RequestDates request={request} />
         </div>
-        <Badge tone="warning" showDot>Pending</Badge>
+        <Badge tone="warning">Pending</Badge>
       </div>
 
       <div className={styles.reasonBlock}>

@@ -1,0 +1,32 @@
+.avatar {
+  display: inline-grid;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-pill);
+  color: var(--nova-color-action-text);
+  background: var(--nova-color-action-subtle);
+}
+
+.avatar[data-size="24"] { width: 1.5rem; height: 1.5rem; }
+.avatar[data-size="32"] { width: 2rem; height: 2rem; }
+.avatar[data-size="40"] { width: 2.5rem; height: 2.5rem; }
+.avatar[data-size="48"] { width: 3rem; height: 3rem; }
+
+.avatar svg {
+  display: block;
+  width: 72%;
+  height: 72%;
+  fill: currentColor;
+}
+
+@media (forced-colors: active) {
+  .avatar {
+    border-color: CanvasText;
+    color: CanvasText;
+    background: Canvas;
+  }
+}

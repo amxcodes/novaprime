@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { Badge, Button } from "../../design-system";
 import { getAttendanceActions, isAttendanceActionDisabled } from "./attendance-actions";
 import styles from "./attendance-pulse.module.css";
 import type {
@@ -91,9 +92,9 @@ export function AttendancePulse({
             <p className={styles.eyebrow}>Attendance pulse</p>
             <h2 id={titleId} className={styles.title}>{status}</h2>
           </div>
-          <span className={styles.mode}>
+          <Badge tone={provisional ? "warning" : record ? "info" : "neutral"}>
             {record ? modeLabel(record.mode) : provisional ? "Provisional WFH" : "Not started"}
-          </span>
+          </Badge>
         </header>
 
       <dl className={styles.facts}>
@@ -170,23 +171,24 @@ export function AttendancePulse({
       {isPartial ? (
         <div className={styles.partialState}>
           <p className={styles.partial} role="status">{read.message}</p>
-          {read.onRetry ? <button className={styles.retryAction} type="button" onClick={read.onRetry}>Refresh attendance</button> : null}
+          {read.onRetry ? <Button variant="secondary" onClick={read.onRetry}>Refresh attendance</Button> : null}
         </div>
       ) : null}
 
       {actions.length > 0 ? (
         <div className={styles.actions} role="group" aria-label="Attendance actions">
           {actions.map((action) => (
-            <button
-              className={action === "check-in-office" || action === "check-out" ? styles.primaryAction : styles.secondaryAction}
+            <Button
+              variant={action === "check-in-office" || action === "check-out" ? "primary" : "secondary"}
               type="button"
               key={action}
               disabled={isAttendanceActionDisabled(action, projection, anyPending)}
-              aria-busy={pendingAction === action}
+              loading={pendingAction === action}
+              loadingLabel={`${getActionLabel(action, projection)} in progress`}
               onClick={(event) => onAction(action, event.currentTarget)}
             >
-              {pendingAction === action ? `${getActionLabel(action, projection)}…` : getActionLabel(action, projection)}
-            </button>
+              {getActionLabel(action, projection)}
+            </Button>
           ))}
           {projection.wfhPending && !projection.wfhApproved && actions.includes("check-in-office") ? (
             <p className={styles.secondaryLine}>Cancel the pending WFH request before checking in at the office.</p>
@@ -205,7 +207,7 @@ function MessageState({ titleId, title, message, onRetry }: { titleId: string; t
         <p className={styles.eyebrow}>Attendance pulse</p>
         <h2 id={titleId} className={styles.title}>{title}</h2>
         <p className={styles.stateMessage} role={onRetry ? "alert" : "status"}>{message}</p>
-        {onRetry ? <button className={styles.secondaryAction} type="button" onClick={onRetry}>Retry attendance</button> : null}
+        {onRetry ? <Button variant="secondary" onClick={onRetry}>Retry attendance</Button> : null}
       </section>
     </div>
   );

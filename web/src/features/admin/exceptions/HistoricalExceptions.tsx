@@ -157,7 +157,7 @@ function ExceptionCard({
         <header className={styles.cardHeader}>
           <div className={styles.cardHeading}>
             <h3 className={styles.cardTitle} id={`${id}-title`}>{exception.code}</h3>
-            <Badge tone={statusTone} showDot>{statusLabel(exception.status)}</Badge>
+            <Badge tone={statusTone}>{statusLabel(exception.status)}</Badge>
           </div>
           <p className={styles.date}>{exception.businessDate || "Undated"}</p>
         </header>

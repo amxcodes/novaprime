@@ -92,7 +92,7 @@ describe("ClientMemberships", () => {
     expect(loadingMore).toMatch(/<button[^>]*disabled=\"\"[^>]*>.*Loading older memberships…/);
   });
 
-  it("renders remote person and client-department pickers without embedding business rows", () => {
+  it("renders person and client-department pickers without embedding business rows", () => {
     const markup = render();
 
     expect(markup).toContain('role="combobox"');
@@ -103,7 +103,6 @@ describe("ClientMemberships", () => {
     expect(markup).not.toContain("<select");
     expect(markup).toContain("Membership label (optional)");
     expect(markup).toContain("Effective from");
-    expect(markup).toContain("search-mode=\"remote\"");
   });
 
   it("does not expose the person picker or add command without organization people.view", () => {

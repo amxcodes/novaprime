@@ -61,26 +61,7 @@
 .empty, .stateMessage { color: var(--nova-color-text-secondary); }
 .partialState { display: grid; justify-items: start; gap: var(--nova-space-2); }
 
-.openWork {
-  justify-self: start;
-  min-height: var(--nova-control-height);
-  padding: var(--nova-space-2) var(--nova-space-4);
-  color: var(--nova-color-text-primary);
-  background: var(--nova-color-surface-raised);
-  border: 1px solid var(--nova-color-border);
-  border-radius: var(--nova-radius-control);
-  font: var(--nova-type-label);
-  cursor: pointer;
-}
-.openWork:hover { transform: translateY(-1px); }
-.openWork:active { transform: translateY(0); }
-.openWork:focus-visible { outline: 3px solid var(--nova-color-focus); outline-offset: 2px; }
-
-@media (prefers-reduced-motion: reduce) { .openWork { transition: none; } }
-
-@media (any-pointer: coarse) { .openWork { min-height: max(var(--nova-control-height), 2.75rem); } }
-
-@media (forced-colors: active) { .openWork { border-color: ButtonText; } }
+.openWork { justify-self: start; }
 
 @container (max-width: 40rem) {
   .timeline { padding: var(--nova-space-4); gap: var(--nova-space-4); }

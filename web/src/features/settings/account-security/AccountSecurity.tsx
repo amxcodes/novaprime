@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { Button, Field, Input, StateMessage } from "../../../design-system";
+import { Badge, Button, Field, Input, StateMessage } from "../../../design-system";
 import type { AccountSecurityActionState, AccountSecurityProps, AccountSessionsState } from "./contracts";
 import { AccountSecurityActionError, AccountSessionFreshnessError } from "./contracts";
 import styles from "./AccountSecurity.module.css";
@@ -200,9 +200,9 @@ export function AccountSecurity({ readState, onRequestVerification, onChangePass
               <h3 id={`${id}-identity-heading`}>Signed-in identity</h3>
               <p>Account details for the current session.</p>
             </div>
-            <span className={identity.emailVerified ? styles.verified : styles.unverified}>
+            <Badge className={styles.identityVerification} tone={identity.emailVerified ? "success" : "warning"}>
               {identity.emailVerified ? "Verified" : "Verification pending"}
-            </span>
+            </Badge>
           </div>
           <div className={styles.identityDetails}>
             <span className={styles.avatar} aria-hidden="true">{initial}</span>
@@ -306,7 +306,7 @@ export function AccountSecurity({ readState, onRequestVerification, onChangePass
                       <div className={styles.sessionDetails}>
                         <div className={styles.sessionTitle}>
                           <strong>{session.device}</strong>
-                          {session.isCurrent ? <span className={styles.currentSession}>This device</span> : null}
+                          {session.isCurrent ? <Badge className={styles.currentSession} tone="info">This device</Badge> : null}
                         </div>
                         <p>Last active <time dateTime={session.lastActiveAt}>{formatSessionDate(session.lastActiveAt)}</time></p>
                       </div>

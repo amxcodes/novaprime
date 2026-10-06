@@ -37,9 +37,42 @@ test("Orbit component geometry is mapped through shared semantic tokens", () => 
 
   assert.match(tokenSource, /--nova-radius-option:\s*0\.5rem\s*;/);
   assert.match(tokenSource, /--nova-radius-control:\s*0\.75rem\s*;/);
+  assert.match(tokenSource, /--nova-radius-status:\s*0\.5625rem\s*;/);
   assert.match(tokenSource, /--nova-radius-surface:\s*1\.125rem\s*;/);
+  assert.match(tokenSource, /--nova-radius-navigation:\s*1\.5rem\s*;/);
   assert.match(tokenSource, /--nova-navigation-width-expanded:\s*18\.125rem\s*;/);
   assert.match(tokenSource, /--nova-navigation-width-compact:\s*9\.625rem\s*;/);
+});
+
+test("action feedback surfaces resolve from the active light, dark, and system theme", () => {
+  const tokenSource = withoutCssComments(fs.readFileSync(tokenFile, "utf8"));
+  const blocks = [
+    tokenSource.match(/:root,\s*:root\[data-theme="light"\]\s*\{([^}]*)\}/)?.[1],
+    tokenSource.match(/:root\[data-theme="dark"\]\s*\{([^}]*)\}/)?.[1],
+    tokenSource.match(/@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root\[data-theme="system"\]\s*\{([^}]*)\}/)?.[1],
+  ];
+
+  assert.ok(blocks.every(Boolean), "light, explicit-dark, and system-dark token blocks exist");
+  for (const block of blocks) {
+    assert.match(block, /--nova-color-action-edge:\s*color-mix\(in srgb, var\(--nova-color-action\) 82%, var\(--nova-color-text-primary\)\)/);
+    assert.match(block, /--nova-color-action-pressed:\s*color-mix\(in srgb, var\(--nova-color-action\) 86%, var\(--nova-color-text-primary\)\)/);
+  }
+});
+
+test("Orbit control track and highlight tokens follow explicit and system theme resolution", () => {
+  const tokenSource = withoutCssComments(fs.readFileSync(tokenFile, "utf8"));
+  const light = tokenSource.match(/:root,\s*:root\[data-theme="light"\]\s*\{([^}]*)\}/)?.[1] ?? "";
+  const dark = tokenSource.match(/:root\[data-theme="dark"\]\s*\{([^}]*)\}/)?.[1] ?? "";
+  const systemDark = tokenSource.match(/@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root\[data-theme="system"\]\s*\{([^}]*)\}/)?.[1] ?? "";
+
+  assert.match(light, /--nova-color-control-track:\s*var\(--nova-color-surface\)/);
+  assert.match(light, /--nova-color-control-highlight:\s*var\(--nova-palette-white\)/);
+  assert.match(light, /--nova-control-highlight-opacity:\s*0\.36/);
+  for (const block of [dark, systemDark]) {
+    assert.match(block, /--nova-color-control-track:\s*var\(--nova-color-surface-subtle\)/);
+    assert.match(block, /--nova-color-control-highlight:\s*var\(--nova-color-text-secondary\)/);
+    assert.match(block, /--nova-control-highlight-opacity:\s*0\.24/);
+  }
 });
 
 test("every NOVA custom property used by source styles has a CSS or runtime definition", () => {

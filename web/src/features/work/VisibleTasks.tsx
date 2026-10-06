@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import { Badge, Button, Field, Input, Select, StateMessage, type SelectOption } from "../../design-system";
+import { Badge, Button, Field, Input, SegmentedControl, Select, StateMessage, type SelectOption } from "../../design-system";
 import { VisibleTaskBoard } from "./VisibleTaskBoard";
 import { ResponsiveDisclosure } from "./ResponsiveDisclosure";
 import { useCompactWorkContainer } from "./use-compact-work-container";
@@ -232,18 +232,15 @@ export function VisibleTasks({
         >
           {savedViews ? <div className={styles.savedViews}>{savedViews}</div> : null}
           {tasks.length ? (
-            <div className={styles.viewControls} role="group" aria-label="Task layout">
-              <Button
-                aria-pressed={displayMode === "list"}
-                variant={displayMode === "list" ? "secondary" : "quiet"}
-                onClick={() => changeDisplayMode("list")}
-              >List</Button>
-              <Button
-                aria-pressed={displayMode === "board"}
-                variant={displayMode === "board" ? "secondary" : "quiet"}
-                onClick={() => changeDisplayMode("board")}
-              >Board</Button>
-            </div>
+            <SegmentedControl
+              className={styles.viewControls}
+              aria-label="Task layout"
+              options={[{ value: "list", label: "List" }, { value: "board", label: "Board" }]}
+              value={displayMode}
+              onValueChange={(next) => {
+                if (next === "list" || next === "board") changeDisplayMode(next);
+              }}
+            />
           ) : null}
         </ResponsiveDisclosure>
       ) : null}

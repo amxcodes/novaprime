@@ -137,6 +137,9 @@ test("desktop rail toggle exposes the same supplied destinations in expanded and
   assert.match(compact, /aria-expanded="false"/);
   assert.match(expanded, /aria-controls="test-desktop-navigation"/);
   assert.match(compact, /id="test-desktop-navigation"/);
+  assert.match(expanded, /<h2[^>]*>Workspace<\/h2>/);
+  assert.match(compact, /<h2[^>]*>Workspace<\/h2>/);
+  assert.match(compact, />Home<\/span>/);
   assert.match(compact, /title="Home"/);
   assert.match(compact, /title="Settings"/);
 

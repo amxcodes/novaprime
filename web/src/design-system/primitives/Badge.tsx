@@ -6,12 +6,10 @@ export type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   tone?: StatusTone;
   children: ReactNode;
-  showDot?: boolean;
 }
 
 export function Badge({
   tone = "neutral",
-  showDot = false,
   className,
   children,
   ...spanProps
@@ -22,7 +20,6 @@ export function Badge({
       className={[styles.badge, className].filter(Boolean).join(" ")}
       data-tone={tone}
     >
-      {showDot ? <span className={styles.dot} aria-hidden="true" /> : null}
       <span>{children}</span>
     </span>
   );

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { Button, Field, Input, StateMessage } from "../../design-system";
+import { Badge, Button, Field, Input, StateMessage } from "../../design-system";
 import type {
   WorkContextClientDepartmentCreation,
   WorkContextClientSummary,
@@ -30,7 +30,7 @@ function ContextGroup({ group }: { group: WorkContextGroupSummary }) {
   return (
     <li className={styles.groupItem}>
       <span className={styles.groupName}>{group.name}</span>
-      {group.canCreateTask ? <span className={styles.taskTarget}>Task target</span> : null}
+      {group.canCreateTask ? <Badge tone="info">Task target</Badge> : null}
     </li>
   );
 }
@@ -67,7 +67,7 @@ function TaskTargetList({
         {workstreamTargets.map((target) => (
           <li className={styles.taskTargetItem} key={`${target.kind}:${target.id}`}>
             <span className={styles.groupName}>{target.name}</span>
-            <span className={styles.taskTarget}>Task target</span>
+            <Badge tone="info">Task target</Badge>
             <span className={styles.contextLabel}>
               {target.kind === "client"
                 ? target.clientName ? `${target.clientName} · Client workstream target` : "Client workstream target"
@@ -78,7 +78,7 @@ function TaskTargetList({
         {groupTargets.map((group) => (
           <li className={styles.taskTargetItem} key={`group:${group.id}`}>
             <span className={styles.groupName}>{group.name}</span>
-            <span className={styles.taskTarget}>Task target</span>
+            <Badge tone="info">Task target</Badge>
             <span className={styles.contextLabel}>
               {group.clientWorkstreamId ? "Client workstream target" : "Organisation workstream target"}
             </span>

@@ -51,10 +51,44 @@ describe("responsive navigation focus", () => {
     expect(source).toContain("aria-expanded={!compact}");
     expect(navigationStyles).toContain("min-height: var(--nova-control-touch-target)");
     expect(navigationStyles).toContain(`@media (max-width: ${minWidth - 1}px)`);
+    expect(appShellStyles).toContain("column-gap: var(--nova-space-4)");
+    expect(appShellStyles).toContain("padding-inline: var(--nova-space-4)");
+    expect(appShellStyles).toContain("padding-inline: 0");
     expect(appShellStyles).toContain('.shell[data-navigation-state="compact"]');
     expect(appShellStyles).toContain('.shell[data-navigation-state="compact"] {\n    grid-template-columns: minmax(0, 1fr)');
     expect(navigationStyles).toContain("@media (max-width: 639px)");
     expect(navigationStyles).toContain("min-height: 3.25rem");
+  });
+
+  test("maps Figma light/dark expanded and compact sidebar frames to one token-driven component", () => {
+    const compactGroupLabel = navigationStyles.match(/\.compactSidebar \.groupLabel\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(navigationStyles).toContain("border-radius: var(--nova-radius-navigation)");
+    expect(navigationStyles).toContain("box-shadow: var(--nova-elevation-raised)");
+    expect(navigationStyles).toContain("background: var(--nova-color-surface-raised)");
+    expect(navigationStyles).toContain(".compactSidebar .groupLabel");
+    expect(navigationStyles).toContain(".compactSidebar .link");
+    expect(navigationStyles).toContain(".desktopSidebar .icon { display: none; }");
+    expect(compactGroupLabel).toContain("white-space: normal");
+    expect(compactGroupLabel).toContain("overflow-wrap: anywhere");
+    expect(navigationStyles).toContain("border-radius: var(--nova-radius-option)");
+    expect(navigationStyles).toContain("border-radius: var(--nova-radius-control)");
+    expect(navigationStyles).toContain(".link[aria-current=\"page\"]");
+    expect(navigationStyles).toContain("background: var(--nova-color-action-subtle)");
+    expect(navigationStyles).toContain("var(--nova-color-focus)");
+    expect(navigationStyles).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(navigationStyles).not.toContain("data-theme");
+    expect(source).not.toContain("styles.currentMark");
+    expect(source).toContain("title={compact ? item.label : undefined}");
+  });
+
+  test("keeps the tablet drawer and phone quick navigation as reachable responsive adaptations", () => {
+    const drawerOpenRule = navigationStyles.match(/\.drawer\[open\]\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(drawerOpenRule).toContain("display: flex");
+    expect(navigationStyles).toContain("@media (max-width: 1199px)");
+    expect(navigationStyles).toContain("@media (max-width: 639px)");
+    expect(navigationStyles).toContain("@media (pointer: coarse)");
+    expect(source).toContain("selectMobileNavigation(groups, mobilePrimaryIds)");
+    expect(source).toContain("aria-haspopup=\"dialog\"");
   });
 
   test("keeps rail resizing motion-reduced and the toggle legible in forced colors", () => {

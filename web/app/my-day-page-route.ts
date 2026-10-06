@@ -110,22 +110,73 @@ export async function mountMyDayPageRoute(services: HostServices): Promise<void>
   };
   let attendanceComponents: Awaited<ReturnType<NonNullable<HostServices["loadAttendanceFeatures"]>>> | null = null;
   let assignmentComponents: Awaited<ReturnType<NonNullable<HostServices["loadAssignmentFeatures"]>>> | null = null;
-  let attendanceRouteUi: typeof import("./my-day-attendance-route.js") | null = null;
-  let timelineRouteUi: typeof import("./my-day-timeline-route.js") | null = null;
+  let pendingTimelineRead: WorkdayTimelineProps["read"] | null = null;
+
+  const mountTimeline = (read: WorkdayTimelineProps["read"]) => {
+    if (!timelineTarget || !isCurrentPageRequest(lifetime) || !timelineTarget.isConnected) return;
+    // The timeline request now runs alongside the component chunk download. If
+    // its response wins that race, retain the projection until the component
+    // is ready so the route still mounts only into the current page lifetime.
+    if (!attendanceComponents) {
+      pendingTimelineRead = read;
+      return;
+    }
+    mountReactIsland(timelineTarget, attendanceComponents.WorkdayTimeline, {
+      read,
+      ...(canAccessWorkspaceDestination("work", getActorGrants()) ? { onOpenWork: () => go("work") } : {}),
+    });
+  };
+
+  const attendanceComponentsPromise = attendanceTarget || timelineTarget
+    ? (services.loadAttendanceFeatures ?? (() => import("../src/features/attendance/index.js")))()
+    : Promise.resolve(null);
+  const assignmentComponentsPromise = assignmentsTarget
+    ? (services.loadAssignmentFeatures ?? (() => import("../src/features/assignments/index.js")))()
+    : Promise.resolve(null);
+  const attendanceRoutePromise = attendanceTarget
+    ? (services.loadAttendanceReadRoute ?? (() => import("./my-day-attendance-route.js")))()
+    : Promise.resolve(null);
+  const timelineRoutePromise = timelineTarget
+    ? (services.loadTimelineRoute ?? (() => import("./my-day-timeline-route.js")))()
+    : Promise.resolve(null);
+
+  // Start independent authorized reads as soon as their small route adapters
+  // are available instead of waiting for all feature UI chunks to finish.
+  const attendancePromise = attendanceRoutePromise.then((attendanceRouteUi) =>
+    myDayPlan.reads.attendance && attendanceTarget && attendanceRouteUi
+      ? (attendanceRouteUi.readMyDayAttendance as unknown as AttendanceReadRoute)({
+        visible: myDayPlan.reads.attendance,
+        readPlan,
+        readApi: (path: string) => pageApi(path, lifetime),
+        isCurrent: () => isCurrentPageRequest(lifetime),
+        getReadIssue: adminReadIssue,
+      })
+      : null,
+  );
+  const assignmentPromise = myDayPlan.reads.assignments && assignmentsTarget
+    ? readOrError(pageApi("/api/work/assignments/mine?limit=4&status=all", lifetime), { assignments: [], hasMore: false })
+    : Promise.resolve(undefined);
+  const timelinePromise = timelineRoutePromise.then((timelineRouteUi) => {
+    if (!timelineRouteUi || !timelineTarget) return undefined;
+    const route = (timelineRouteUi.createMyDayTimelineRoute as unknown as TimelineRouteFactory)({
+      visible: myDayPlan.reads.timeline,
+      readPlan,
+      readApi: (path: string) => readOrError(pageApi(path, lifetime), { events: [], exceptions: [] }),
+      isCurrent: () => isCurrentPageRequest(lifetime) && timelineTarget.isConnected,
+      getReadIssue: adminReadIssue,
+      onChange: mountTimeline,
+    });
+    return route.load();
+  });
+  const readsPromise = Promise.all([attendancePromise, assignmentPromise, timelinePromise]).then(
+    ([attendanceRead, assignmentsResult]) => ({ ok: true as const, attendanceRead, assignmentsResult }),
+    () => ({ ok: false as const }),
+  );
+
   try {
-    [attendanceComponents, assignmentComponents, attendanceRouteUi, timelineRouteUi] = await Promise.all([
-      attendanceTarget || timelineTarget
-        ? (services.loadAttendanceFeatures ?? (() => import("../src/features/attendance/index.js")))()
-        : Promise.resolve(null),
-      assignmentsTarget
-        ? (services.loadAssignmentFeatures ?? (() => import("../src/features/assignments/index.js")))()
-        : Promise.resolve(null),
-      attendanceTarget
-        ? (services.loadAttendanceReadRoute ?? (() => import("./my-day-attendance-route.js")))()
-        : Promise.resolve(null),
-      timelineTarget
-        ? (services.loadTimelineRoute ?? (() => import("./my-day-timeline-route.js")))()
-        : Promise.resolve(null),
+    [attendanceComponents, assignmentComponents] = await Promise.all([
+      attendanceComponentsPromise,
+      assignmentComponentsPromise,
     ]);
   } catch {
     if (!isCurrentPageRequest(lifetime)) return;
@@ -148,39 +199,19 @@ export async function mountMyDayPageRoute(services: HostServices): Promise<void>
     mountReactIsland(assignmentsTarget, assignmentComponents!.AssignmentList, { read: { status: "loading" } });
   }
 
-  const mountTimeline = (read: WorkdayTimelineProps["read"]) => {
-    if (!timelineTarget || !isCurrentPageRequest(lifetime) || !timelineTarget.isConnected) return;
-    mountReactIsland(timelineTarget, attendanceComponents!.WorkdayTimeline, {
-      read,
-      ...(canAccessWorkspaceDestination("work", getActorGrants()) ? { onOpenWork: () => go("work") } : {}),
-    });
-  };
-  const myDayTimelineRoute = timelineTarget
-    ? (timelineRouteUi!.createMyDayTimelineRoute as unknown as TimelineRouteFactory)({
-      visible: myDayPlan.reads.timeline,
-      readPlan,
-      readApi: (path: string) => readOrError(pageApi(path, lifetime), { events: [], exceptions: [] }),
-      isCurrent: () => isCurrentPageRequest(lifetime) && timelineTarget.isConnected,
-      getReadIssue: adminReadIssue,
-      onChange: mountTimeline,
-    })
-    : null;
-
-  const attendancePromise = myDayPlan.reads.attendance && attendanceTarget
-    ? (attendanceRouteUi!.readMyDayAttendance as unknown as AttendanceReadRoute)({
-      visible: myDayPlan.reads.attendance,
-      readPlan,
-      readApi: (path: string) => pageApi(path, lifetime),
-      isCurrent: () => isCurrentPageRequest(lifetime),
-      getReadIssue: adminReadIssue,
-    })
-    : Promise.resolve(null);
-  const assignmentPromise = myDayPlan.reads.assignments && assignmentsTarget
-    ? readOrError(pageApi("/api/work/assignments/mine?limit=4&status=all", lifetime), { assignments: [], hasMore: false })
-    : Promise.resolve(undefined);
-  const timelinePromise = myDayTimelineRoute ? myDayTimelineRoute.load() : Promise.resolve(undefined);
-  const [attendanceRead, assignmentsResult] = await Promise.all([attendancePromise, assignmentPromise, timelinePromise]);
+  if (pendingTimelineRead) {
+    mountTimeline(pendingTimelineRead);
+    pendingTimelineRead = null;
+  }
+  const pageReads = await readsPromise;
   if (!isCurrentPageRequest(lifetime)) return;
+  if (!pageReads.ok) {
+    [attendanceTarget, assignmentsTarget, timelineTarget]
+      .filter((target): target is Element => Boolean(target))
+      .forEach((target) => target.replaceChildren(noticeElement("This My Day section could not load. Reload the page to try again.", "error")));
+    return;
+  }
+  const { attendanceRead, assignmentsResult } = pageReads;
 
   if (attendanceTarget) {
     const performAttendanceAction = createMyDayAttendanceActionRoute({

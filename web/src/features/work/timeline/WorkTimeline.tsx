@@ -33,7 +33,7 @@ const exceptionLabels: Record<string, string> = {
 export function WorkTimeline({
   timeline,
   attendanceToday,
-  correctionAssignments = [],
+  onSearchCorrectionAssignments,
   onCorrectGap,
 }: WorkTimelineProps) {
   const titleId = useId();
@@ -138,7 +138,7 @@ export function WorkTimeline({
           titleId={titleId}
           exceptions={data.exceptions}
           timezone={timezone}
-          assignments={correctionAssignments}
+          onSearchCorrectionAssignments={onSearchCorrectionAssignments}
           onCorrectGap={onCorrectGap}
         />
 
@@ -211,13 +211,13 @@ function TimelineExceptions({
   titleId,
   exceptions,
   timezone,
-  assignments,
+  onSearchCorrectionAssignments,
   onCorrectGap,
 }: {
   titleId: string;
   exceptions: ReadonlyArray<WorkTimelineException>;
   timezone?: string;
-  assignments: ReadonlyArray<TimelineCorrectionAssignment>;
+  onSearchCorrectionAssignments?: (query: string) => Promise<ReadonlyArray<TimelineCorrectionAssignment>>;
   onCorrectGap?: (correction: TimelineGapCorrection) => void | Promise<void>;
 }) {
   if (!exceptions.length) return null;
@@ -233,7 +233,7 @@ function TimelineExceptions({
             key={`${exception.type}-${exception.startedAt ?? index}`}
             exception={exception}
             timezone={timezone}
-            assignments={assignments}
+            onSearchCorrectionAssignments={onSearchCorrectionAssignments}
             onCorrectGap={onCorrectGap}
           />
         ))}
@@ -245,18 +245,18 @@ function TimelineExceptions({
 function ExceptionRow({
   exception,
   timezone,
-  assignments,
+  onSearchCorrectionAssignments,
   onCorrectGap,
 }: {
   exception: WorkTimelineException;
   timezone?: string;
-  assignments: ReadonlyArray<TimelineCorrectionAssignment>;
+  onSearchCorrectionAssignments?: (query: string) => Promise<ReadonlyArray<TimelineCorrectionAssignment>>;
   onCorrectGap?: (correction: TimelineGapCorrection) => void | Promise<void>;
 }) {
   const label = exceptionLabels[exception.type] ?? "Time exception";
   const hasInterval = Boolean(exception.startedAt && exception.endedAt);
   const canSubmitCorrection = exception.type === "work.untracked_gap" && exception.actionable === true &&
-    hasInterval && assignments.length > 0 && Boolean(onCorrectGap);
+    hasInterval && Boolean(onSearchCorrectionAssignments) && Boolean(onCorrectGap);
   return (
     <li className={styles.exception}>
       <div className={styles.exceptionSummary}>
@@ -276,7 +276,7 @@ function ExceptionRow({
         <GapCorrectionForm
           startedAt={exception.startedAt!}
           endedAt={exception.endedAt!}
-          assignments={assignments}
+          onSearchCorrectionAssignments={onSearchCorrectionAssignments!}
           onSubmit={onCorrectGap!}
         />
       ) : null}
@@ -287,16 +287,17 @@ function ExceptionRow({
 function GapCorrectionForm({
   startedAt,
   endedAt,
-  assignments,
+  onSearchCorrectionAssignments,
   onSubmit,
 }: {
   startedAt: string;
   endedAt: string;
-  assignments: ReadonlyArray<TimelineCorrectionAssignment>;
+  onSearchCorrectionAssignments: (query: string) => Promise<ReadonlyArray<TimelineCorrectionAssignment>>;
   onSubmit: (correction: TimelineGapCorrection) => void | Promise<void>;
 }) {
   const formId = useId();
   const [assignmentId, setAssignmentId] = useState("");
+  const [searchResults, setSearchResults] = useState<ReadonlyArray<TimelineCorrectionAssignment>>([]);
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [failed, setFailed] = useState(false);
@@ -308,7 +309,7 @@ function GapCorrectionForm({
     const values = new FormData(form);
     const assignmentId = String(values.get("assignmentId") ?? "");
     const reason = String(values.get("reason") ?? "").trim();
-    if (!assignments.some((assignment) => assignment.assignmentId === assignmentId) || !reason || reason.length > 2000) {
+    if (!searchResults.some((assignment) => assignment.assignmentId === assignmentId) || !reason || reason.length > 2000) {
       setFailed(true);
       setFeedback("Choose an assignment and enter a reason of 2,000 characters or fewer.");
       return;
@@ -330,16 +331,42 @@ function GapCorrectionForm({
     }
   }
 
+  async function searchAssignments(query: string) {
+    const results = await onSearchCorrectionAssignments(query);
+    if (!Array.isArray(results) || results.length > 30 || results.some((assignment) =>
+      !assignment || typeof assignment.assignmentId !== "string" || !assignment.assignmentId.trim() ||
+      typeof assignment.title !== "string" || !assignment.title.trim())) {
+      throw new Error("TIMELINE_CORRECTION_ASSIGNMENT_SEARCH_INVALID");
+    }
+    setSearchResults((current) => {
+      const byId = new Map(current.map((assignment) => [assignment.assignmentId, assignment]));
+      for (const assignment of results) {
+        byId.delete(assignment.assignmentId);
+        byId.set(assignment.assignmentId, assignment);
+      }
+      return [...byId.values()].slice(-120);
+    });
+    return results.map((assignment) => ({ value: assignment.assignmentId, label: assignment.title }));
+  }
+
+  const selectedAssignment = searchResults.find((assignment) => assignment.assignmentId === assignmentId);
+
   return (
     <form className={styles.correctionForm} onSubmit={(event) => void submit(event)} aria-labelledby={`${formId}-title`} noValidate>
       <h4 id={`${formId}-title`}>Record missing work time</h4>
       <SearchableSelect
         label="Assignment"
+        hint="Search assignments assigned to you. Results are limited to 30."
         name="assignmentId"
         required
         value={assignmentId}
-        options={assignments.map((assignment) => ({ value: assignment.assignmentId, label: assignment.title }))}
-        placeholder="Select an assignment"
+        options={[]}
+        searchMode="remote"
+        onSearch={searchAssignments}
+        selectedOption={selectedAssignment ? { value: selectedAssignment.assignmentId, label: selectedAssignment.title } : null}
+        loadingMessage="Searching eligible assignments…"
+        searchErrorMessage="Eligible assignments could not be loaded. Edit the search to retry."
+        placeholder="Search your assignments"
         emptyMessage="No eligible assignments match this search."
         clearLabel="Clear assignment selection"
         disabled={pending}

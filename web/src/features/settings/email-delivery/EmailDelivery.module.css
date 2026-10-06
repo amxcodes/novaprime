@@ -124,27 +124,7 @@
   overflow-wrap: anywhere;
 }
 
-.activeStatus,
-.inactiveStatus {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  min-height: var(--nova-control-height-compact);
-  padding-inline: var(--nova-space-2);
-  border: 1px solid var(--nova-color-border);
-  border-radius: var(--nova-radius-pill);
-  color: var(--nova-color-text-secondary);
-  background: var(--nova-color-surface);
-  font-size: var(--nova-type-size-xs);
-  font-weight: var(--nova-type-weight-medium);
-  white-space: nowrap;
-}
-
-.activeStatus {
-  border-color: var(--nova-color-success);
-  color: var(--nova-color-success);
-  background: var(--nova-color-success-surface);
-}
+.connectionStatus { flex: none; }
 
 .connectionActions,
 .confirmActions,
@@ -370,10 +350,4 @@
     border-color: CanvasText;
   }
 
-  .activeStatus,
-  .inactiveStatus {
-    border-color: CanvasText;
-    color: CanvasText;
-    background: Canvas;
-  }
 }

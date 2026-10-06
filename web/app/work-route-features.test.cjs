@@ -86,3 +86,17 @@ test("the legacy Work host keeps grant and route gates, passing only selected im
   assert.match(route, /loadedWorkRouteFeatures\.workContext/);
   assert.match(route, /loadedWorkRouteFeatures\.reviews/);
 });
+
+test("starts only valid Work route reads before waiting for the page UI chunk", () => {
+  const app = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+  const route = app.slice(app.indexOf("async function renderWork("), app.indexOf("function workSetupPermission("));
+  const readStart = route.indexOf("const workReadDataPromise =");
+  const uiWait = route.indexOf("const loadedWorkPageUi = await workPageUiPromise");
+  const readPlanBlock = route.slice(readStart, uiWait);
+
+  assert.ok(readStart >= 0 && uiWait > readStart);
+  assert.match(readPlanBlock, /!taskDetailRoute && !workRouteUnavailableMessage/,
+    "task-detail and invalid focused routes must not start the standard Work reads");
+  assert.match(readPlanBlock, /readWorkRouteData\(\{[\s\S]*?lifetime,[\s\S]*?pageApi,/,
+    "the early reads must retain their authenticated transport and cancellable page lifetime");
+});

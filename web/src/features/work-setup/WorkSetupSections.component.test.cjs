@@ -147,6 +147,20 @@ test("billing-policy scope displays only projected manageable workstreams and ma
   assert.doesNotMatch(html, /<select|Broad employee directory|billingClass/);
 });
 
+test("billing policy labels use the shared compact status badge, including required-policy attention", () => {
+  const configured = renderBilling();
+  assert.match(configured, /data-tone="neutral"><span>Billable<\/span><\/span>/);
+
+  const missingPolicy = renderBilling({ workstreams: { status: "ready", data: [{ ...workstream, policyClass: null }] } });
+  assert.match(missingPolicy, /data-tone="warning"><span>Policy required<\/span><\/span>/);
+  assert.match(missingPolicy, /Task creation in this workstream stays blocked/);
+
+  const source = fs.readFileSync(path.join(__dirname, "BillingPolicySection.tsx"), "utf8");
+  const css = fs.readFileSync(path.join(__dirname, "WorkSetupSections.module.css"), "utf8");
+  assert.match(source, /<Badge tone="neutral">Future tasks only<\/Badge>/);
+  assert.doesNotMatch(css, /policyBadge|nova-radius-pill/);
+});
+
 test("search result announcements describe server-returned authorized matches", () => {
   assert.equal(workstreamSearchStatus("NORTH", 2), "2 matching client workstreams returned by NOVA.");
   assert.equal(workstreamSearchStatus("unmatched", 0), "No client workstreams match the current search.");

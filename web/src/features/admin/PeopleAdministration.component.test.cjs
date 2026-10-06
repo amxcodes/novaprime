@@ -91,6 +91,29 @@ test("view-only capability renders authorized rows without exposing invitation c
   assert.doesNotMatch(html, /Invite a person|Send invitation/);
 });
 
+test("people lifecycle statuses use shared badge geometry and semantic tones", () => {
+  const cases = [
+    ["active", "success", "Active"],
+    ["invited", "info", "Invited"],
+    ["onboarding", "info", "Onboarding"],
+    ["notice", "warning", "Notice"],
+    ["offboarding", "warning", "Offboarding"],
+    ["frozen", "danger", "Frozen"],
+    ["offboarded", "danger", "Offboarded"],
+    ["future_status", "neutral", "Future Status"],
+  ];
+
+  for (const [status, tone, label] of cases) {
+    const person = { ...activePerson, status };
+    const html = render({ peoplePage: peoplePage([person]) });
+    assert.match(html, new RegExp(`data-status="${status}"[^>]*data-tone="${tone}"`));
+    assert.match(html, new RegExp(`>${label}<`));
+  }
+
+  const source = fs.readFileSync(require("node:path").join(__dirname, "PeopleAdministration.tsx"), "utf8");
+  assert.match(source, /<Badge className=\{styles\.status\} data-status=/);
+});
+
 test("person actions follow host-projected target visibility", () => {
   const html = render();
   assert.match(html, /Freeze access/);

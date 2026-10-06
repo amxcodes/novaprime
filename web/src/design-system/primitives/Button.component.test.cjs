@@ -74,10 +74,12 @@ test("quiet and danger actions use the Orbit system's light, semantic surfaces",
   assert.doesNotMatch(dangerHover, /filter:/);
 });
 
-test("button motion and keyboard focus follow the design-system cues without motion under reduced-motion", () => {
+test("button states use restrained color feedback and the Orbit keyboard-focus cue", () => {
   const css = fs.readFileSync(require.resolve("./Button.module.css"), "utf8");
-  assert.match(css, /\.button:hover:not\(:disabled\)\s*\{\s*transform:\s*translateY\(-1px\)/);
-  assert.match(css, /\.button:active:not\(:disabled\)\s*\{\s*transform:\s*translateY\(0\)/);
+  assert.match(css, /background:\s*linear-gradient\(112deg, var\(--nova-color-action\), var\(--nova-color-action-edge\)\)/);
+  assert.match(css, /\.button::before\s*\{[^}]*var\(--nova-color-control-highlight\)[^}]*opacity:\s*var\(--nova-control-highlight-opacity\)/s);
+  assert.match(css, /\.button\[data-variant="primary"\]:active:not\(:disabled\)\s*\{[^}]*var\(--nova-color-action-pressed\)/s);
+  assert.doesNotMatch(css, /transform:\s*translateY/);
   assert.match(css, /\.button:focus-visible\s*\{\s*box-shadow:\s*inset 0 -2px 0 var\(--nova-color-action\)/);
   const reducedMotion = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"), css.indexOf("@media (forced-colors: active)"));
   assert.match(reducedMotion, /\.spinner\s*\{[^}]*animation:\s*none/);
@@ -87,6 +89,7 @@ test("coarse-pointer sizing keeps compact buttons and icon buttons at the touch 
   const css = fs.readFileSync(require.resolve("./Button.module.css"), "utf8");
   const coarsePointerCss = css.slice(css.indexOf("@media (any-pointer: coarse)"));
 
+  assert.match(css, /\.button\s*\{[^}]*font-size:\s*var\(--nova-type-size-sm\)/s);
   assert.match(coarsePointerCss, /\.button,\s*\.button\[data-size="compact"\]\s*\{\s*min-height:\s*var\(--nova-control-touch-target\)/);
   assert.match(coarsePointerCss, /\.iconButton,\s*\.iconButton\[data-size="compact"\]\s*\{\s*width:\s*var\(--nova-control-touch-target\)/);
 });

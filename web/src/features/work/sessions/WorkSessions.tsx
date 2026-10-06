@@ -128,7 +128,7 @@ export function WorkSessions({ canRead, eligibility, read, onPause, onStop }: Wo
               <div className={styles.summary}>
                 <div className={styles.heading}>
                   <h3 className={styles.title} id={titleId}>{session.title || "Untitled assignment"}</h3>
-                  <Badge tone={status.tone} showDot>{status.label}</Badge>
+                  <Badge tone={status.tone}>{status.label}</Badge>
                 </div>
                 <div className={styles.metadata}>
                   <span>Started <time dateTime={session.startedAt}>{startedAt}</time></span>
@@ -139,7 +139,7 @@ export function WorkSessions({ canRead, eligibility, read, onPause, onStop }: Wo
                   <time className={styles.timer} aria-label={elapsedAccessibleLabel(elapsed)}>
                     {formatElapsed(elapsed)}
                   </time>
-                  {active ? <span className={styles.liveIndicator}>Live</span> : null}
+                  {active ? <Badge className={styles.liveIndicator} tone="success">Live</Badge> : null}
                 </p>
               </div>
               {canAct ? (

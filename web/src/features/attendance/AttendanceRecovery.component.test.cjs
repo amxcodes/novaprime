@@ -137,6 +137,21 @@ test("component exposes recoverable read failures and only offers older-page loa
   assert.doesNotMatch(render(), /Load older eligible workdays/);
 });
 
+test("recovery summary uses shared status badges and keeps its full live-region message", () => {
+  const ready = render({ initialResult: { candidates: [firstCandidate, secondCandidate], nextCursor: "older" } });
+  assert.match(ready, /role="status" aria-live="polite" aria-atomic="true"[^>]*>/);
+  assert.match(ready, /data-tone="warning"><span>2 eligible workdays<\/span><\/span>/);
+  assert.match(ready, /data-tone="info"><span>Older pages available<\/span><\/span>/);
+  assert.match(ready, /Showing 2 eligible workdays\. Older pages are available\./);
+
+  const empty = render({ initialResult: { candidates: [] } });
+  assert.match(empty, /data-tone="success"><span>0 eligible workdays<\/span><\/span>/);
+
+  const failed = render({ initialResult: { readError: "REQUEST_FAILED" } });
+  assert.match(failed, /data-tone="danger"><span>Unavailable<\/span><\/span>/);
+  assert.match(failed, /Attendance recovery is unavailable\./);
+});
+
 test("correction form exposes required, labeled fields and a timestamp pattern that accepts ISO 8601 offsets", () => {
   const html = render({ initialResult: { candidates: [secondCandidate] } });
   const expectedPattern = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})`;

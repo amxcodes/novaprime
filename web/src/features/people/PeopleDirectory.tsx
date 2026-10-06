@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Badge, Button, EmptyState, Field, Input, SectionHeading, StateMessage } from "../../design-system";
+import { Avatar, Badge, Button, EmptyState, Field, Input, SectionHeading, StateMessage } from "../../design-system";
 import styles from "./People.module.css";
 import type { PeopleDirectoryReadState, PersonDirectoryRecord } from "./contracts";
 import {
@@ -69,13 +69,23 @@ function PersonRow({
   const name = person.displayName || "Unnamed person";
   return (
     <li className={styles.personRow} data-selected={selected || undefined}>
-      <div className={styles.personMain}>
-        <div className={styles.personTitleLine}>
+      <div className={styles.personIdentity}>
+        <Avatar size={32} />
+        <div className={styles.personMain}>
           <h3 className={styles.personName}>{name}</h3>
-          <Badge tone={personStatusTone(person.status)}>{personStatusLabel(person.status)}</Badge>
+          <p className={styles.email}>{person.email}</p>
         </div>
-        <p className={styles.email}>{person.email}</p>
+      </div>
+      <div className={styles.workDetails}>
         <PersonFacts person={person} />
+      </div>
+      <div className={styles.accessRole}>
+        <span className={styles.cellLabel}>Access role</span>
+        <span>{person.role?.name || "No role assigned"}</span>
+      </div>
+      <div className={styles.accountStatus}>
+        <span className={styles.cellLabel}>Status</span>
+        <Badge tone={personStatusTone(person.status)}>{personStatusLabel(person.status)}</Badge>
       </div>
       <Button
         className={styles.historyAction}
@@ -266,16 +276,25 @@ export function PeopleDirectory({ read, selectedPersonId = null, onSearch, onLoa
           ) : null}
 
           {read.status === "ready" && !queryPending && read.people.length > 0 ? (
-            <ul className={styles.peopleList} aria-label="People in the current access scope">
-              {read.people.map((person) => (
-                <PersonRow
-                  key={person.id}
-                  person={person}
-                  selected={person.id === selectedPersonId}
-                  onSelect={onSelectPerson}
-                />
-              ))}
-            </ul>
+            <div className={styles.peopleTable}>
+              <div className={styles.peopleHeader} aria-hidden="true">
+                <span>Person</span>
+                <span>Work details</span>
+                <span>Access role</span>
+                <span>Status</span>
+                <span className={styles.actionHeading}>Actions</span>
+              </div>
+              <ul className={styles.peopleList} aria-label="People in the current access scope">
+                {read.people.map((person) => (
+                  <PersonRow
+                    key={person.id}
+                    person={person}
+                    selected={person.id === selectedPersonId}
+                    onSelect={onSelectPerson}
+                  />
+                ))}
+              </ul>
+            </div>
           ) : null}
 
           {read.status === "ready" && !queryPending && read.people.length > 0 && !read.hasMore && !read.nextCursor ? (

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { Button, Field, Input, StateMessage } from "../../../design-system";
+import { Badge, Button, Field, Input, StateMessage } from "../../../design-system";
 import { classifyEmailDeliveryActionFailure } from "./contracts";
 import type { EmailConnectionView, EmailDeliveryActionFailureKind, EmailProviderKind, EmailTestStatus } from "./contracts";
 import styles from "./EmailDelivery.module.css";
@@ -212,9 +212,9 @@ export function ConnectionCard({
           </p>
           {connection.replyToEmail ? <p className={styles.connectionMeta}>Reply-to {connection.replyToEmail}</p> : null}
         </div>
-        <span className={isActive && connection.supported ? styles.activeStatus : styles.inactiveStatus}>
+        <Badge className={styles.connectionStatus} tone={!isActive ? "neutral" : connection.supported ? "success" : "warning"}>
           {isActive ? connection.supported ? "Active" : "Active · unavailable here" : "Inactive"}
-        </span>
+        </Badge>
       </header>
 
       {!connection.supported ? (

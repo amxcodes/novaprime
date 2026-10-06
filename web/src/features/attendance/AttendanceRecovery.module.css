@@ -33,9 +33,19 @@
   overflow-wrap: anywhere;
 }
 .status {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nova-space-2) var(--nova-space-3);
   margin: 0;
+}
+.statusDetail {
+  min-width: 0;
   color: var(--nova-color-text-secondary);
   font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
 }
 .list {
   display: grid;

@@ -64,6 +64,10 @@
   min-width: 0;
   margin: 0;
   padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
   list-style: none;
 }
 
@@ -73,9 +77,10 @@
   grid-template-columns: minmax(7rem, 0.2fr) minmax(0, 1fr);
   align-items: start;
   gap: var(--nova-space-4);
-  padding: var(--nova-space-4) var(--nova-space-2);
-  border-block-start: 1px solid var(--nova-color-border);
+  padding: var(--nova-space-4);
 }
+
+.eventRow + .eventRow { border-block-start: 1px solid var(--nova-color-border); }
 
 .eventDate {
   padding-block-start: var(--nova-space-1);

@@ -90,26 +90,7 @@
   letter-spacing: 0.01em;
 }
 
-.liveIndicator {
-  display: inline-flex;
-  min-height: 1.5rem;
-  align-items: center;
-  gap: var(--nova-space-1);
-  padding-inline: var(--nova-space-2);
-  border-radius: var(--nova-radius-pill);
-  color: var(--nova-color-success);
-  background: var(--nova-color-success-surface);
-  font-size: var(--nova-type-size-xs);
-  font-weight: var(--nova-type-weight-medium);
-}
-
-.liveIndicator::before {
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 50%;
-  background: currentColor;
-  content: "";
-}
+.liveIndicator { justify-self: start; }
 
 .actions {
   display: flex;

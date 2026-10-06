@@ -1,8 +1,10 @@
 .shell {
   display: grid;
   grid-template-columns: var(--nova-navigation-width-expanded) minmax(0, 1fr);
+  column-gap: var(--nova-space-4);
   min-height: 100vh;
   min-height: 100dvh;
+  padding-inline: var(--nova-space-4);
   color: var(--nova-color-text-primary);
   background: var(--nova-color-canvas);
   transition: grid-template-columns var(--nova-motion-duration-standard) var(--nova-motion-ease-standard);
@@ -48,6 +50,8 @@
   .shell,
   .shell[data-navigation-state="compact"] {
     grid-template-columns: minmax(0, 1fr);
+    column-gap: 0;
+    padding-inline: 0;
     transition: none;
   }
 }

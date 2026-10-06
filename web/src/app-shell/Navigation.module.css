@@ -4,14 +4,18 @@
   display: flex;
   min-width: 0;
   width: 100%;
-  height: 100vh;
-  height: 100dvh;
+  height: calc(100vh - var(--nova-space-8));
+  height: calc(100dvh - var(--nova-space-8));
+  min-height: 0;
   flex-direction: column;
-  gap: var(--nova-space-6);
-  overflow: auto;
-  padding: var(--nova-space-5) var(--nova-space-3) var(--nova-space-4);
-  border-inline-end: 1px solid var(--nova-color-border);
-  background: var(--nova-color-surface);
+  gap: var(--nova-space-4);
+  overflow: hidden;
+  margin-block: var(--nova-space-4);
+  padding: var(--nova-space-4) var(--nova-space-3) var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-navigation);
+  background: var(--nova-color-surface-raised);
+  box-shadow: var(--nova-elevation-raised);
 }
 
 .desktopHeader {
@@ -39,19 +43,18 @@
 
 .desktopToggle {
   display: inline-flex;
-  min-width: var(--nova-control-touch-target);
-  min-height: var(--nova-control-touch-target);
+  min-width: var(--nova-control-height-compact);
+  min-height: var(--nova-control-height-compact);
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  gap: var(--nova-space-1);
+  gap: var(--nova-space-2);
   padding-inline: var(--nova-space-2);
   border: 1px solid var(--nova-color-border);
   border-radius: var(--nova-radius-control);
   color: var(--nova-color-text-secondary);
   background: var(--nova-color-surface-raised);
-  box-shadow: var(--nova-elevation-raised);
-  font: var(--nova-type-label);
+  font: var(--nova-type-weight-medium) var(--nova-type-size-xs)/var(--nova-type-line-normal) var(--nova-type-family-sans);
   cursor: pointer;
   transition:
     color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
@@ -62,6 +65,11 @@
 .desktopToggle:hover {
   color: var(--nova-color-text-primary);
   background: var(--nova-color-surface-subtle);
+}
+
+.desktopToggle:active {
+  color: var(--nova-color-action-text);
+  background: var(--nova-color-action-subtle);
 }
 
 .desktopToggle:focus-visible {
@@ -98,10 +106,12 @@
 
 .compactSidebar .brand {
   padding-inline: var(--nova-space-1);
+  font-size: var(--nova-type-size-md);
 }
 
-.compactSidebar .toggleLabel {
-  display: none;
+.compactSidebar .desktopToggle {
+  gap: var(--nova-space-1);
+  padding-inline: var(--nova-space-2);
 }
 
 .navigation {
@@ -114,7 +124,8 @@
 .desktopSidebar .navigation {
   flex: 1 1 auto;
   min-height: 0;
-  padding: 2px;
+  gap: var(--nova-space-4);
+  padding: var(--nova-space-1);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -129,21 +140,22 @@
 }
 
 .groupLabel {
-  margin: 0 0 var(--nova-space-2);
-  padding-inline: var(--nova-space-3);
+  margin: 0 0 var(--nova-space-1);
+  padding-inline: var(--nova-space-2);
   color: var(--nova-color-text-muted);
   font-family: var(--nova-type-family-sans);
   font-size: var(--nova-type-size-xs);
   font-weight: var(--nova-type-weight-semibold);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.045em;
   line-height: var(--nova-type-line-normal);
   text-transform: uppercase;
 }
 
 .compactSidebar .groupLabel {
-  padding-inline: var(--nova-space-2);
+  padding-inline: var(--nova-space-1);
   font-size: var(--nova-type-size-xs);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.035em;
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 
@@ -164,12 +176,12 @@
 .link {
   position: relative;
   display: flex;
-  min-height: var(--nova-control-touch-target);
+  min-height: var(--nova-control-height-compact);
   align-items: center;
-  gap: var(--nova-space-3);
-  padding: var(--nova-space-2) var(--nova-space-3);
+  gap: var(--nova-space-2);
+  padding: var(--nova-space-1) var(--nova-space-2);
   border: 1px solid transparent;
-  border-radius: var(--nova-radius-control);
+  border-radius: var(--nova-radius-option);
   color: var(--nova-color-text-secondary);
   font-family: var(--nova-type-family-sans);
   font-size: var(--nova-type-size-sm);
@@ -187,6 +199,11 @@
   background: var(--nova-color-surface-subtle);
 }
 
+.link:active {
+  color: var(--nova-color-action-text);
+  background: var(--nova-color-action-subtle);
+}
+
 .link[aria-current="page"] {
   position: relative;
   border-color: var(--nova-color-border);
@@ -195,13 +212,8 @@
   font-weight: var(--nova-type-weight-semibold);
 }
 
-.currentMark {
-  position: absolute;
-  inset-block: 0.55rem;
-  inset-inline-end: 0;
-  width: 0.1875rem;
-  border-radius: var(--nova-radius-pill);
-  background: var(--nova-color-action);
+.link[aria-current="page"]:hover {
+  background: var(--nova-color-action-subtle);
 }
 
 .link:focus-visible,
@@ -222,6 +234,9 @@
   color: currentColor;
 }
 
+/* The authored desktop rail is text-led; mobile adaptations may use icons. */
+.desktopSidebar .icon { display: none; }
+
 .icon :global(svg),
 .bottomIcon :global(svg) {
   display: block;
@@ -231,12 +246,14 @@
 
 .label {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .compactSidebar .link {
-  gap: var(--nova-space-2);
-  padding-inline: var(--nova-space-2);
+  padding-inline: var(--nova-space-1);
+  font-size: var(--nova-type-size-xs);
 }
 
 .sidebarFooter {
@@ -410,6 +427,13 @@
 
   .bottomLink:active {
     background: var(--nova-color-action-subtle);
+  }
+}
+
+@media (pointer: coarse) {
+  .link,
+  .desktopToggle {
+    min-height: var(--nova-control-touch-target);
   }
 }
 

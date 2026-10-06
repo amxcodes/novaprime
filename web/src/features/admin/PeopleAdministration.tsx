@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { Button, EmptyState, Field, Input, SearchableSelect, StateMessage } from "../../design-system";
+import { Badge, Button, EmptyState, Field, Input, SearchableSelect, StateMessage, type StatusTone } from "../../design-system";
 import type {
   AdminCompleteOnboardingInput,
   AdminInvitePersonInput,
@@ -76,6 +76,23 @@ export function OnboardingValidationFeedback({ errors }: { errors: OnboardingFor
 function safeError(error: unknown, formatError?: (error: unknown) => string): string {
   const message = formatError?.(error)?.trim();
   return message || fallbackError;
+}
+
+function personStatusTone(status: string): StatusTone {
+  switch (status.trim().toLowerCase()) {
+    case "active": return "success";
+    case "invited":
+    case "onboarding": return "info";
+    case "notice":
+    case "offboarding": return "warning";
+    case "frozen":
+    case "offboarded": return "danger";
+    default: return "neutral";
+  }
+}
+
+function personStatusLabel(status: string): string {
+  return status.trim().replaceAll("_", " ").replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
 }
 
 export function PeopleAdministration(props: PeopleAdministrationProps) {
@@ -356,7 +373,9 @@ function PersonRow({
           <a className={styles.email} href={`mailto:${person.email}`}>{person.email}</a>
           {details.length ? <p className={styles.meta}>{details.join(" · ")}</p> : null}
         </div>
-        <span className={styles.status} data-status={person.status.toLowerCase()}>{person.status}</span>
+        <Badge className={styles.status} data-status={person.status.trim().toLowerCase()} tone={personStatusTone(person.status)}>
+          {personStatusLabel(person.status)}
+        </Badge>
       </header>
 
       {person.actions.resendInvitation || person.actions.freeze || person.actions.startOffboarding || person.actions.completeExit ? (

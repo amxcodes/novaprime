@@ -217,18 +217,6 @@
 .workstreamHeading > div,
 .ruleHeader > div { min-width: 0; }
 .workstreamHeading p { margin-bottom: 0; }
-.policyBadge {
-  max-width: 100%;
-  padding: var(--nova-space-1) var(--nova-space-3);
-  border: 1px solid var(--nova-color-border);
-  border-radius: var(--nova-radius-pill);
-  color: var(--nova-color-text-secondary);
-  background: var(--nova-color-surface-subtle);
-  font-size: var(--nova-type-size-xs);
-  font-weight: var(--nova-type-weight-medium);
-  overflow-wrap: anywhere;
-}
-
 .picker { display: grid; min-width: 0; gap: var(--nova-space-3); }
 .searchStatus {
   min-width: 0;
@@ -295,7 +283,6 @@
   .choice:has(input:checked) { outline: 2px solid Highlight; }
   .entryTools summary::after { border-color: currentColor; }
   .entryTools summary:focus-visible { outline-color: Highlight; }
-  .policyBadge { border-color: CanvasText; color: CanvasText; background: Canvas; }
 }
 
 @media (prefers-reduced-motion: reduce) {

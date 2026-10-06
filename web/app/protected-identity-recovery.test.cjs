@@ -19,6 +19,20 @@ test("page-scoped reads recover expired sessions and non-operational actors with
   assert.match(pageRead, /throw error;/);
 });
 
+test("session readiness overlaps the independent grants and self-preference reads but still gates preference application", () => {
+  const session = section("async function refreshSession()", "function canOpenView(");
+  const sessionRead = session.indexOf('await fetch("/api/auth/get-session"');
+  const parallelReads = session.indexOf("const [grants, saved] = await Promise.all([");
+  const grantsRead = session.indexOf('api("/api/me/permission-grants")', parallelReads);
+  const preferencesRead = session.indexOf('api("/api/me/ui-preferences")', parallelReads);
+  const grantsGate = session.indexOf("if (grants.readError || !grants.actorPersonId)", parallelReads);
+  const preferenceStatus = session.indexOf("if (saved.readError)", parallelReads);
+
+  assert.ok(sessionRead >= 0 && parallelReads > sessionRead && grantsRead > parallelReads && preferencesRead > grantsRead);
+  assert.ok(grantsGate > preferencesRead && preferenceStatus > grantsGate);
+  assert.match(session, /saved\.personId !== grants\.actorPersonId/);
+});
+
 test("current unread-count auth and non-operational failures recover while stale results stay ignored", () => {
   const refresh = section("async function refreshUnreadNotificationCount()", "function currentWorkspaceDestinations(");
   assert.match(refresh, /generation !== state\.unreadNotificationGeneration \|\| identityEpoch !== state\.identityEpoch \|\| actorPersonId !== state\.actorGrants\?\.actorPersonId/);

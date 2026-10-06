@@ -65,6 +65,7 @@ test("renders distinct client and organisation hierarchies from the supplied pro
   assert.match(html, /Internal operations/);
   assert.match(html, /Task target group/);
   assert.match(html, /Task target/);
+  assert.equal((html.match(/data-tone="info"><span>Task target<\/span><\/span>/g) || []).length, 2);
   assert.match(html, /Eligible task creation targets/);
   assert.match(html, /Organisation workstream target/);
   assert.match(html, /Client context from visible workstream/);
@@ -176,6 +177,8 @@ test("uses feature-owned semantic tokens and container-responsive layouts", () =
   assert.match(css, /\.searchScope,\s*\.searchResultSummary \{[^}]*grid-column:\s*auto/s);
   assert.match(css, /overflow-wrap:\s*anywhere/);
   assert.match(css, /min-height:\s*var\(--nova-control-touch-target\)/);
+  assert.doesNotMatch(css, /\.taskTarget\s*\{/);
+  assert.match(component, /<Badge tone="info">Task target<\/Badge>/);
   assert.match(css, /var\(--nova-color-[a-z-]+\)/);
   assert.doesNotMatch(css, /#[\da-f]{3,8}\b|\brgb\(|\bhsl\(/i);
 });

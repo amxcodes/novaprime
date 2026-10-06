@@ -95,7 +95,6 @@ function NavigationLinks({
                       {item.icon}
                     </span>
                     <span className={styles.label}>{item.label}</span>
-                    {current ? <span className={styles.currentMark} aria-hidden="true" /> : null}
                   </a>
                 </li>
               );

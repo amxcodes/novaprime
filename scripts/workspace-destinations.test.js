@@ -163,7 +163,7 @@ test("invite-only grants expose the invite destination without exposing Admin", 
   expect(canAccessWorkspaceDestination("people", inviteOnly)).toBe(false);
   expect(canAccessWorkspaceDestination("admin", inviteOnly)).toBe(false);
   expect(canAccessWorkspaceDestination("work", inviteOnly)).toBe(false);
-  expect(resolveWorkspaceHome(inviteOnly)).toBe("settings");
+  expect(resolveWorkspaceHome(inviteOnly)).toBe("invite");
 });
 
 test("scoped administration and reporting remain discoverable at supported scopes", () => {

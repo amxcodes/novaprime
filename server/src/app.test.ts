@@ -152,6 +152,7 @@ test("role scope target search validates its scope and query before auth or data
   expect(await validUnauthenticated.json()).toEqual({ error: "AUTHENTICATION_CONFIGURATION_REQUIRED" });
 });
 
+
 test("role scope target searches expose only the exact GET endpoint", async () => {
   const wrongMethod = await handleRequest(new Request(
     "http://nova.test/api/roles/scope-targets?scope=client",

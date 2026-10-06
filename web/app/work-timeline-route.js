@@ -7,16 +7,17 @@ const deniedReadCodes = new Set(["PERMISSION_DENIED", "PREREQUISITE_PERMISSION_R
  * presentation contract consumed by WorkTimeline. Raw server DTOs stay in the
  * route host; omitted grants always win over any supplied fallback or data.
  *
- * Retry and correction handlers are supplied by the route host so it can keep
- * identity, page-lifetime, and command checks around existing API calls.
+ * Retry, server-side correction search, and correction handlers are supplied
+ * by the route host so it can keep identity and page-lifetime checks around
+ * existing API calls.
  *
  * @param {object} input
  * @param {Record<string, boolean>} [input.readPlan]
  * @param {Record<string, unknown>} [input.timelineResult]
  * @param {Record<string, unknown>} [input.attendanceResult]
- * @param {Record<string, unknown>} [input.assignmentsResult]
  * @param {() => void} [input.onRetryTimeline]
  * @param {() => void} [input.onRetryAttendance]
+ * @param {(query: string) => Promise<ReadonlyArray<import('../src/features/work/timeline/contracts').TimelineCorrectionAssignment>>} [input.onSearchCorrectionAssignments]
  * @param {(correction: import('../src/features/work/timeline/contracts').TimelineGapCorrection) => void | Promise<void>} [input.onCorrectGap]
  * @returns {WorkTimelineProps}
  */
@@ -24,9 +25,9 @@ export function projectWorkTimelineProps({
   readPlan = {},
   timelineResult,
   attendanceResult,
-  assignmentsResult,
   onRetryTimeline,
   onRetryAttendance,
+  onSearchCorrectionAssignments,
   onCorrectGap,
 } = {}) {
   readPlan = readPlan && typeof readPlan === "object" ? readPlan : {};
@@ -37,27 +38,30 @@ export function projectWorkTimelineProps({
     ? projectAttendanceRead(attendanceResult, onRetryAttendance)
     : { status: "not-requested" };
 
-  const correctionAssignments = readPlan.assignments === true && !assignmentsResult?.readError
-    ? projectAssignments(assignmentsResult?.assignments)
-    : [];
-
-  const props = { timeline, attendanceToday, correctionAssignments };
-  if (timeline.status !== "ready" || correctionAssignments.length === 0 || typeof onCorrectGap !== "function") {
-    return props;
-  }
+  const props = { timeline, attendanceToday };
+  if (timeline.status !== "ready" || typeof onSearchCorrectionAssignments !== "function" || typeof onCorrectGap !== "function") return props;
 
   const actionableIntervals = new Set(timeline.data.exceptions
     .filter((exception) => exception.type === "work.untracked_gap" && exception.actionable === true && exception.startedAt && exception.endedAt)
     .map((exception) => intervalKey(exception.startedAt, exception.endedAt)));
-  const assignmentIds = new Set(correctionAssignments.map((assignment) => assignment.assignmentId));
   if (actionableIntervals.size === 0) return props;
+  const searchedAssignmentIds = new Map();
 
   return {
     ...props,
+    async onSearchCorrectionAssignments(query) {
+      const assignments = projectSearchAssignments(await onSearchCorrectionAssignments(query));
+      for (const assignment of assignments) {
+        searchedAssignmentIds.delete(assignment.assignmentId);
+        searchedAssignmentIds.set(assignment.assignmentId, true);
+      }
+      while (searchedAssignmentIds.size > 120) searchedAssignmentIds.delete(searchedAssignmentIds.keys().next().value);
+      return assignments;
+    },
     onCorrectGap(correction) {
       const reason = typeof correction?.reason === "string" ? correction.reason.trim() : "";
       if (!actionableIntervals.has(intervalKey(correction?.startedAt, correction?.endedAt)) ||
-          !assignmentIds.has(correction?.assignmentId) || !reason || reason.length > 2000) {
+          !searchedAssignmentIds.has(correction?.assignmentId) || !reason || reason.length > 2000) {
         throw new Error("TIMELINE_CORRECTION_NOT_IN_AUTHORIZED_PROJECTION");
       }
       return onCorrectGap({
@@ -215,15 +219,13 @@ function projectException(exception) {
   };
 }
 
-function projectAssignments(assignments) {
-  if (!Array.isArray(assignments)) return [];
-  return assignments
-    .filter((assignment) => assignment && isNonEmptyString(assignment.assignmentId) &&
-      typeof assignment.title === "string" && assignment.title.trim())
-    .map((assignment) => ({
-      assignmentId: assignment.assignmentId,
-      title: assignment.title,
-    }));
+function projectSearchAssignments(assignments) {
+  if (!Array.isArray(assignments) || assignments.length > 30 || assignments.some((assignment) =>
+    !assignment || !isNonEmptyString(assignment.assignmentId) ||
+    typeof assignment.title !== "string" || !assignment.title.trim())) {
+    throw new Error("TIMELINE_CORRECTION_ASSIGNMENT_SEARCH_INVALID");
+  }
+  return assignments.map((assignment) => ({ assignmentId: assignment.assignmentId, title: assignment.title }));
 }
 
 function isTimelinePolicy(policy) {

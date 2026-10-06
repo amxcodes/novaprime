@@ -105,6 +105,10 @@ test("directory ready page presents supplied rows, cursor status, and accessible
   assert.doesNotMatch(html, /of 1|total of/i);
   assert.match(html, /Morgan Lee/);
   assert.match(html, /morgan@example\.test/);
+  assert.match(html, /<span[^>]*data-size="32" aria-hidden="true"><svg/);
+  assert.match(html, /<div[^>]*aria-hidden="true"><span>Person<\/span><span>Work details<\/span><span>Access role<\/span><span>Status<\/span><span>Actions<\/span><\/div>/);
+  assert.match(html, /Access role/);
+  assert.match(html, /Contributor/);
   assert.match(html, /aria-label="View effective-dated history for Morgan Lee"/);
   assert.match(html, /Load more people/);
 });
@@ -232,6 +236,7 @@ test("people layouts adapt to feature width rather than the browser viewport", (
   const css = fs.readFileSync(require.resolve("./People.module.css"), "utf8");
 
   assert.match(css, /container-type:\s*inline-size/);
+  assert.match(css, /@container\s*\(max-width:\s*56rem\)/);
   assert.match(css, /@container\s*\(max-width:\s*40rem\)/);
   assert.match(css, /@container\s*\(max-width:\s*22\.5rem\)/);
   assert.doesNotMatch(css, /@media\s*\(max-width:/);
@@ -243,8 +248,12 @@ test("compact directory and history retain readable one-column actions and fact 
   const narrow = css.match(/@container\s*\(max-width:\s*22\.5rem\)\s*\{([\s\S]*?)(?=\n@media)/)?.[1] || "";
 
   assert.match(compact, /\.toolbar\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
-  assert.match(compact, /\.personRow\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
-  assert.match(compact, /\.historyAction\s*\{[^}]*width:\s*100%/);
+  const tablet = css.match(/@container\s*\(max-width:\s*56rem\)\s*\{([\s\S]*?)(?=\n@container|\n@media)/)?.[1] || "";
+  assert.match(tablet, /\.peopleHeader\s*\{[^}]*display:\s*none/);
+  assert.match(tablet, /\.personRow\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(tablet, /\.personRow\s*\{[^}]*border-radius:\s*var\(--nova-radius-surface\)/);
+  assert.match(tablet, /\.historyAction\s*\{[^}]*width:\s*100%/);
+  // The <=56rem tablet rule also applies below 40rem; avoid duplicating it in the narrower rule.
   assert.match(compact, /\.facts,[\s\S]*?\.summaryFacts\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(compact, /\.entryHeading\s*\{[^}]*display:\s*grid/);
   assert.match(compact, /\.loadMoreGroup,[\s\S]*?\.loadMoreGroup button\s*\{[^}]*width:\s*100%/);

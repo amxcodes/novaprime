@@ -59,26 +59,55 @@
   border: 0;
 }
 
+.peopleTable {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
+
+.peopleHeader,
+.personRow {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(15rem, 1.5fr) minmax(12rem, 1.4fr) minmax(8rem, 0.8fr) minmax(7rem, 0.7fr) auto;
+  align-items: center;
+  gap: var(--nova-space-4);
+  padding-inline: var(--nova-space-4);
+}
+
+.peopleHeader {
+  min-height: var(--nova-control-height);
+  border-block-end: 1px solid var(--nova-color-border);
+  color: var(--nova-color-text-muted);
+  background: var(--nova-color-surface-subtle);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.actionHeading { text-align: end; }
+
 .peopleList {
   display: grid;
   min-width: 0;
   margin: 0;
   padding: 0;
-  border-block: 1px solid var(--nova-color-border);
   list-style: none;
 }
 
 .personRow {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--nova-space-5);
-  padding: var(--nova-space-4) var(--nova-space-2);
+  min-height: 4rem;
+  padding-block: var(--nova-space-3);
 }
 
 .personRow + .personRow {
   border-block-start: 1px solid var(--nova-color-border);
+}
+
+@media (hover: hover) {
+  .personRow:hover:not([data-selected="true"]) { background: var(--nova-color-surface-subtle); }
 }
 
 .personRow[data-selected="true"] {
@@ -86,13 +115,19 @@
   background: var(--nova-color-action-subtle);
 }
 
+.personIdentity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--nova-space-3);
+}
+
 .personMain {
   display: grid;
   min-width: 0;
-  gap: var(--nova-space-2);
+  gap: var(--nova-space-1);
 }
 
-.personTitleLine,
 .summaryHeader,
 .entryHeading,
 .entryTitleGroup {
@@ -122,6 +157,14 @@
   font-size: var(--nova-type-size-sm);
   line-height: var(--nova-type-line-normal);
   overflow-wrap: anywhere;
+}
+
+.workDetails { min-width: 0; }
+
+.workDetails .facts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--nova-space-2) var(--nova-space-4);
+  margin: 0;
 }
 
 .facts,
@@ -155,6 +198,25 @@
   font-size: var(--nova-type-size-sm);
   line-height: var(--nova-type-line-normal);
   overflow-wrap: anywhere;
+}
+
+.accessRole,
+.accountStatus {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  justify-items: start;
+  gap: var(--nova-space-1);
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.cellLabel {
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-medium);
 }
 
 .historyAction {
@@ -488,6 +550,39 @@
 
 .lifecycleOutcomeFocus { min-width: 0; border-radius: var(--nova-radius-control); }
 
+@container (max-width: 56rem) {
+  .peopleHeader { display: none; }
+
+  .peopleTable { overflow: visible; border: 0; border-radius: 0; background: transparent; }
+
+  .peopleList { gap: var(--nova-space-3); }
+
+  .personRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--nova-space-3);
+    padding-inline: var(--nova-space-3);
+    border: 1px solid var(--nova-color-border);
+    border-radius: var(--nova-radius-surface);
+    background: var(--nova-color-surface);
+  }
+
+  .personRow + .personRow { border-block-start: 1px solid var(--nova-color-border); }
+
+  .personIdentity { align-items: flex-start; }
+
+  .workDetails,
+  .accessRole,
+  .accountStatus { padding-inline-start: calc(2rem + var(--nova-space-3)); }
+
+  .accessRole,
+  .accountStatus {
+    grid-template-columns: minmax(5rem, auto) minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .historyAction { width: 100%; }
+}
+
 @container (max-width: 40rem) {
   .toolbar {
     grid-template-columns: minmax(0, 1fr);
@@ -497,16 +592,6 @@
   .resultCount {
     margin-block: 0;
     text-align: start;
-  }
-
-  .personRow {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--nova-space-3);
-    padding-inline: 0;
-  }
-
-  .historyAction {
-    width: 100%;
   }
 
   .facts,
@@ -571,7 +656,9 @@
 
 @media (forced-colors: active) {
   .personRow + .personRow,
+  .peopleTable,
   .peopleList,
+  .peopleHeader,
   .entryContent,
   .summaryFacts {
     border-color: CanvasText;
@@ -582,6 +669,8 @@
     border-color: CanvasText;
     background: Canvas;
   }
+
+  .personRow { border-color: CanvasText; background: Canvas; }
 
   .skeletonLine {
     background: CanvasText;

@@ -97,8 +97,8 @@ export interface WorkTimelineProps {
   timeline: TimelineReadState;
   /** Separate /api/attendance/today source; never inferred from timeline access. */
   attendanceToday: AttendanceTodayReadState;
-  /** Only assignments already returned by the separately authorized host read. */
-  correctionAssignments?: ReadonlyArray<TimelineCorrectionAssignment>;
+  /** Server-searches only the actor's eligible assignments; never sourced from the current Work page. */
+  onSearchCorrectionAssignments?: (query: string) => Promise<ReadonlyArray<TimelineCorrectionAssignment>>;
   /** Route adapter owns transport, identity/page guards, and post-write recovery. */
   onCorrectGap?: (correction: TimelineGapCorrection) => void | Promise<void>;
 }

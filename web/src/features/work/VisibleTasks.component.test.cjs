@@ -182,15 +182,15 @@ test("Work exposes an explicit accessible list/board switch and keeps list as th
   });
   assert.match(list, /role="group" aria-label="Task layout"/);
   assert.match(list, /<summary[^>]*>\s*<span>More actions<\/span>/);
-  assert.match(list, /<button aria-pressed="true"[^>]*>[\s\S]*?<span>List<\/span><\/button>/);
-  assert.match(list, /<button aria-pressed="false"[^>]*>[\s\S]*?<span>Board<\/span><\/button>/);
+  assert.match(list, /<button[^>]*aria-pressed="true"[^>]*>[\s\S]*?<span>List<\/span><\/button>/);
+  assert.match(list, /<button[^>]*aria-pressed="false"[^>]*>[\s\S]*?<span>Board<\/span><\/button>/);
   assert.match(list, /<ul[^>]*aria-label="Visible tasks"/);
 
   const board = render(undefined, {
     status: "ready",
     data: { tasks: [task], hasMore: false, nextCursor: null, limit: 30 },
   }, { displayMode: "board" });
-  assert.match(board, /<button aria-pressed="true"[^>]*>[\s\S]*?<span>Board<\/span><\/button>/);
+  assert.match(board, /<button[^>]*aria-pressed="true"[^>]*>[\s\S]*?<span>Board<\/span><\/button>/);
   assert.match(board, /Visible tasks grouped by status/);
   assert.doesNotMatch(board, /aria-label="Visible tasks"/);
 });

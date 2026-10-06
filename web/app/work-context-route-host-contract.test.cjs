@@ -39,11 +39,13 @@ test("Work Context data fetch and explorer presentation keep their independent c
 
 test("Work Context route waits for current page lifetime after reads and lazy feature loading", () => {
   const route = workRouteSource();
-  const readBoundary = route.indexOf("= await readWorkRouteData(");
+  const readBoundary = route.indexOf("const workReadDataPromise =");
   const loadedFeatureBoundary = route.indexOf("const loadedWorkRouteFeatures = await workRouteFeaturesPromise");
   const mountBoundary = route.indexOf("mountWorkContextRoute({");
 
   assert.ok(readBoundary >= 0 && loadedFeatureBoundary > readBoundary && mountBoundary > loadedFeatureBoundary);
+  assert.ok(route.indexOf("await workPageUiPromise") > readBoundary,
+    "the authorized Work reads should start while the page UI chunk is loading");
   assert.match(route.slice(readBoundary, loadedFeatureBoundary), /if \(!isCurrentPageRequest\(lifetime\)\) return;/,
     "stale page reads must stop before feature composition");
   assert.match(route.slice(loadedFeatureBoundary, mountBoundary), /if \(!isCurrentPageRequest\(lifetime\)\) return;/,

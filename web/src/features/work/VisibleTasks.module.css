@@ -76,9 +76,17 @@
 }
 
 .filterActions { justify-content: flex-end; }
-.viewControls { justify-content: flex-end; }
+.viewControls { justify-self: end; }
 
-.collection { display: grid; min-width: 0; gap: var(--nova-space-2); }
+.collection {
+  display: grid;
+  min-width: 0;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-surface);
+  background: var(--nova-color-surface);
+}
 
 .collectionHeader {
   display: grid;
@@ -86,6 +94,10 @@
   grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr));
   gap: var(--nova-space-3) var(--nova-space-4);
   padding-inline: var(--nova-space-4);
+  min-height: var(--nova-control-height);
+  align-items: center;
+  border-block-end: 1px solid var(--nova-color-border);
+  background: var(--nova-color-surface-subtle);
   color: var(--nova-color-text-muted);
   font-size: var(--nova-type-size-xs);
   font-weight: var(--nova-type-weight-semibold);
@@ -96,7 +108,7 @@
 .list {
   display: grid;
   min-width: 0;
-  gap: var(--nova-space-3);
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -109,9 +121,13 @@
   align-items: start;
   gap: var(--nova-space-3) var(--nova-space-4);
   padding: var(--nova-space-4);
-  border: 1px solid var(--nova-color-border);
-  border-radius: var(--nova-radius-control);
   background: var(--nova-color-surface);
+}
+
+.item + .item { border-block-start: 1px solid var(--nova-color-border); }
+
+@media (hover: hover) {
+  .item:hover { background: var(--nova-color-surface-subtle); }
 }
 
 .copy { display: grid; min-width: 0; gap: var(--nova-space-2); }
@@ -214,8 +230,13 @@
   .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .item { padding: var(--nova-space-3); }
   .pagination { align-items: stretch; flex-direction: column-reverse; }
-  .viewControls { justify-content: flex-start; }
+  .viewControls { width: 100%; justify-self: stretch; }
   .pagination > * { width: 100%; }
+  .collection { overflow: visible; border: 0; border-radius: 0; background: transparent; }
+  .collectionHeader { display: none; }
+  .list { gap: var(--nova-space-3); }
+  .item { border: 1px solid var(--nova-color-border); border-radius: var(--nova-radius-control); }
+  .item + .item { border-block-start: 1px solid var(--nova-color-border); }
 }
 
 @media (any-pointer: coarse) {
@@ -226,5 +247,6 @@
 
 @media (forced-colors: active) {
   .filters,
+  .collection,
   .item { border-color: CanvasText; background: Canvas; }
 }

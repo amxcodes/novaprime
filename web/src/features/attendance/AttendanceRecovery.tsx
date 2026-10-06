@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { Button, Field, Input, Select, StateMessage } from "../../design-system";
+import { Badge, Button, Field, Input, Select, StateMessage } from "../../design-system";
 import type {
   AttendanceRecoveryProps,
   AttendanceRecoveryState,
@@ -101,9 +101,13 @@ export function AttendanceRecovery(props: AttendanceRecoveryProps) {
         </div>
       </header>
 
-      <p className={styles.status} role="status" aria-live="polite" aria-atomic="true">
-        {attendanceRecoveryStatus(state)}
-      </p>
+      <div className={styles.status} role="status" aria-live="polite" aria-atomic="true" aria-busy={state.status === "loading" || undefined}>
+        <Badge tone={state.status === "error" ? "danger" : state.status === "loading" ? "info" : state.shownCount ? "warning" : "success"}>
+          {state.status === "error" ? "Unavailable" : state.status === "loading" ? "Loading" : `${state.shownCount} eligible workday${state.shownCount === 1 ? "" : "s"}`}
+        </Badge>
+        {state.status === "ready" && state.nextCursor ? <Badge tone="info">Older pages available</Badge> : null}
+        <span className={styles.statusDetail}>{attendanceRecoveryStatus(state)}</span>
+      </div>
 
       {state.status === "loading" ? (
         <StateMessage kind="loading" title="Loading eligible workdays">Reading attendance gaps in the recent 31-day window.</StateMessage>

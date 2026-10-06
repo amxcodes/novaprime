@@ -47,16 +47,27 @@
   background: var(--nova-control-background);
   font: var(--nova-type-body);
   line-height: var(--nova-type-line-normal);
+  transition:
+    border-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    background-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
 }
 
-.textarea:focus-visible,
-.textarea[aria-invalid="true"] {
-  border-color: var(--nova-color-focus);
-  outline: 2px solid var(--nova-color-focus);
-  outline-offset: 1px;
+.textarea:hover:not(:disabled) {
+  border-color: var(--nova-color-text-muted);
+}
+
+.textarea:focus-visible {
+  border-color: var(--nova-control-border-focus);
+  caret-color: var(--nova-color-action);
+  box-shadow: inset 0 -2px 0 var(--nova-color-action);
+  outline: none;
 }
 
 .textarea[aria-invalid="true"] { border-color: var(--nova-color-danger); }
+.textarea[aria-invalid="true"]:focus-visible {
+  border-color: var(--nova-color-danger);
+  box-shadow: inset 0 -2px 0 var(--nova-color-danger);
+}
 .textarea:disabled { background: var(--nova-control-background-disabled); }
 
 .priorityGroup {
@@ -70,7 +81,7 @@
 }
 
 .priorityLegend {
-  margin-block-end: var(--nova-space-2);
+  margin: 0;
   color: var(--nova-color-text-primary);
   font-size: var(--nova-type-size-sm);
   font-weight: var(--nova-type-weight-medium);
@@ -99,6 +110,10 @@
   background: var(--nova-control-background);
   font-size: var(--nova-type-size-sm);
   cursor: pointer;
+  transition:
+    border-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    background-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
 }
 
 .priorityChoice[data-selected="true"] {
@@ -106,6 +121,29 @@
   color: var(--nova-color-action-text);
   background: var(--nova-color-action-subtle);
 }
+
+.priorityChoice:not([data-disabled="true"]):hover {
+  border-color: var(--nova-color-text-muted);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface-subtle);
+}
+
+.priorityChoice[data-selected="true"]:not([data-disabled="true"]):hover {
+  border-color: var(--nova-color-action-edge);
+  color: var(--nova-color-action-text-hover);
+  background: var(--nova-color-action-subtle);
+}
+
+.priorityChoice:not([data-disabled="true"]):active {
+  border-color: var(--nova-color-action-pressed);
+}
+
+.priorityChoice[data-disabled="true"] {
+  color: var(--nova-color-text-muted);
+  background: var(--nova-control-background-disabled);
+  cursor: not-allowed;
+}
+
 .priorityGroup[aria-invalid="true"] .priorityChoice { border-color: var(--nova-color-danger); }
 
 .priorityChoice input {
@@ -121,6 +159,7 @@
 .priorityChoice:focus-within {
   outline: 2px solid var(--nova-color-focus);
   outline-offset: 2px;
+  box-shadow: inset 0 -2px 0 var(--nova-color-action);
 }
 
 .priorityChoice input:disabled + span { color: var(--nova-color-text-muted); }
@@ -172,15 +211,28 @@
 }
 
 @media (any-pointer: coarse) {
-  .textarea,
   .lockedValue { min-height: var(--nova-control-touch-target); }
 }
 
 @media (forced-colors: active) {
   .textarea,
-  .lockedValue { border-color: CanvasText; }
-  .priorityChoice { border-color: CanvasText; }
-  .priorityChoice:focus-within { outline-color: Highlight; }
+  .lockedValue {
+    border-color: FieldText;
+    color: FieldText;
+    background: Field;
+  }
+  .textarea:focus-visible { box-shadow: none; caret-color: Highlight; }
+  .textarea:disabled { border-color: GrayText; color: GrayText; }
+  .textarea[aria-invalid="true"] { border-color: Mark; }
+  .textarea[aria-invalid="true"]:focus-visible { box-shadow: none; }
+  .priorityChoice { border-color: CanvasText; background: Canvas; }
+  .priorityChoice:focus-within { outline-color: Highlight; box-shadow: none; }
   .priorityChoice[data-selected="true"] { border-color: Highlight; color: HighlightText; background: Highlight; }
+  .priorityChoice[data-disabled="true"] { border-color: GrayText; color: GrayText; background: Canvas; }
   .checkRow input { accent-color: Highlight; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .textarea,
+  .priorityChoice { transition: none; }
 }

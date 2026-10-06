@@ -31,6 +31,8 @@ describe("My Day page layout", () => {
 
   it("gives assignments the wide task surface and keeps module headings readable", () => {
     expect(styles).toMatch(/\.module\[data-my-day-module="assignments"\]\s*\{\s*grid-column:\s*1\s*\/\s*-1;/);
+    expect(styles).toMatch(/\.module\[data-my-day-module="assignments"\] \.moduleHeader\s*\{[^}]*display:\s*grid;[^}]*border-block-end:\s*0;/s);
+    expect(styles).toMatch(/\.module\[data-my-day-module="assignments"\] \.moduleHeader p\s*\{[^}]*text-align:\s*start;/s);
     expect(styles).toMatch(/@container my-day-page\s*\(max-width:\s*40rem\)[\s\S]*?\.module\[data-my-day-module="assignments"\]\s*\{\s*grid-column:\s*auto;/);
     expect(styles).toMatch(/\.moduleHeader\s*\{[\s\S]*?align-items:\s*baseline;[\s\S]*?justify-content:\s*space-between/);
     expect(styles).toMatch(/@container my-day-page\s*\(max-width:\s*40rem\)[\s\S]*?\.moduleHeader\s*\{[^}]*flex-direction:\s*column/);

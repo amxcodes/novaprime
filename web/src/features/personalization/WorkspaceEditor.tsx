@@ -149,6 +149,9 @@ export function WorkspaceEditor({
           </Button>
         ) : null}
       </div>
+      {readStatus === "ready" && !writable ? (
+        <p className={styles.readOnlyNote}>Workspace settings are read-only.</p>
+      ) : null}
       {readStatus === "read-failed" ? <p className={styles.error} role="alert">You can preview changes in this browser session, but they will not be saved until the preferences load successfully. Reloading replaces this preview with the saved settings.</p> : null}
       {readStatus === "unsupported" ? <p className={styles.readOnlyNote}>Saved workspace settings are not supported by the current preference schema. Ask your NOVA administrator to apply the available database update.</p> : null}
       {readStatus === "access-lost" ? <p className={styles.readOnlyNote}>Your session cannot currently read personal workspace settings. Reload them after your access is restored.</p> : null}

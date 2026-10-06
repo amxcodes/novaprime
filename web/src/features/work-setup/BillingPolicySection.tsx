@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { Button, EmptyState, Field, Input, StateMessage } from "../../design-system";
+import { Badge, Button, EmptyState, Field, Input, StateMessage } from "../../design-system";
 import type {
   BillingClass,
   BillingPolicySectionProps,
@@ -107,7 +107,9 @@ function WorkstreamDefaultEditor({
     <article className={styles.workstream}>
       <div className={styles.workstreamHeading}>
         <div><h3>{workstream.clientName} <span aria-hidden="true">·</span> {workstream.name}</h3><p>Client workstream · policy revision {revision}</p></div>
-        <span className={styles.policyBadge}>{policyClass ? (policyClass === "billable" ? "Billable" : "Non-billable") : "Policy required"}</span>
+        <Badge tone={policyClass ? "neutral" : "warning"}>
+          {policyClass ? (policyClass === "billable" ? "Billable" : "Non-billable") : "Policy required"}
+        </Badge>
       </div>
       {!policyClass ? <StateMessage kind="warning">Task creation in this workstream stays blocked until an automatic policy is set.</StateMessage> : null}
       <form className={styles.editor} onSubmit={(event) => void submit(event)}>
@@ -295,7 +297,7 @@ function BillingRuleEditor({
     <div className={styles.ruleEditor}>
       <div className={styles.ruleHeader}>
         <div><h3>Predefined-task billing rules</h3><p>These rules override the workstream default for future tasks selected from that definition.</p></div>
-        <span className={styles.policyBadge}>Future tasks only</span>
+        <Badge tone="neutral">Future tasks only</Badge>
       </div>
       <>
         <Field label="Find a predefined task" hint="Search runs on NOVA across the task catalog; matching rules stay limited to this workstream.">

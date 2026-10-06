@@ -9,6 +9,7 @@ export {
 } from "./foundations/appearance";
 
 export { Badge, Status, type BadgeProps, type StatusTone } from "./primitives/Badge";
+export { Avatar, type AvatarProps, type AvatarSize } from "./primitives/Avatar";
 export {
   Button,
   IconButton,
@@ -25,6 +26,11 @@ export {
   type InputProps,
 } from "./primitives/Field";
 export { Select, type SelectOption, type SelectProps } from "./primitives/Select";
+export {
+  SegmentedControl,
+  type SegmentedControlOption,
+  type SegmentedControlProps,
+} from "./primitives/SegmentedControl";
 export {
   SearchableSelect,
   type SearchableSelectOption,

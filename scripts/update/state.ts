@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, open, readFile, rename, rm, writeFile, type FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export type UpdatePhase = "prepared" | "applying-database" | "database-applied" | "database-verified" | "complete";
 
@@ -19,6 +19,129 @@ export interface UpdateJournal {
   backupReference?: string;
   backupConfirmedAt?: string;
   updatedAt: string;
+}
+
+const migrationFilenamePattern = /^\d{4}_[a-z0-9_]+\.sql$/;
+const sha256Pattern = /^[a-f0-9]{64}$/;
+const objectIdPattern = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i;
+const updatePhases = new Set<UpdatePhase>([
+  "prepared",
+  "applying-database",
+  "database-applied",
+  "database-verified",
+  "complete",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
+  return Object.keys(value).every((key) => allowed.includes(key));
+}
+
+function isStableVersion(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(value);
+  return match !== null && match.slice(1).every((part) => Number.isSafeInteger(Number(part)));
+}
+
+function samePath(left: string, right: string): boolean {
+  const a = resolve(left);
+  const b = resolve(right);
+  return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+function isWithin(parent: string, candidate: string): boolean {
+  const path = relative(resolve(parent), resolve(candidate));
+  return path !== "" && path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
+}
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) &&
+    Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
+}
+
+function isMigrationHash(value: unknown): value is { filename: string; sha256: string } {
+  return isRecord(value) && hasOnlyKeys(value, ["filename", "sha256"]) &&
+    typeof value.filename === "string" && migrationFilenamePattern.test(value.filename) &&
+    typeof value.sha256 === "string" && sha256Pattern.test(value.sha256);
+}
+
+function validateUpdateJournal(value: unknown, repoRoot: string, worktreeRoot: string): UpdateJournal {
+  const corrupt = (): never => {
+    throw new Error("UPDATE_JOURNAL_CORRUPT: preserve the file and inspect it before retrying");
+  };
+  if (!isRecord(value) || !hasOnlyKeys(value, [
+    "schemaVersion", "id", "repoRoot", "originalHead", "release", "candidate", "phase",
+    "database", "inFlightMigration", "appliedMigrations", "backupReference", "backupConfirmedAt", "updatedAt",
+  ])) return corrupt();
+
+  if (
+    value.schemaVersion !== 1 || typeof value.id !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.id) ||
+    typeof value.repoRoot !== "string" || !isAbsolute(value.repoRoot) || !samePath(value.repoRoot, repoRoot) ||
+    typeof value.originalHead !== "string" || !objectIdPattern.test(value.originalHead) ||
+    typeof value.phase !== "string" || !updatePhases.has(value.phase as UpdatePhase) ||
+    !isTimestamp(value.updatedAt) || !Array.isArray(value.appliedMigrations) ||
+    !value.appliedMigrations.every(isMigrationHash)
+  ) return corrupt();
+
+  if (!isRecord(value.release) || !hasOnlyKeys(value.release, ["tag", "version", "commit"]) ||
+      !isStableVersion(value.release.version) || value.release.tag !== `v${value.release.version}` ||
+      typeof value.release.commit !== "string" || !objectIdPattern.test(value.release.commit)) return corrupt();
+
+  if (!isRecord(value.candidate) || !hasOnlyKeys(value.candidate, ["branch", "path", "expectedHead"]) ||
+      value.candidate.branch !== `nova/update/${value.release.tag}` ||
+      typeof value.candidate.path !== "string" || !isAbsolute(value.candidate.path) ||
+      !isWithin(worktreeRoot, value.candidate.path) ||
+      (value.candidate.expectedHead !== undefined &&
+        (typeof value.candidate.expectedHead !== "string" || !objectIdPattern.test(value.candidate.expectedHead)))) return corrupt();
+
+  const applied = value.appliedMigrations as Array<{ filename: string; sha256: string }>;
+  if (new Set(applied.map(({ filename }) => filename)).size !== applied.length) return corrupt();
+  const inFlight = value.inFlightMigration;
+  if (inFlight !== undefined && (!isMigrationHash(inFlight) || applied.some(({ filename }) => filename === inFlight.filename))) {
+    return corrupt();
+  }
+
+  if (value.database !== undefined) {
+    if (!isRecord(value.database) || !hasOnlyKeys(value.database, ["kind", "targetFingerprint", "label"]) ||
+        (value.database.kind !== "postgres" && value.database.kind !== "supabase") ||
+        typeof value.database.label !== "string" || value.database.label.length < 1 || value.database.label.length > 512 ||
+        /[\u0000-\u001f\u007f]/.test(value.database.label) ||
+        typeof value.database.targetFingerprint !== "string" || !sha256Pattern.test(value.database.targetFingerprint) ||
+        updateTargetFingerprint(value.database.label) !== value.database.targetFingerprint ||
+        (value.database.kind === "supabase" && !/^Supabase project [a-z0-9]{20}$/.test(value.database.label)) ||
+        (value.database.kind === "postgres" && !value.database.label.startsWith("PostgreSQL "))) return corrupt();
+  }
+
+  const backupReference = value.backupReference;
+  const backupConfirmedAt = value.backupConfirmedAt;
+  if ((backupReference === undefined) !== (backupConfirmedAt === undefined) ||
+      (backupReference !== undefined && (typeof backupReference !== "string" ||
+        backupReference.length < 4 || backupReference.length > 160 ||
+        !/^[A-Za-z0-9][A-Za-z0-9._:/ -]{2,159}$/.test(backupReference) || backupReference.includes("://"))) ||
+      (backupConfirmedAt !== undefined && !isTimestamp(backupConfirmedAt)) ||
+      (backupReference !== undefined && value.database === undefined)) return corrupt();
+
+  if (
+    (value.phase === "prepared" && (value.database !== undefined || applied.length > 0 ||
+      value.inFlightMigration !== undefined || value.backupReference !== undefined)) ||
+    (applied.length > 0 && value.database === undefined) ||
+    ((value.phase === "applying-database" || value.phase === "database-applied" || value.phase === "database-verified") &&
+      (value.database === undefined || value.candidate.expectedHead === undefined)) ||
+    (value.phase === "applying-database" && (value.backupReference === undefined || value.backupConfirmedAt === undefined)) ||
+    ((value.phase === "database-applied" || value.phase === "database-verified") && applied.length === 0) ||
+    (value.inFlightMigration !== undefined && value.phase !== "applying-database") ||
+    (value.phase === "complete" && value.database === undefined &&
+      (value.candidate.expectedHead !== undefined || applied.length > 0 || value.inFlightMigration !== undefined || value.backupReference !== undefined)) ||
+    (value.phase === "complete" && value.database !== undefined &&
+      (value.candidate.expectedHead === undefined || applied.length === 0))
+  ) return corrupt();
+
+  return value as unknown as UpdateJournal;
 }
 
 function stateDirectory(): string {
@@ -42,7 +165,7 @@ function redactErrorCode(error: unknown): string {
 }
 
 async function ensureDirectory(): Promise<string> {
-  const directory = stateDirectory();
+  const directory = resolve(stateDirectory());
   await mkdir(directory, { recursive: true, mode: 0o700 });
   if (process.platform !== "win32") await chmod(directory, 0o700);
   return directory;
@@ -114,16 +237,8 @@ export async function loadUpdateJournal(repoRoot: string): Promise<UpdateJournal
   } catch {
     throw new Error("UPDATE_JOURNAL_CORRUPT: preserve the file and inspect it before retrying");
   }
-  if (
-    typeof value !== "object" || value === null ||
-    (value as { schemaVersion?: unknown }).schemaVersion !== 1 ||
-    typeof (value as { id?: unknown }).id !== "string" ||
-    typeof (value as { repoRoot?: unknown }).repoRoot !== "string" ||
-    !Array.isArray((value as { appliedMigrations?: unknown }).appliedMigrations)
-  ) {
-    throw new Error("UPDATE_JOURNAL_CORRUPT: preserve the file and inspect it before retrying");
-  }
-  return value as UpdateJournal;
+  const worktreeRoot = join(await ensureDirectory(), "worktrees", repoKey(repoRoot).slice(0, 24));
+  return validateUpdateJournal(value, repoRoot, worktreeRoot);
 }
 
 export async function saveUpdateJournal(journal: UpdateJournal): Promise<void> {

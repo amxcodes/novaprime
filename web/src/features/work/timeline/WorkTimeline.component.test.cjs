@@ -26,6 +26,7 @@ require.extensions[".css"] = (module) => {
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { WorkTimeline, formatBusinessDate, formatBusinessTime } = require("./WorkTimeline.tsx");
+const { SearchableSelect } = require("../../../design-system/primitives/SearchableSelect.tsx");
 
 const timelineData = {
   date: "2026-10-02",
@@ -69,7 +70,6 @@ function render(overrides = {}) {
   return renderToStaticMarkup(React.createElement(WorkTimeline, {
     timeline: { status: "ready", data: timelineData },
     attendanceToday: { status: "ready", data: attendanceData },
-    correctionAssignments: [],
     ...overrides,
   }));
 }
@@ -157,13 +157,13 @@ test("attendance remains available when the role was not granted the timeline", 
   }), "");
 });
 
-test("only a server-marked untracked gap with host-projected assignments and callback gets a correction form", () => {
+test("only a server-marked untracked gap with authorized remote search and callback gets a correction form", () => {
   const gap = { type: "work.untracked_gap", startedAt: "2026-10-02T04:00:00.000Z", endedAt: "2026-10-02T05:00:00.000Z", actionable: true };
-  const assignment = { assignmentId: "assignment-1", title: "Prepare brief" };
+  const onSearchCorrectionAssignments = async () => [];
   const onCorrectGap = async () => {};
   const ready = render({
     timeline: { status: "ready", data: { ...timelineData, exceptions: [gap] } },
-    correctionAssignments: [assignment],
+    onSearchCorrectionAssignments,
     onCorrectGap,
   });
   assert.match(ready, /Untracked work time/);
@@ -171,32 +171,55 @@ test("only a server-marked untracked gap with host-projected assignments and cal
   assert.match(ready, /Record missing work time/);
   assert.match(ready, /Reason/);
   assert.match(ready, /role="combobox"/);
+  assert.match(ready, /placeholder="Search your assignments"/);
+  assert.match(ready, /Search assignments assigned to you/);
   assert.match(ready, /type="hidden" name="assignmentId" value=""/);
   assert.doesNotMatch(ready, /<select\b/);
 
-  const noCallback = render({ timeline: { status: "ready", data: { ...timelineData, exceptions: [gap] } }, correctionAssignments: [assignment] });
+  const noCallback = render({ timeline: { status: "ready", data: { ...timelineData, exceptions: [gap] } }, onSearchCorrectionAssignments });
   assert.doesNotMatch(noCallback, /Record missing work time/);
   assert.doesNotMatch(noCallback, /Correction permission available|Correction available/);
 
-  const noEligibleAssignment = render({
+  const noServerSearch = render({
     timeline: { status: "ready", data: { ...timelineData, exceptions: [gap] } },
-    correctionAssignments: [],
     onCorrectGap,
   });
-  assert.doesNotMatch(noEligibleAssignment, /Record missing work time/);
-  assert.doesNotMatch(noEligibleAssignment, /Correction permission available|Correction available/);
+  assert.doesNotMatch(noServerSearch, /Record missing work time/);
+  assert.doesNotMatch(noServerSearch, /Correction permission available|Correction available/);
 
   const notActionable = render({
     timeline: { status: "ready", data: { ...timelineData, exceptions: [{ ...gap, actionable: false }] } },
-    correctionAssignments: [assignment], onCorrectGap,
+    onSearchCorrectionAssignments, onCorrectGap,
   });
   assert.doesNotMatch(notActionable, /Correction available|Record missing work time/);
 
   const wrongExceptionType = render({
     timeline: { status: "ready", data: { ...timelineData, exceptions: [{ ...gap, type: "work.outside_attendance" }] } },
-    correctionAssignments: [assignment], onCorrectGap,
+    onSearchCorrectionAssignments, onCorrectGap,
   });
   assert.doesNotMatch(wrongExceptionType, /Record missing work time/);
+});
+
+test("correction assignment control uses remote-only results with explicit loading and failure copy", () => {
+  const source = fs.readFileSync(require.resolve("../../../design-system/primitives/SearchableSelect.tsx"), "utf8");
+  const html = renderToStaticMarkup(React.createElement(SearchableSelect, {
+    id: "timeline-assignment",
+    label: "Assignment",
+    value: "",
+    options: [],
+    searchMode: "remote",
+    onSearch: async () => [],
+    placeholder: "Search your assignments",
+    emptyMessage: "No eligible assignments match this search.",
+    loadingMessage: "Searching eligible assignments…",
+    searchErrorMessage: "Eligible assignments could not be loaded. Edit the search to retry.",
+    onChange() {},
+  }));
+  assert.match(source, /status: "loading"/);
+  assert.match(source, /status: "error"/);
+  assert.match(source, /searchMode === "remote"\s*\? currentRemoteState\?\.status === "ready" \? currentRemoteState\.options : \[\]/);
+  assert.match(html, /placeholder="Search your assignments"/);
+  assert.doesNotMatch(html, /<option\b|<select\b/);
 });
 
 test("unknown event and exception keys stay generic; projection text is escaped and no ID-based links are fabricated", () => {

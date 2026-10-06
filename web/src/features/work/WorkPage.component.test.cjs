@@ -191,8 +191,8 @@ test("the route host keeps API and capability orchestration while React owns tim
     "the timeline no longer needs a nested React root inside a page-owned slot");
   assert.match(route, /createWorkTimelineCorrectionAction\(\{\s*target: workRouteRoot,[\s\S]*?canAdjustTimeline,[\s\S]*?captureCommandContext,[\s\S]*?isCurrentCommand,/,
     "the host binds timeline correction to its live route, capability, and identity guards");
-  assert.match(route, /const canAdjustTimeline = \(\) => hasAnyPermissionGrant\([\s\S]*?\["work\.timeline_adjust_own"\],[\s\S]*?timelineCorrectionScopes/,
-    "time correction remains protected by the effective permission grant");
+  assert.match(route, /const canAdjustTimeline = \(\) => !state\.actorGrants\?\.readError &&\s*Array\.isArray\(state\.actorGrants\?\.grants\) && state\.actorGrants\.grants\.some\(\(grant\) =>[\s\S]*?grant\.permissionKey === "work\.timeline_adjust_own" &&[\s\S]*?timelineCorrectionScopes\.includes\(grant\.scope\) && grant\.selfApplicable === true/,
+    "time correction remains protected by the effective self-applicable permission grant");
   assert.match(timelineActionsRoute, /api\("\/api\/work\/timeline-adjustments", requestOptions\("POST", correction\)\)/,
     "the feature-owned action adapter retains the existing time-correction endpoint and payload");
   assert.match(route, /if \(readPlan\.sessions && pageSections\.some\(\(section\) => section\.id === "sessions"\)\)/,
@@ -275,8 +275,10 @@ test("the route host keeps API and capability orchestration while React owns tim
     "visible-task paging continues through the existing host history adapter");
   assert.match(route, /onNewer: \(\) => \{\s*if \(window\.history\.state\?\.novaVisibleTaskPage && window\.history\.length > 1\) \{\s*window\.history\.back\(\)/,
     "the prior-page browser-history behavior remains unchanged");
-  assert.match(route, /await readWorkRouteData\(\{[\s\S]*?lifetime,[\s\S]*?pageApi,/,
-    "the app route host supplies its authenticated page reader and request lifetime to the Work read adapter");
+  assert.match(route, /const workReadDataPromise = !taskDetailRoute && !workRouteUnavailableMessage\s*\?\s*readWorkRouteData\(\{[\s\S]*?lifetime,\s*pageApi,\s*\}\)\s*:\s*null;/,
+    "the app starts only permitted Work reads through its authenticated page reader and route lifetime");
+  assert.match(route, /const \[workReadData\] = await Promise\.all\(\[\s*workReadDataPromise,\s*savedTaskViewsRead,/,
+    "Work route data and saved views load concurrently before their shared render path");
   assert.match(route, /if \(readPlan\.workContextView && !hasReviewRoute && !hasFocusedCollaborationRoute\) \{\s*const workContextHost = workSlot\("context"\);\s*mountWorkContextRoute\(\{\s*target: workContextHost,\s*result: workContext,\s*ui: workContextUi,\s*uiLoadError: workContextUiLoadError,\s*actorGrants: state\.actorGrants,[\s\S]*?runCommand: createWorkContextDepartmentCommandAction\(\{/,
     "the visible feature receives the host read and current-grant action boundary");
   assert.match(route, /getPermissionData: \(\) => \(\{ actorGrants: state\.actorGrants, workContext \}\)/,

@@ -164,24 +164,8 @@
 .status {
   flex: none;
   max-width: 100%;
-  padding: var(--nova-space-1) var(--nova-space-3);
-  border: 1px solid var(--nova-color-border);
-  border-radius: var(--nova-radius-pill);
-  color: var(--nova-color-text-secondary);
-  background: var(--nova-color-surface-subtle);
-  font-size: var(--nova-type-size-xs);
-  font-weight: var(--nova-type-weight-semibold);
-  overflow-wrap: anywhere;
   text-transform: capitalize;
 }
-
-.status[data-status="active"] { color: var(--nova-color-success); background: var(--nova-color-success-surface); }
-.status[data-status="invited"],
-.status[data-status="onboarding"] { color: var(--nova-color-info); background: var(--nova-color-info-surface); }
-.status[data-status="notice"],
-.status[data-status="offboarding"] { color: var(--nova-color-warning); background: var(--nova-color-warning-surface); }
-.status[data-status="frozen"],
-.status[data-status="offboarded"] { color: var(--nova-color-danger); background: var(--nova-color-danger-surface); }
 
 .actions {
   display: flex;
@@ -403,14 +387,12 @@
 @media (forced-colors: active) {
   .invitePanel,
   .directory,
-  .status,
   .reasonAction[open],
   .reasonAction summary,
   .onboarding { border-color: CanvasText; }
   .reasonAction summary::after { border-color: currentColor; }
   .freezeConfirmation { border-color: CanvasText; background: Canvas; }
   .freezeConfirmation p { color: CanvasText; }
-  .status { color: CanvasText; background: Canvas; }
   .person,
   .directorySearch,
   .directoryPagination { border-color: CanvasText; }

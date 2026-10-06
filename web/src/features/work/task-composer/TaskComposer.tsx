@@ -269,7 +269,12 @@ export function TaskComposer(props: TaskComposerProps) {
             <legend className={styles.priorityLegend}>Priority <span aria-hidden="true" className={styles.requiredMark}>*</span></legend>
             <div className={styles.priorityChoices} role="radiogroup" aria-label="Priority" aria-required="true">
               {priorities.map(([value, label]) => (
-                <label key={value} className={styles.priorityChoice} data-selected={draft.priority === value || undefined}>
+                <label
+                  key={value}
+                  className={styles.priorityChoice}
+                  data-selected={draft.priority === value || undefined}
+                  data-disabled={submitting || undefined}
+                >
                   <input
                     type="radio"
                     name={`${id}-priority`}

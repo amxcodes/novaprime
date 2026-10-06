@@ -120,8 +120,25 @@ describe("My Day page route", () => {
     expect(state.targets.attendance?.children).toHaveLength(1);
     expect(state.targets.assignments?.children).toHaveLength(1);
     expect(state.targets.timeline?.children).toHaveLength(1);
-    expect(state.reads).toEqual([]);
+    // The independent assignment read starts while its UI chunk is pending.
+    // Its authorized result is discarded because the feature did not load.
+    expect(state.reads).toEqual(["/api/work/assignments/mine?limit=4&status=all"]);
     expect(state.mounted).toHaveLength(1);
+  });
+
+  it("starts planned reads while the feature UI chunk is still loading", async () => {
+    let finish!: (value: { AttendancePulse: typeof AttendancePulse; WorkdayTimeline: typeof WorkdayTimeline }) => void;
+    const state = harness({ loader: () => new Promise((resolve) => { finish = resolve; }) });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(state.reads).toEqual([
+      "/api/work/assignments/mine?limit=4&status=all",
+      "/api/attendance/today",
+      "/api/work/timeline",
+    ]);
+
+    finish({ AttendancePulse, WorkdayTimeline });
+    await state.routePromise;
   });
 
   it("preserves attendance, assignment, and timeline reads plus the existing attendance action", async () => {
@@ -129,8 +146,8 @@ describe("My Day page route", () => {
     await state.routePromise;
 
     expect(state.reads).toEqual([
-      "/api/attendance/today",
       "/api/work/assignments/mine?limit=4&status=all",
+      "/api/attendance/today",
       "/api/work/timeline",
     ]);
     const attendance = state.mounted.filter(({ component }) => component === AttendancePulse).at(-1);
@@ -150,7 +167,7 @@ describe("My Day page route", () => {
     expect(state.renderCalls).toBe(1);
   });
 
-  it("suppresses feature mounts and reads after the page lifetime expires during loading", async () => {
+  it("suppresses feature mounts after the page lifetime expires during loading", async () => {
     let finish!: (value: { AttendancePulse: typeof AttendancePulse; WorkdayTimeline: typeof WorkdayTimeline }) => void;
     const state = harness({ loader: () => new Promise((resolve) => { finish = resolve; }) });
     await Promise.resolve();
@@ -159,6 +176,6 @@ describe("My Day page route", () => {
     await state.routePromise;
 
     expect(state.mounted).toHaveLength(1);
-    expect(state.reads).toEqual([]);
+    expect(state.reads).toContain("/api/work/assignments/mine?limit=4&status=all");
   });
 });

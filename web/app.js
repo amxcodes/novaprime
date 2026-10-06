@@ -63,7 +63,10 @@ import { createMyAssignmentActionsRoute } from "./app/my-assignment-actions-rout
 import { mountWorkTaskComposerRoute } from "./app/work-task-composer-route.js";
 import { readWorkRouteData } from "./app/work-read-route.js";
 import { loadWorkRouteFeatures } from "./app/work-route-features.js";
-import { createWorkTimelineCorrectionAction } from "./app/work-timeline-actions-route.ts";
+import {
+  createWorkTimelineCorrectionAction,
+  createWorkTimelineCorrectionAssignmentSearch,
+} from "./app/work-timeline-actions-route.ts";
 import { mountWorkContextRoute } from "./app/work-context-route.js";
 import { createWorkContextDepartmentCommandAction } from "./app/work-context-actions-route.ts";
 import { createPeoplePageRoute, isPeopleDirectoryContext } from "./app/people-page-route.js";
@@ -2269,6 +2272,31 @@ async function renderWork(date, lifetime) {
   renderShell(createElement("div", { id: "work-route-root" }), "work");
   const workRouteRoot = app.querySelector("#work-route-root");
   if (!workRouteRoot || !isCurrentPageRequest(lifetime)) return;
+  const focusedRequestCanBeRead = focusRequest?.kind === "reviewer"
+    ? readPlan.reviewerRequests
+    : focusRequest?.kind === "handover"
+      ? readPlan.handoverRequests
+      : true;
+  const workRouteUnavailableMessage = focusedRequestRoute.status === "invalid" || (focusRequest && !focusedRequestCanBeRead)
+    ? "This collaboration request is not available to your current role or the link is invalid."
+    : hasReviewRoute && (!readPlan.reviews || !validReviewTarget)
+      ? "This review is not available to your current role or the link is invalid."
+      : null;
+  // The read plan and focused-route checks are already resolved from the
+  // current server-issued grants. Start only those reads while the page UI
+  // chunk loads; pageApi binds them to this route's abortable lifetime.
+  const workReadDataPromise = !taskDetailRoute && !workRouteUnavailableMessage
+    ? readWorkRouteData({
+      readPlan,
+      hasReviewRoute,
+      focusRequest,
+      reviewTarget: reviewTarget || {},
+      date,
+      searchParams: new URLSearchParams(window.location.search),
+      lifetime,
+      pageApi,
+    })
+    : null;
   const loadedWorkPageUi = await workPageUiPromise;
   if (loadedWorkPageUi.error) {
     if (!isCurrentPageRequest(lifetime) || !workRouteRoot.isConnected) return;
@@ -2304,18 +2332,8 @@ async function renderWork(date, lifetime) {
         ? "Loading collaboration request..."
         : "Loading work...");
   showFeedback();
-  const focusedRequestCanBeRead = focusRequest?.kind === "reviewer"
-    ? readPlan.reviewerRequests
-    : focusRequest?.kind === "handover"
-      ? readPlan.handoverRequests
-      : true;
-  if (focusedRequestRoute.status === "invalid" || (focusRequest && !focusedRequestCanBeRead)) {
-    mountWorkPage([], "error", "This collaboration request is not available to your current role or the link is invalid.");
-    restorePendingRouteScroll();
-    return;
-  }
-  if (hasReviewRoute && (!readPlan.reviews || !validReviewTarget)) {
-    mountWorkPage([], "error", "This review is not available to your current role or the link is invalid.");
+  if (workRouteUnavailableMessage) {
+    mountWorkPage([], "error", workRouteUnavailableMessage);
     restorePendingRouteScroll();
     return;
   }
@@ -2343,18 +2361,10 @@ async function renderWork(date, lifetime) {
   }
   try {
     const [workReadData] = await Promise.all([
-      readWorkRouteData({
-        readPlan,
-        hasReviewRoute,
-        focusRequest,
-        reviewTarget: reviewTarget || {},
-        date,
-        searchParams: new URLSearchParams(window.location.search),
-        lifetime,
-        pageApi,
-      }),
+      workReadDataPromise,
       savedTaskViewsRead,
     ]);
+    if (!workReadData) return;
     const {
       assignmentsResult,
       sessionsResult,
@@ -2463,18 +2473,26 @@ async function renderWork(date, lifetime) {
         });
       } else {
         const timelineCorrectionScopes = ["organisation", "own_record", "office", "organisation_department"];
-        const canAdjustTimeline = () => hasAnyPermissionGrant(
-          state.actorGrants,
-          ["work.timeline_adjust_own"],
-          timelineCorrectionScopes,
-        );
+        const canAdjustTimeline = () => !state.actorGrants?.readError &&
+          Array.isArray(state.actorGrants?.grants) && state.actorGrants.grants.some((grant) =>
+            grant.permissionKey === "work.timeline_adjust_own" &&
+            timelineCorrectionScopes.includes(grant.scope) && grant.selfApplicable === true);
         const timelineProps = timelineRoute.projectWorkTimelineProps({
           readPlan,
           timelineResult: timeline,
           attendanceResult,
-          assignmentsResult,
           onRetryTimeline: () => renderWork(timelineDate),
           onRetryAttendance: () => renderWork(timelineDate),
+          onSearchCorrectionAssignments: canAdjustTimeline() ? createWorkTimelineCorrectionAssignmentSearch({
+            target: workRouteRoot,
+            canAdjustTimeline,
+            captureCommandContext,
+            isCurrentCommand,
+            api,
+            requestOptions,
+            recoverProtectedCommandFailure,
+            adminCommandUiError,
+          }) : undefined,
           onCorrectGap: canAdjustTimeline() ? createWorkTimelineCorrectionAction({
             target: workRouteRoot,
             canAdjustTimeline,
@@ -3373,11 +3391,20 @@ async function refreshSession() {
       clearIdentityScopedState();
       return;
     }
-    const grants = await readOrError(api("/api/me/permission-grants"), {
-      actorPersonId: null,
-      grants: [],
-      isSuperAdmin: false,
-    });
+    const [grants, saved] = await Promise.all([
+      readOrError(api("/api/me/permission-grants"), {
+        actorPersonId: null,
+        grants: [],
+        isSuperAdmin: false,
+      }),
+      readOrError(api("/api/me/ui-preferences"), {
+        schemaVersion: UI_PREFERENCE_SCHEMA_VERSION,
+        revision: 0,
+        appearance: { ...DEFAULT_APPEARANCE },
+        workspace: normalizeWorkspace(DEFAULT_WORKSPACE),
+        writable: false,
+      }),
+    ]);
     if (previousPersonId && grants.actorPersonId !== previousPersonId) {
       clearIdentityScopedState();
     }
@@ -3411,13 +3438,6 @@ async function refreshSession() {
     state.identityPersonId = grants.actorPersonId;
     state.uiPreferencePersonId = grants.actorPersonId;
     const preferenceEpoch = state.identityEpoch;
-    const saved = await readOrError(api("/api/me/ui-preferences"), {
-      schemaVersion: UI_PREFERENCE_SCHEMA_VERSION,
-      revision: 0,
-      appearance: { ...DEFAULT_APPEARANCE },
-      workspace: normalizeWorkspace(DEFAULT_WORKSPACE),
-      writable: false,
-    });
     if (preferenceEpoch !== state.identityEpoch || state.uiPreferencePersonId !== grants.actorPersonId) return;
     if (saved.readError) {
       state.uiPreferences = {

@@ -202,15 +202,6 @@
   background: var(--nova-color-surface-subtle);
 }
 .groupName { min-width: 0; color: var(--nova-color-text-primary); font-size: var(--nova-type-size-sm); overflow-wrap: anywhere; }
-.taskTarget {
-  flex: none;
-  padding: var(--nova-space-1) var(--nova-space-2);
-  border-radius: var(--nova-radius-pill);
-  color: var(--nova-color-action-text);
-  background: var(--nova-color-action-subtle);
-  font-size: var(--nova-type-size-xs);
-  font-weight: var(--nova-type-weight-medium);
-}
 .unattached {
   display: grid;
   min-width: 0;
@@ -293,6 +284,5 @@
   .emptyState p,
   .status p,
   .error p { color: CanvasText; }
-  .taskTarget { border: 1px solid CanvasText; color: CanvasText; background: Canvas; }
   .spinner { border-color: CanvasText; border-inline-end-color: transparent; }
 }

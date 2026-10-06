@@ -1,0 +1,108 @@
+.group {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: var(--nova-space-2);
+  container-type: inline-size;
+  container-name: segmented-control;
+  padding: 3px;
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-control-track);
+}
+
+.option {
+  display: inline-flex;
+  min-width: 10rem;
+  min-height: 2rem;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  padding-inline: var(--nova-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--nova-radius-status);
+  color: var(--nova-color-text-secondary);
+  background: transparent;
+  font: var(--nova-type-label);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    background-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    border-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+
+.option:hover:not(:disabled):not([data-selected="true"]) {
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-surface);
+}
+
+.option[data-selected="true"] {
+  position: relative;
+  border-color: var(--nova-color-action-edge);
+  color: var(--nova-color-action-contrast);
+  background: linear-gradient(112deg, var(--nova-color-action), var(--nova-color-action-edge));
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.option[data-selected="true"]::before {
+  position: absolute;
+  inset-block-start: 1px;
+  inset-inline: 9%;
+  height: 1px;
+  border-radius: 1px;
+  background: var(--nova-color-control-highlight);
+  content: "";
+  opacity: var(--nova-control-highlight-opacity);
+  pointer-events: none;
+}
+
+.option > span {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.option:focus-visible {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 1px;
+}
+
+.option:disabled {
+  color: var(--nova-color-text-muted);
+  cursor: not-allowed;
+}
+
+@media (any-pointer: coarse) {
+  .group { width: 100%; }
+  .option {
+    min-height: var(--nova-control-touch-target);
+    white-space: normal;
+  }
+}
+
+@container segmented-control (max-width: 22rem) {
+  .option {
+    min-width: 0;
+    white-space: normal;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .option { transition: none; }
+}
+
+@media (forced-colors: active) {
+  .group { border-color: ButtonText; background: ButtonFace; }
+  .option { color: ButtonText; }
+  .option[data-selected="true"] {
+    border-color: Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+  .option[data-selected="true"]::before { display: none; }
+  .option:focus-visible { outline-color: Highlight; }
+  .option:disabled { color: GrayText; }
+}

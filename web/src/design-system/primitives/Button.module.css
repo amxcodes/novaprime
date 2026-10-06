@@ -1,4 +1,5 @@
 .button {
+  position: relative;
   display: inline-flex;
   min-width: 0;
   min-height: var(--nova-control-height);
@@ -8,7 +9,7 @@
   padding: 0 var(--nova-space-3);
   border: 1px solid transparent;
   border-radius: var(--nova-radius-control);
-  font-size: var(--nova-type-size-xs);
+  font-size: var(--nova-type-size-sm);
   font-weight: var(--nova-type-weight-medium);
   line-height: var(--nova-type-line-normal);
   text-align: center;
@@ -16,9 +17,22 @@
   transition:
     background-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
     border-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
-    color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
-    transform var(--nova-motion-duration-standard) var(--nova-motion-ease-standard);
+    color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
 }
+
+.button::before {
+  position: absolute;
+  inset-block-start: 1px;
+  inset-inline: 8%;
+  height: 1px;
+  border-radius: 1px;
+  background: var(--nova-color-control-highlight);
+  content: "";
+  opacity: var(--nova-control-highlight-opacity);
+  pointer-events: none;
+}
+
+.content { position: relative; z-index: 1; }
 
 .button[data-size="compact"] {
   min-height: var(--nova-control-height-compact);
@@ -27,12 +41,18 @@
 }
 
 .button[data-variant="primary"] {
+  border-color: var(--nova-color-action-edge);
   color: var(--nova-color-action-contrast);
-  background: var(--nova-color-action);
+  background: linear-gradient(112deg, var(--nova-color-action), var(--nova-color-action-edge));
 }
 
 .button[data-variant="primary"]:hover:not(:disabled) {
-  background: var(--nova-color-action-hover);
+  background: linear-gradient(112deg, var(--nova-color-action-hover), var(--nova-color-action-edge));
+}
+
+.button[data-variant="primary"]:active:not(:disabled) {
+  border-color: var(--nova-color-action-pressed);
+  background: var(--nova-color-action-pressed);
 }
 
 .button[data-variant="secondary"] {
@@ -66,14 +86,6 @@
 .button[data-variant="danger"]:hover:not(:disabled) {
   border-color: var(--nova-color-danger);
   background: color-mix(in srgb, var(--nova-color-danger) 10%, var(--nova-color-danger-surface));
-}
-
-.button:hover:not(:disabled) {
-  transform: translateY(-1px);
-}
-
-.button:active:not(:disabled) {
-  transform: translateY(0);
 }
 
 .button:focus-visible {
@@ -135,8 +147,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .button { transition: none; }
-  .button:hover:not(:disabled),
-  .button:active:not(:disabled) { transform: none; }
   .spinner {
     animation: none;
     border-right-color: currentColor;
@@ -166,6 +176,8 @@
   }
 
   .button:focus-visible { box-shadow: none; }
+
+  .button::before { display: none; }
 
   .button:disabled {
     color: GrayText;

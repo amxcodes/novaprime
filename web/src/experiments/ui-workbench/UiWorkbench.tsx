@@ -302,10 +302,10 @@ export function UiWorkbench() {
               </div>
               <div className={styles.statusRow} aria-label="Status badge examples">
                 <Badge tone="neutral">Not started</Badge>
-                <Status tone="success" showDot>Complete</Status>
-                <Status tone="warning" showDot>Needs review</Status>
-                <Status tone="danger" showDot>Unavailable</Status>
-                <Status tone="info" showDot>In progress</Status>
+                <Status tone="success">Complete</Status>
+                <Status tone="warning">Needs review</Status>
+                <Status tone="danger">Unavailable</Status>
+                <Status tone="info">In progress</Status>
               </div>
             </Surface>
           </div>

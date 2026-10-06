@@ -44,7 +44,7 @@ import {
   resolveReviewerRequest,
 } from "./commands/task-requests.js";
 import { readTimeline } from "./commands/timeline.js";
-import { createTimelineAdjustment } from "./commands/timeline-adjustments.js";
+import { createTimelineAdjustment, searchTimelineCorrectionAssignments } from "./commands/timeline-adjustments.js";
 import {
   readAuditEvents,
   readActorPermissionGrants,
@@ -553,6 +553,9 @@ export async function handleRequest(request: Request): Promise<Response> {
   }
   if (request.method === "GET" && commandPath === "/work/timeline") {
     return readTimeline(request);
+  }
+  if (request.method === "GET" && commandPath === "/work/timeline-adjustments/assignments") {
+    return searchTimelineCorrectionAssignments(request);
   }
   if (request.method === "POST" && commandPath === "/work/timeline-adjustments") {
     return createTimelineAdjustment(request);

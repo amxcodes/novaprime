@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { Button } from "../../design-system";
 import styles from "./workday-timeline.module.css";
 import type { FeatureReadState, TimelineEvent, WorkdayTimelineProjection } from "./contracts";
 
@@ -67,7 +68,7 @@ export function WorkdayTimeline({ read, onOpenWork }: WorkdayTimelineProps) {
       {isPartial ? (
         <div className={styles.partialState}>
           <p className={styles.partial} role="status">{read.message}</p>
-          {read.onRetry ? <button className={styles.openWork} type="button" onClick={read.onRetry}>Refresh timeline</button> : null}
+          {read.onRetry ? <Button variant="secondary" onClick={read.onRetry}>Refresh timeline</Button> : null}
         </div>
       ) : null}
 
@@ -104,7 +105,7 @@ export function WorkdayTimeline({ read, onOpenWork }: WorkdayTimelineProps) {
         <p className={styles.completion} role="status">Required hour-based attendance duration is met.</p>
       ) : null}
 
-      {onOpenWork ? <button className={styles.openWork} type="button" onClick={onOpenWork}>Open Work timeline</button> : null}
+      {onOpenWork ? <Button className={styles.openWork} variant="secondary" onClick={onOpenWork}>Open Work timeline</Button> : null}
       </section>
     </div>
   );
@@ -129,7 +130,7 @@ function TimelineMessage({ titleId, title, message, onRetry }: { titleId: string
         <p className={styles.eyebrow}>Your day</p>
         <h2 id={titleId} className={styles.title}>{title}</h2>
         <p className={styles.stateMessage} role={onRetry ? "alert" : "status"}>{message}</p>
-        {onRetry ? <button className={styles.openWork} type="button" onClick={onRetry}>Retry timeline</button> : null}
+        {onRetry ? <Button variant="secondary" onClick={onRetry}>Retry timeline</Button> : null}
       </section>
     </div>
   );

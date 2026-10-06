@@ -6,6 +6,101 @@ import { timestampInput } from "../timestamp-input.js";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
+const correctionAssignmentLimit = 30;
+
+export type TimelineCorrectionAssignmentSearch = Readonly<{
+  query: string;
+  pattern: string | null;
+}>;
+
+function escapeLike(query: string): string {
+  return query.replace(/[\\^%_]/g, "^$&");
+}
+
+export function parseTimelineCorrectionAssignmentSearch(request: Request): TimelineCorrectionAssignmentSearch | undefined {
+  const params = new URL(request.url).searchParams;
+  if ([...params.keys()].some((key) => key !== "q")) return undefined;
+  const values = params.getAll("q");
+  if (values.length > 1) return undefined;
+  const query = (values[0] ?? "").normalize("NFC").trim();
+  if (query.length > 100 || query.includes("\u0000")) return undefined;
+  return { query, pattern: query ? `%${escapeLike(query)}%` : null };
+}
+
+/** The search gate mirrors canAdjust(..., actorId, assignmentId) for own-record scopes. */
+export const timelineCorrectionAssignmentPermissionSql = `SELECT EXISTS (
+  SELECT 1
+  FROM nova.person_role_assignments role_assignments
+  JOIN nova.roles roles ON roles.id = role_assignments.role_id
+  JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
+  WHERE role_assignments.person_id = $1
+    AND role_assignments.effective_on <= nova.person_business_date($1)
+    AND (role_assignments.effective_until IS NULL OR role_assignments.effective_until >= nova.person_business_date($1))
+    AND roles.archived_at IS NULL
+    AND grants.permission_key = 'work.timeline_adjust_own'
+    AND (
+      grants.scope IN ('organisation', 'own_record')
+      OR (grants.scope = 'office' AND EXISTS (
+        SELECT 1 FROM nova.person_office_assignments actor_offices
+        WHERE actor_offices.person_id = $1 AND actor_offices.office_id = grants.office_id
+          AND actor_offices.effective_on <= nova.person_business_date($1)
+          AND (actor_offices.effective_until IS NULL OR actor_offices.effective_until >= nova.person_business_date($1))
+      ))
+      OR (grants.scope = 'organisation_department' AND EXISTS (
+        SELECT 1 FROM nova.person_department_assignments actor_departments
+        WHERE actor_departments.person_id = $1
+          AND actor_departments.organisation_department_id = grants.organisation_department_id
+          AND actor_departments.effective_on <= nova.person_business_date($1)
+          AND (actor_departments.effective_until IS NULL OR actor_departments.effective_until >= nova.person_business_date($1))
+      ))
+    )
+) AS allowed`;
+
+export const timelineCorrectionAssignmentsSql = `SELECT assignments.id AS assignment_id, tasks.title
+FROM nova.task_assignments assignments
+JOIN nova.tasks tasks ON tasks.id = assignments.task_id
+WHERE assignments.organisation_id = $1
+  AND assignments.person_id = $2
+  AND tasks.organisation_id = $1
+  AND assignments.status <> 'cancelled'
+  AND tasks.status <> 'cancelled'
+  AND ($3::text IS NULL OR tasks.title ILIKE $3 ESCAPE '^')
+ORDER BY lower(tasks.title), assignments.id
+LIMIT $4`;
+
+export async function searchTimelineCorrectionAssignments(request: Request): Promise<Response> {
+  let filters: TimelineCorrectionAssignmentSearch | undefined;
+  try { filters = parseTimelineCorrectionAssignmentSearch(request); } catch { return json({ error: "TIMELINE_CORRECTION_ASSIGNMENT_QUERY_INVALID" }, 400); }
+  if (!filters) return json({ error: "TIMELINE_CORRECTION_ASSIGNMENT_QUERY_INVALID" }, 400);
+  const access = await actor(request);
+  if ("response" in access) return access.response;
+
+  try {
+    const result = await withDatabaseRequest(access.context, async (transaction) => {
+      const permission = await transaction.query<{ allowed: boolean }>(
+        timelineCorrectionAssignmentPermissionSql,
+        [access.context.userId],
+      );
+      if (permission.rows[0]?.allowed !== true) return undefined;
+      const rows = await transaction.query<{ assignment_id: string; title: string }>(
+        timelineCorrectionAssignmentsSql,
+        [access.context.organisationId, access.context.userId, filters.pattern, correctionAssignmentLimit + 1],
+      );
+      const hasMore = rows.rows.length > correctionAssignmentLimit;
+      return {
+        assignments: rows.rows.slice(0, correctionAssignmentLimit).map(({ assignment_id, title }) => ({
+          assignmentId: assignment_id,
+          title,
+        })),
+        hasMore,
+        limit: correctionAssignmentLimit,
+      };
+    });
+    return result ? json(result) : json({ error: "PERMISSION_DENIED" }, 403);
+  } catch {
+    return json({ error: "INTERNAL_ERROR" }, 500);
+  }
+}
 
 async function actor(request: Request): Promise<{ context: DatabaseRequestContext } | { response: Response }> {
   try { authenticationConfiguration(); } catch { return { response: json({ error: "AUTHENTICATION_CONFIGURATION_REQUIRED" }, 503) }; }

@@ -4,7 +4,6 @@ const path = require("node:path");
 const { test } = require("node:test");
 
 const routeModule = import("./work-timeline-route.js");
-const permissionModule = import("../src/app-shell/permission-grants.ts");
 
 const timeline = {
   date: "2026-10-02",
@@ -109,7 +108,6 @@ test("role-hidden data is not projected even when raw results contain private ro
   assert.deepEqual(props, {
     timeline: { status: "not-requested" },
     attendanceToday: { status: "not-requested" },
-    correctionAssignments: [],
   });
   assert.equal(JSON.stringify(props).includes("private-person-id"), false);
   assert.equal(JSON.stringify(props).includes("Pune office"), false);
@@ -128,7 +126,7 @@ test("attendance and timeline permissions remain independent", async () => {
   assert.equal(props.timeline.status, "not-requested");
   assert.equal(props.attendanceToday.status, "ready");
   assert.equal(props.attendanceToday.data.availability.businessDate, "2026-10-03");
-  assert.equal(props.correctionAssignments.length, 0);
+  assert.equal("onSearchCorrectionAssignments" in props, false);
   assert.equal("onCorrectGap" in props, false);
   assert.equal(JSON.stringify(props).includes("private-person-id"), false);
 });
@@ -214,7 +212,6 @@ test("ready reads whitelist presentation fields and discard unrelated backend da
       endedAt: "2026-10-02T05:30:00.000Z",
     },
   ]);
-  assert.deepEqual(props.correctionAssignments, [{ assignmentId: "assignment-1", title: "Prepare report" }]);
   assert.equal(props.attendanceToday.status, "ready");
   assert.equal(props.attendanceToday.data.attendance.mode, "office");
   assert.equal("id" in props.attendanceToday.data.attendance, false);
@@ -225,63 +222,87 @@ test("ready reads whitelist presentation fields and discard unrelated backend da
   assert.equal(JSON.stringify(props).includes("private-adjustment-id"), false);
 });
 
-test("assignment failures or a false assignment read plan remove correction choices", async () => {
+test("correction source search is independent of the current assignment page read and filters", async () => {
   const { projectWorkTimelineProps } = await routeModule;
-  const callback = () => {};
-  const deniedAssignments = projectWorkTimelineProps({
-    readPlan: { timeline: true, attendance: false, assignments: true },
+  const queried = [];
+  const submitted = [];
+  const props = projectWorkTimelineProps({
+    readPlan: { timeline: true, attendance: false, assignments: false },
     timelineResult: timeline,
     assignmentsResult: { ...assignments, readError: "PERMISSION_DENIED" },
-    onCorrectGap: callback,
+    onSearchCorrectionAssignments: async (query) => {
+      queried.push(query);
+      return [{ assignmentId: "assignment-remote", title: "Remote result outside current page" }];
+    },
+    onCorrectGap: (value) => submitted.push(value),
   });
-  assert.deepEqual(deniedAssignments.correctionAssignments, []);
-  assert.equal("onCorrectGap" in deniedAssignments, false);
+  assert.equal(typeof props.onSearchCorrectionAssignments, "function");
+  assert.equal(typeof props.onCorrectGap, "function");
+  const found = await props.onSearchCorrectionAssignments("another page/filter");
+  assert.deepEqual(queried, ["another page/filter"]);
+  assert.deepEqual(found, [{ assignmentId: "assignment-remote", title: "Remote result outside current page" }]);
+  await props.onCorrectGap({
+    startedAt: "2026-10-02T04:00:00.000Z",
+    endedAt: "2026-10-02T05:00:00.000Z",
+    assignmentId: "assignment-remote",
+    reason: "Correct the time.",
+  });
+  assert.equal(submitted.length, 1);
 
-  const hiddenAssignments = projectWorkTimelineProps({
+  const noSearchPermission = projectWorkTimelineProps({
     readPlan: { timeline: true, attendance: false, assignments: false },
     timelineResult: timeline,
     assignmentsResult: assignments,
-    onCorrectGap: callback,
+    onCorrectGap: () => {},
   });
-  assert.deepEqual(hiddenAssignments.correctionAssignments, []);
-  assert.equal("onCorrectGap" in hiddenAssignments, false);
+  assert.equal("onSearchCorrectionAssignments" in noSearchPermission, false);
+  assert.equal("onCorrectGap" in noSearchPermission, false);
 });
 
-test("own-correction grants expose the callback while client-scoped grants keep the form hidden", async () => {
-  const [{ projectWorkTimelineProps }, { hasAnyPermissionGrant }] = await Promise.all([routeModule, permissionModule]);
+test("only self-applicable own-correction grants expose server search and the correction callback", async () => {
+  const { projectWorkTimelineProps } = await routeModule;
   const allowedScopes = ["organisation", "own_record", "office", "organisation_department"];
   const correctionAction = () => {};
-  const actionForGrant = (grant) => hasAnyPermissionGrant(
-    { actorPersonId: "person-1", grants: [grant] },
-    ["work.timeline_adjust_own"],
-    allowedScopes,
-  ) ? correctionAction : undefined;
+  const actionForGrant = (grant) => grant?.permissionKey === "work.timeline_adjust_own" &&
+    allowedScopes.includes(grant.scope) && grant.selfApplicable === true ? correctionAction : undefined;
   const project = (grant) => projectWorkTimelineProps({
-    readPlan: { timeline: true, attendance: false, assignments: true },
+    readPlan: { timeline: true, attendance: false, assignments: false },
     timelineResult: timeline,
-    assignmentsResult: assignments,
+    onSearchCorrectionAssignments: actionForGrant(grant),
     onCorrectGap: actionForGrant(grant),
   });
 
-  const ownRecord = project({ permissionKey: "work.timeline_adjust_own", scope: "own_record" });
+  const ownRecord = project({ permissionKey: "work.timeline_adjust_own", scope: "own_record", selfApplicable: true });
+  assert.equal(typeof ownRecord.onSearchCorrectionAssignments, "function");
   assert.equal(typeof ownRecord.onCorrectGap, "function");
 
-  const clientScoped = project({ permissionKey: "work.timeline_adjust_own", scope: "client", clientId: "client-1" });
+  const offScopeOffice = project({ permissionKey: "work.timeline_adjust_own", scope: "office", officeId: "other-office", selfApplicable: false });
+  assert.equal("onSearchCorrectionAssignments" in offScopeOffice, false);
+  assert.equal("onCorrectGap" in offScopeOffice, false);
+
+  const clientScoped = project({ permissionKey: "work.timeline_adjust_own", scope: "client", clientId: "client-1", selfApplicable: false });
+  assert.equal("onSearchCorrectionAssignments" in clientScoped, false);
   assert.equal("onCorrectGap" in clientScoped, false);
-  assert.deepEqual(clientScoped.correctionAssignments, [{ assignmentId: "assignment-1", title: "Prepare report" }]);
 });
 
-test("the correction callback accepts only a projected actionable gap and projected assignment", async () => {
+test("the correction callback accepts only a projected actionable gap and a server-searched assignment", async () => {
   const { projectWorkTimelineProps } = await routeModule;
   const calls = [];
   const props = projectWorkTimelineProps({
-    readPlan: { timeline: true, attendance: false, assignments: true },
+    readPlan: { timeline: true, attendance: false, assignments: false },
     timelineResult: timeline,
-    assignmentsResult: assignments,
+    onSearchCorrectionAssignments: async () => [{ assignmentId: "assignment-1", title: "Prepare report" }],
     onCorrectGap: (value) => calls.push(value),
   });
 
   assert.equal(typeof props.onCorrectGap, "function");
+  assert.throws(() => props.onCorrectGap({
+    startedAt: "2026-10-02T04:00:00.000Z",
+    endedAt: "2026-10-02T05:00:00.000Z",
+    assignmentId: "assignment-1",
+    reason: "Search must finish first.",
+  }), /NOT_IN_AUTHORIZED_PROJECTION/);
+  await props.onSearchCorrectionAssignments("");
   await props.onCorrectGap({
     startedAt: "2026-10-02T04:00:00.000Z",
     endedAt: "2026-10-02T05:00:00.000Z",
@@ -311,6 +332,29 @@ test("the correction callback accepts only a projected actionable gap and projec
   assert.equal(calls.length, 1);
 });
 
+test("correction search failures and malformed server results fail closed", async () => {
+  const { projectWorkTimelineProps } = await routeModule;
+  const build = (search) => projectWorkTimelineProps({
+    readPlan: { timeline: true, attendance: false, assignments: false },
+    timelineResult: timeline,
+    onSearchCorrectionAssignments: search,
+    onCorrectGap() {},
+  });
+  const failed = build(async () => { throw new Error("network failed"); });
+  await assert.rejects(() => failed.onSearchCorrectionAssignments("Report"), /network failed/);
+  assert.throws(() => failed.onCorrectGap({
+    startedAt: "2026-10-02T04:00:00.000Z",
+    endedAt: "2026-10-02T05:00:00.000Z",
+    assignmentId: "never-authorized",
+    reason: "Do not allow fallback choices.",
+  }), /NOT_IN_AUTHORIZED_PROJECTION/);
+
+  const malformed = build(async () => [{ assignmentId: "missing-title" }]);
+  await assert.rejects(() => malformed.onSearchCorrectionAssignments("Report"), /SEARCH_INVALID/);
+  const overBound = build(async () => Array.from({ length: 31 }, (_, index) => ({ assignmentId: `assignment-${index}`, title: `Task ${index}` })));
+  await assert.rejects(() => overBound.onSearchCorrectionAssignments("Task"), /SEARCH_INVALID/);
+});
+
 test("malformed success DTOs become source-local errors instead of fabricated ready data", async () => {
   const { projectWorkTimelineProps } = await routeModule;
   const props = projectWorkTimelineProps({
@@ -321,14 +365,15 @@ test("malformed success DTOs become source-local errors instead of fabricated re
   });
   assert.equal(props.timeline.status, "error");
   assert.equal(props.attendanceToday.status, "error");
-  assert.deepEqual(props.correctionAssignments, [{ assignmentId: "assignment-1", title: "Prepare report" }]);
+  assert.equal("onSearchCorrectionAssignments" in props, false);
 });
 
 test("the host gates the timeline correction form by canonical grants and delegates its mutation action", () => {
   const source = fs.readFileSync(path.join(__dirname, "../app.js"), "utf8");
-  assert.match(source, /import \{ createWorkTimelineCorrectionAction \} from "\.\/app\/work-timeline-actions-route\.ts"/);
+  assert.match(source, /createWorkTimelineCorrectionAction,[\s\S]*?createWorkTimelineCorrectionAssignmentSearch,[\s\S]*?from "\.\/app\/work-timeline-actions-route\.ts"/);
   assert.match(source, /const timelineCorrectionScopes = \["organisation", "own_record", "office", "organisation_department"\]/);
-  assert.match(source, /const canAdjustTimeline = \(\) => hasAnyPermissionGrant\([\s\S]*?\["work\.timeline_adjust_own"\],[\s\S]*?timelineCorrectionScopes/);
+  assert.match(source, /grant\.permissionKey === "work\.timeline_adjust_own"[\s\S]*?timelineCorrectionScopes\.includes\(grant\.scope\) && grant\.selfApplicable === true/);
+  assert.match(source, /onSearchCorrectionAssignments: canAdjustTimeline\(\) \? createWorkTimelineCorrectionAssignmentSearch\([\s\S]*?\) : undefined/);
   assert.match(source, /onCorrectGap: canAdjustTimeline\(\) \? createWorkTimelineCorrectionAction\([\s\S]*?canAdjustTimeline,[\s\S]*?\) : undefined/);
   assert.doesNotMatch(source, /onCorrectGap: async \(correction\) =>/);
 
@@ -338,6 +383,10 @@ test("the host gates the timeline correction form by canonical grants and delega
   assert.match(action, /recoverProtectedCommandFailure\(error, commandContext, "Your time-correction access changed/);
   assert.match(action, /if \(!isCurrentCommand\(commandContext\)\) throw adminCommandUiError\("The Work page changed before this correction completed\."\)/);
   assert.match(action, /setMessage\("Timeline gap corrected and audited\."\);[\s\S]*?refreshWork\(\)/);
+
+  assert.match(action, /api\(`\/api\/work\/timeline-adjustments\/assignments\$\{queryString\}`,[\s\S]*?requestOptions\("GET"\)/);
+  assert.match(action, /if \(!canAdjustTimeline\(\) \|\| !isCurrentCommand\(commandContext\)\)/);
+  assert.match(action, /response\.assignments\.length > 30/);
 });
 
 test("the timeline correction UI scope gate stays aligned with the database permission contract", () => {

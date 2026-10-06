@@ -57,6 +57,7 @@ test("identity, verification, password fields, autocomplete, and minimum length 
   assert.match(html, /Aman/);
   assert.match(html, /aman@example\.test/);
   assert.match(html, /Verification pending/);
+  assert.match(html, /data-tone="warning"><span>Verification pending<\/span><\/span>/);
   assert.match(html, /Request verification link/);
   assert.match(html, /<input[^>]*autoComplete="current-password"[^>]*name="currentPassword"/);
   assert.match(html, /<input[^>]*autoComplete="new-password"[^>]*minLength="8"[^>]*name="newPassword"/);
@@ -69,6 +70,7 @@ test("identity, verification, password fields, autocomplete, and minimum length 
 test("verified identity hides the redundant verification action", () => {
   const html = render({ readState: { status: "ready", identity: { name: "Aman", email: "aman@example.test", emailVerified: true } } });
   assert.match(html, /Verified/);
+  assert.match(html, /data-tone="success"><span>Verified<\/span><\/span>/);
   assert.doesNotMatch(html, /Request verification link/);
 });
 

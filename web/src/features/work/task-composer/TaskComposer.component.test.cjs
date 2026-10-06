@@ -178,6 +178,29 @@ test("keeps compact form layout single-column and makes responsive radio focus v
   assert.match(css, /\.priorityChoice:focus-within\s*\{\s*outline-color:\s*Highlight/s);
 });
 
+test("task search and form controls follow shared field and button state tokens", () => {
+  const css = fs.readFileSync(`${__dirname}/TaskComposer.module.css`, "utf8");
+  const fieldCss = fs.readFileSync(`${__dirname}/../../../design-system/primitives/Field.module.css`, "utf8");
+  const buttonCss = fs.readFileSync(`${__dirname}/../../../design-system/primitives/Button.module.css`, "utf8");
+  const component = fs.readFileSync(`${__dirname}/TaskComposer.tsx`, "utf8");
+  const forcedColors = css.match(/@media\s*\(forced-colors:\s*active\)\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+
+  assert.match(css, /\.form\s*\{[^}]*gap:\s*var\(--nova-space-4\)/s);
+  assert.match(css, /\.textarea:hover:not\(:disabled\)\s*\{[^}]*border-color:\s*var\(--nova-color-text-muted\)/s);
+  assert.match(css, /\.textarea:focus-visible\s*\{[^}]*box-shadow:\s*inset 0 -2px 0 var\(--nova-color-action\)/s);
+  assert.match(css, /\.textarea\[aria-invalid="true"\]:focus-visible\s*\{[^}]*var\(--nova-color-danger\)/s);
+  assert.match(css, /\.textarea:disabled\s*\{[^}]*var\(--nova-control-background-disabled\)/s);
+  assert.match(fieldCss, /\.control:focus-visible\s*\{[^}]*box-shadow:\s*inset 0 -2px 0 var\(--nova-color-action\)/s);
+  assert.match(buttonCss, /\.button\[data-variant="primary"\]:hover:not\(:disabled\)\s*\{[^}]*var\(--nova-color-action-hover\)/s);
+  assert.match(css, /\.priorityChoice:not\(\[data-disabled="true"\]\):hover\s*\{[^}]*background:\s*var\(--nova-color-surface-subtle\)/s);
+  assert.match(css, /\.priorityChoice\[data-disabled="true"\]\s*\{[^}]*cursor:\s*not-allowed/s);
+  assert.match(component, /data-disabled=\{submitting \|\| undefined\}/);
+  assert.match(forcedColors, /\.textarea[^}]*color:\s*FieldText;[^}]*background:\s*Field/s);
+  assert.match(forcedColors, /\.priorityChoice\[data-disabled="true"\][^}]*color:\s*GrayText/);
+  assert.match(css, /\.priorityLegend\s*\{\s*margin:\s*0;/);
+  assert.doesNotMatch(css, /#[\da-f]{3,8}\b|\brgb\(|\bhsl\(/i);
+});
+
 test("keeps task form copy and single-field rows within their available container width", () => {
   const css = fs.readFileSync(`${__dirname}/TaskComposer.module.css`, "utf8");
 

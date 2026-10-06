@@ -182,6 +182,7 @@ test("runtime provider choices are limited to supported options and empty suppor
 
 test("connection actions require test success; unsupported saved connections can still be deactivated", () => {
   const untested = render({ connections: [row()] });
+  assert.match(untested, /data-tone="neutral"><span>Inactive<\/span><\/span>/);
   assert.match(untested, /Send and pass a test before this connection can be activated/);
   assert.match(buttonMarkup(untested, "Activate"), /disabled=""/);
   assert.match(untested, /aria-controls="[^"]+-test-form"/);
@@ -198,8 +199,12 @@ test("connection actions require test success; unsupported saved connections can
   const unsupported = render({ connections: [row({ supported: false, isActive: true })] });
   assert.match(unsupported, /Unavailable in this runtime/);
   assert.match(unsupported, /Active · unavailable here/);
+  assert.match(unsupported, /data-tone="warning"><span>Active · unavailable here<\/span><\/span>/);
   assert.match(unsupported, /Deactivate/);
   assert.doesNotMatch(unsupported, /Connect Google/);
+
+  const active = render({ connections: [row({ isActive: true })] });
+  assert.match(active, /data-tone="success"><span>Active<\/span><\/span>/);
 });
 
 test("a local test result yields to any newer server test snapshot", () => {

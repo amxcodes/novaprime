@@ -74,6 +74,11 @@
   --nova-color-action-text: var(--nova-user-accent-text-light, var(--nova-palette-action-800));
   --nova-color-action-text-hover: var(--nova-user-accent-text-light-hover, var(--nova-palette-action-800));
   --nova-color-action-subtle: color-mix(in srgb, var(--nova-color-action) 10%, var(--nova-color-canvas));
+  --nova-color-action-edge: color-mix(in srgb, var(--nova-color-action) 82%, var(--nova-color-text-primary));
+  --nova-color-action-pressed: color-mix(in srgb, var(--nova-color-action) 86%, var(--nova-color-text-primary));
+  --nova-color-control-track: var(--nova-color-surface);
+  --nova-color-control-highlight: var(--nova-palette-white);
+  --nova-control-highlight-opacity: 0.36;
   --nova-color-focus: var(--nova-user-focus-light, var(--nova-palette-focus-light));
   --nova-color-success: var(--nova-palette-success-light);
   --nova-color-success-surface: var(--nova-palette-success-surface-light);
@@ -120,6 +125,8 @@
 
   --nova-radius-control: 0.75rem;
   --nova-radius-option: 0.5rem;
+  --nova-radius-status: 0.5625rem;
+  --nova-radius-navigation: 1.5rem;
   --nova-radius-surface: 1.125rem;
   --nova-radius-overlay: 1rem;
   --nova-radius-pill: 999px;
@@ -174,6 +181,11 @@
   --nova-color-action-text: var(--nova-user-accent-text-dark, var(--nova-palette-action-text-dark));
   --nova-color-action-text-hover: var(--nova-user-accent-text-dark-hover, var(--nova-palette-action-text-hover-dark));
   --nova-color-action-subtle: color-mix(in srgb, var(--nova-color-action) 16%, var(--nova-color-canvas));
+  --nova-color-action-edge: color-mix(in srgb, var(--nova-color-action) 82%, var(--nova-color-text-primary));
+  --nova-color-action-pressed: color-mix(in srgb, var(--nova-color-action) 86%, var(--nova-color-text-primary));
+  --nova-color-control-track: var(--nova-color-surface-subtle);
+  --nova-color-control-highlight: var(--nova-color-text-secondary);
+  --nova-control-highlight-opacity: 0.24;
   --nova-color-focus: var(--nova-user-focus-dark, var(--nova-palette-focus-dark));
   --nova-color-success: var(--nova-palette-success-dark);
   --nova-color-success-surface: var(--nova-palette-success-surface-dark);
@@ -186,6 +198,7 @@
   --nova-color-info-surface: var(--nova-palette-info-surface-dark);
   --nova-elevation-raised: var(--nova-palette-raised-shadow-dark);
   --nova-elevation-overlay: var(--nova-palette-shadow-dark);
+  --nova-radius-navigation: 1.375rem;
 }
 
 :root[data-theme="system"] {
@@ -210,6 +223,11 @@
     --nova-color-action-text: var(--nova-user-accent-text-dark, var(--nova-palette-action-text-dark));
     --nova-color-action-text-hover: var(--nova-user-accent-text-dark-hover, var(--nova-palette-action-text-hover-dark));
     --nova-color-action-subtle: color-mix(in srgb, var(--nova-color-action) 16%, var(--nova-color-canvas));
+    --nova-color-action-edge: color-mix(in srgb, var(--nova-color-action) 82%, var(--nova-color-text-primary));
+    --nova-color-action-pressed: color-mix(in srgb, var(--nova-color-action) 86%, var(--nova-color-text-primary));
+    --nova-color-control-track: var(--nova-color-surface-subtle);
+    --nova-color-control-highlight: var(--nova-color-text-secondary);
+    --nova-control-highlight-opacity: 0.24;
     --nova-color-focus: var(--nova-user-focus-dark, var(--nova-palette-focus-dark));
     --nova-color-success: var(--nova-palette-success-dark);
     --nova-color-success-surface: var(--nova-palette-success-surface-dark);

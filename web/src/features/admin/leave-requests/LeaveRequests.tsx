@@ -199,7 +199,7 @@ function LeaveRequestCard({
           <div className={styles.cardHeader}>
             <div className={styles.recordHeading}>
               <h3 className={styles.requestTitle} id={`${id}-title`}>{title}</h3>
-              <Badge tone={statusTone} showDot>{statusLabel(request.status)}</Badge>
+              <Badge tone={statusTone}>{statusLabel(request.status)}</Badge>
             </div>
             {hasConflict ? <Badge tone="danger">Attendance conflict</Badge> : null}
           </div>

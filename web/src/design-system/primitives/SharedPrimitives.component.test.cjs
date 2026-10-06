@@ -27,6 +27,8 @@ const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { Field, Input } = require("./Field.tsx");
 const { Badge } = require("./Badge.tsx");
+const { Avatar } = require("./Avatar.tsx");
+const { SegmentedControl } = require("./SegmentedControl.tsx");
 const { EmptyState } = require("./EmptyState.tsx");
 const { PageHeader, SectionHeading } = require("./PageHeader.tsx");
 const { Loading, StateMessage } = require("./StateMessage.tsx");
@@ -47,7 +49,7 @@ test("Field connects required state, hints, errors, and its input accessibly", (
 });
 
 test("status, empty state, and headings keep their semantic content in the rendered markup", () => {
-  const badge = renderToStaticMarkup(React.createElement(Badge, { tone: "warning", showDot: true }, "Needs review"));
+  const badge = renderToStaticMarkup(React.createElement(Badge, { tone: "warning" }, "Needs review"));
   const empty = renderToStaticMarkup(React.createElement(EmptyState, {
     title: "No records yet",
     description: "New records will appear here.",
@@ -63,7 +65,6 @@ test("status, empty state, and headings keep their semantic content in the rende
   const sectionHeading = renderToStaticMarkup(React.createElement(SectionHeading, { level: 3, title: "Current members" }));
 
   assert.match(badge, /data-tone="warning"/);
-  assert.match(badge, /aria-hidden="true"/);
   assert.match(badge, /Needs review/);
   assert.match(empty, /<h2[^>]*>No records yet<\/h2>/);
   assert.match(empty, /New records will appear here/);
@@ -72,6 +73,31 @@ test("status, empty state, and headings keep their semantic content in the rende
   assert.match(pageHeader, /People/);
   assert.match(pageHeader, /Add person/);
   assert.match(sectionHeading, /<h3[^>]*>Current members<\/h3>/);
+});
+
+test("segmented choices expose their label, selected state, and disabled state", () => {
+  const html = renderToStaticMarkup(React.createElement(SegmentedControl, {
+    "aria-label": "Task layout",
+    value: "list",
+    options: [
+      { value: "list", label: "List" },
+      { value: "board", label: "Board", disabled: true },
+    ],
+    onValueChange() {},
+  }));
+
+  assert.match(html, /<div[^>]*role="group" aria-label="Task layout"/);
+  assert.match(html, /<button[^>]*aria-pressed="true"[^>]*><span>List<\/span><\/button>/);
+  assert.match(html, /<button[^>]*aria-pressed="false"[^>]*disabled=""><span>Board<\/span><\/button>/);
+});
+
+test("avatars have an accessible identity only when the containing context needs one", () => {
+  const decorative = renderToStaticMarkup(React.createElement(Avatar, { size: 32 }));
+  const named = renderToStaticMarkup(React.createElement(Avatar, { size: 48, accessibleName: "Morgan Lee" }));
+
+  assert.match(decorative, /data-size="32" aria-hidden="true"><svg/);
+  assert.match(named, /data-size="48" role="img" aria-label="Morgan Lee"><svg/);
+  assert.match(named, /<circle/);
 });
 
 test("error messages are alerts while loading messages announce a busy status", () => {
@@ -91,11 +117,13 @@ test("shared primitive styles consume semantic appearance tokens and support res
   const button = readCss("Button");
   const field = readCss("Field");
   const badge = readCss("Badge");
+  const segmentedControl = readCss("SegmentedControl");
+  const avatar = readCss("Avatar");
   const emptyState = readCss("EmptyState");
   const pageHeader = readCss("PageHeader");
   const stateMessage = readCss("StateMessage");
 
-  for (const [name, css] of Object.entries({ button, field, badge, emptyState, pageHeader, stateMessage })) {
+  for (const [name, css] of Object.entries({ button, field, badge, segmentedControl, avatar, emptyState, pageHeader, stateMessage })) {
     assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b|rgba?\(/i, `${name} should use themeable semantic color tokens`);
   }
   assert.match(field, /\.control:focus-visible\s*\{[^}]*var\(--nova-control-border-focus\)/s);
@@ -106,6 +134,16 @@ test("shared primitive styles consume semantic appearance tokens and support res
   assert.match(button, /@media \(any-pointer: coarse\)/);
   assert.match(pageHeader, /@media \(max-width: 47\.999rem\)/);
   assert.match(badge, /var\(--nova-color-(?:success|warning|danger|info)-surface\)/);
+  assert.match(badge, /min-height:\s*1\.75rem/);
+  assert.match(badge, /border-radius:\s*var\(--nova-radius-status\)/);
+  assert.doesNotMatch(badge, /\.dot|::before/);
+  assert.match(segmentedControl, /container-type:\s*inline-size/);
+  assert.match(segmentedControl, /min-height:\s*2rem/);
+  assert.match(segmentedControl, /border-radius:\s*var\(--nova-radius-control\)/);
+  assert.match(segmentedControl, /background:\s*var\(--nova-color-control-track\)/);
+  assert.match(segmentedControl, /background:\s*linear-gradient\(112deg, var\(--nova-color-action\), var\(--nova-color-action-edge\)\)/);
+  assert.match(segmentedControl, /\.option\[data-selected="true"\]::before/);
+  assert.match(segmentedControl, /@container segmented-control \(max-width:\s*22rem\)/);
   assert.match(stateMessage, /\.message\[data-kind="info"\]\s*\{[^}]*var\(--nova-color-info-surface\)/s);
   assert.match(emptyState, /@media \(max-width: 639px\)/);
 });

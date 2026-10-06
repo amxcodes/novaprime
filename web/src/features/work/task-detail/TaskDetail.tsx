@@ -150,7 +150,7 @@ function ReadyTask({ task, onBack, onRetry, onSaveDueDate, headingRef }: {
           <p className={styles.eyebrow}>Task</p>
           <h2 className={styles.title} id={`${id}-title`} ref={headingRef} tabIndex={-1}>{valueText(task.title, "Untitled task")}</h2>
           <div className={styles.badges}>
-            <Badge tone={statusTone(task.status)} showDot>{readableCode(task.status, "Unknown status")}</Badge>
+            <Badge tone={statusTone(task.status)}>{readableCode(task.status, "Unknown status")}</Badge>
             <Badge tone="neutral">{readableCode(task.priority, "Normal")} priority</Badge>
           </div>
         </div>
@@ -183,7 +183,7 @@ function ReadyTask({ task, onBack, onRetry, onSaveDueDate, headingRef }: {
             {task.assignments.map((assignment, index) => (
               <li className={styles.assignment} key={`${assignment.personName ?? "assignment"}-${index}`}>
                 <strong className={styles.person}>{valueText(assignment.personName, "Assigned person")}</strong>
-                <Badge className={styles.assignmentState} tone="neutral" showDot>
+                <Badge className={styles.assignmentState} tone="neutral">
                   {readableCode(assignment.status, "Unknown state")}
                 </Badge>
                 <span className={styles.assignmentMeta}>
