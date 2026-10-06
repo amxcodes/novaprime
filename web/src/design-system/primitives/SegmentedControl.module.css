@@ -13,19 +13,8 @@
   background: var(--nova-color-control-fill-quiet);
 }
 
-.group::before {
-  position: absolute;
-  inset-block-start: 1px;
-  inset-inline: 8%;
-  height: 1px;
-  border-radius: 0.5px;
-  background: var(--nova-color-control-highlight);
-  content: "";
-  opacity: var(--nova-control-highlight-opacity);
-  pointer-events: none;
-}
-
 .option {
+  position: relative;
   display: inline-flex;
   min-width: 10rem;
   min-height: 2rem;
@@ -46,6 +35,18 @@
     color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
     background-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
     border-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+
+.option[data-selected="true"]::before {
+  position: absolute;
+  inset-block-start: 1px;
+  inset-inline: 8%;
+  height: 1px;
+  border-radius: 0.5px;
+  background: var(--nova-color-control-highlight);
+  content: "";
+  opacity: var(--nova-control-highlight-opacity);
+  pointer-events: none;
 }
 
 .option:hover:not(:disabled):not([data-selected="true"]) {

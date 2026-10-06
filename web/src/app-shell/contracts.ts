@@ -9,6 +9,10 @@ export interface AppNavigationItem {
   label: string;
   href: string;
   icon: ReactNode;
+  /** Optional server-projected secondary label, such as a count or current state. */
+  detail?: string;
+  /** Presentation metadata supplied with the server-projected detail; never infer it from local state. */
+  detailTone?: "muted" | "success" | "warning" | "danger" | "action";
   external?: boolean;
 }
 

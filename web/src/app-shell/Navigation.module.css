@@ -138,33 +138,10 @@
   display: none;
 }
 
-.toggleIcon {
-  display: inline-flex;
-  width: 1rem;
-  height: 1rem;
-  align-items: center;
-  justify-content: center;
-  color: currentColor;
-}
-
-.toggleIcon svg {
-  display: block;
-  width: 0.875rem;
-  height: 0.875rem;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 .toggleLabel {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  clip-path: inset(50%);
+  font-size: var(--nova-navigation-type-toggle);
+  font-weight: var(--nova-type-weight-medium);
+  line-height: 1.375rem;
 }
 
 .compactSidebar .desktopToggle {
@@ -275,8 +252,8 @@
 
 .desktopSidebar .link {
   min-height: 1.8125rem;
-  gap: 0;
-  padding: 0.0625rem 0;
+  gap: 0.25rem;
+  padding: 0.0625rem 0 0.0625rem 0.625rem;
   color: var(--nova-navigation-text-primary);
   font-size: var(--nova-navigation-type-label);
   font-weight: var(--nova-type-weight-regular);
@@ -307,6 +284,18 @@
   color: var(--nova-navigation-selected-text);
   background: var(--nova-navigation-selected-surface);
   font-weight: var(--nova-type-weight-medium);
+}
+
+.desktopSidebar .link[aria-current="page"]::before {
+  position: absolute;
+  inset-block-start: 1px;
+  inset-inline: 8%;
+  height: 1px;
+  border-radius: 0.5px;
+  background: var(--nova-color-control-highlight);
+  content: "";
+  opacity: var(--nova-control-highlight-opacity);
+  pointer-events: none;
 }
 
 .desktopSidebar .link[aria-current="page"]:hover {
@@ -347,14 +336,46 @@
 
 .label {
   min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.detail {
+  width: 4.25rem;
+  flex: 0 1 4.25rem;
+  overflow: hidden;
+  margin-inline-end: 0.5625rem;
+  color: var(--nova-navigation-text-muted);
+  font-size: var(--nova-navigation-type-detail);
+  font-weight: var(--nova-type-weight-medium);
+  line-height: 0.5625rem;
+  text-align: end;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail[data-tone="success"] { color: var(--nova-color-success); }
+.detail[data-tone="warning"] { color: var(--nova-color-warning); }
+.detail[data-tone="danger"] { color: var(--nova-color-danger); }
+.detail[data-tone="action"] { color: var(--nova-color-action-text); }
+
+.compactSidebar .detail {
+  width: 2.375rem;
+  flex-basis: 2.375rem;
+  font-size: var(--nova-navigation-type-detail-compact);
+}
+
+.compactSidebar .link[aria-current="page"]::before {
+  inset-inline: 10%;
+}
+
 .compactSidebar .link {
   font-size: var(--nova-navigation-type-label-compact);
 }
+
+.drawer .icon { display: none; }
 
 .sidebarFooter {
   display: grid;

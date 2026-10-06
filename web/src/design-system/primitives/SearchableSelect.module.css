@@ -26,7 +26,7 @@
   position: fixed;
   z-index: var(--nova-layer-menu);
   overflow: auto;
-  padding: var(--nova-space-1);
+  padding: calc(var(--nova-space-2) - 1px);
   border: 1px solid var(--nova-select-popup-border);
   border-radius: var(--nova-radius-overlay);
   color: var(--nova-select-popup-text);
@@ -40,7 +40,7 @@
 .listbox {
   display: grid;
   min-width: 0;
-  gap: var(--nova-space-1);
+  gap: 0;
 }
 
 .option {
@@ -50,7 +50,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--nova-space-3);
-  padding: var(--nova-space-2) var(--nova-space-3);
+  padding: 0.25rem 1.25rem 0.25rem 0.25rem;
   border-radius: var(--nova-radius-option);
   cursor: pointer;
   outline: none;
@@ -84,21 +84,26 @@
 
 .optionLabel {
   overflow-wrap: anywhere;
-  font-size: var(--nova-type-size-control-label);
-  font-weight: var(--nova-type-weight-medium);
-  line-height: var(--nova-type-line-normal);
+  font-size: var(--nova-type-size-body);
+  font-weight: var(--nova-type-weight-regular);
+  line-height: 1.25;
 }
 
 .optionDetail {
   color: var(--nova-color-text-secondary);
   font-size: var(--nova-type-size-detail);
-  line-height: var(--nova-type-line-normal);
+  line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
-.optionCheck {
+.selectedDetail {
   flex: none;
-  color: var(--nova-color-action-text);
+  width: 4.375rem;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-detail);
+  line-height: 1.2;
+  text-align: end;
+  white-space: nowrap;
 }
 
 .noResults {
@@ -171,7 +176,7 @@
     background: Canvas;
   }
 
-  .option[aria-selected="true"] .optionCheck {
+  .option[aria-selected="true"] .selectedDetail {
     color: inherit;
   }
 }

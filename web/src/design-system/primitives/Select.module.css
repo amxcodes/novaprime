@@ -45,7 +45,8 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--nova-space-3);
-  padding: 0 var(--nova-space-3);
+  /* Figma's 16px content inset includes the 1px control stroke. */
+  padding: 0 calc(var(--nova-space-4) - 1px);
   border: 1px solid var(--nova-control-border);
   border-radius: var(--nova-radius-control);
   color: var(--nova-color-text-primary);
@@ -136,7 +137,7 @@
   max-height: min(22rem, calc(100vh - 2 * var(--nova-space-4)));
   max-height: min(22rem, calc(100dvh - 2 * var(--nova-space-4)));
   overflow: auto;
-  padding: var(--nova-space-1);
+  padding: calc(var(--nova-space-2) - 1px);
   border: 1px solid var(--nova-select-popup-border);
   border-radius: var(--nova-radius-overlay);
   color: var(--nova-select-popup-text);
@@ -149,7 +150,7 @@
 .listBox {
   display: grid;
   min-width: 0;
-  gap: var(--nova-space-1);
+  gap: 0;
   outline: none;
 }
 
@@ -160,7 +161,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--nova-space-3);
-  padding: var(--nova-space-2) var(--nova-space-3);
+  padding: 0.25rem 1.25rem 0.25rem 0.25rem;
   border-radius: var(--nova-radius-option);
   color: var(--nova-color-text-primary);
   cursor: pointer;
@@ -204,27 +205,33 @@
 }
 
 .optionLabel {
-  font-size: var(--nova-type-size-control-label);
-  line-height: var(--nova-type-line-normal);
+  font-size: var(--nova-type-size-body);
+  font-weight: var(--nova-type-weight-regular);
+  line-height: 1.25;
 }
 
 .optionDetail {
   color: var(--nova-color-text-secondary);
   font-size: var(--nova-type-size-detail);
-  line-height: var(--nova-type-line-normal);
+  line-height: 1.2;
 }
 
 .option[data-disabled] .optionDetail {
   color: inherit;
 }
 
-.check {
+.selectedDetail {
   flex: none;
-  color: var(--nova-color-action-text);
+  width: 4.375rem;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-detail);
+  line-height: 1.2;
+  text-align: end;
+  white-space: nowrap;
   opacity: 0;
 }
 
-.option[data-selected] .check {
+.option[data-selected] .selectedDetail {
   opacity: 1;
 }
 
@@ -296,7 +303,7 @@
     background: Canvas;
   }
 
-  .option[data-selected] .check {
+  .option[data-selected] .selectedDetail {
     color: inherit;
   }
 

@@ -43,7 +43,7 @@
   --nova-palette-navigation-text-primary-dark: #f0f3f8;
   --nova-palette-navigation-text-muted-dark: #abb9cd;
   --nova-palette-navigation-control-surface-dark: #2a3544;
-  --nova-palette-navigation-control-edge-dark: #465367;
+  --nova-palette-navigation-control-edge-dark: #465366;
   --nova-palette-navigation-control-text-dark: #f0f3f8;
   --nova-palette-navigation-control-hover-surface-dark: #414d5d;
   --nova-palette-navigation-control-hover-edge-dark: #58677b;
@@ -52,7 +52,7 @@
   --nova-palette-navigation-control-highlight-dark: #aab7ca;
   --nova-palette-navigation-control-highlight-opacity-dark: 0.24;
   --nova-palette-navigation-selected-surface-dark: #364251;
-  --nova-palette-navigation-selected-edge-dark: #465367;
+  --nova-palette-navigation-selected-edge-dark: #465366;
   --nova-palette-navigation-selected-text-dark: #b1caff;
   --nova-palette-action-700: #3d6bff;
   --nova-palette-action-edge-light: #2856cf;
@@ -93,7 +93,7 @@
   --nova-palette-danger-surface-dark: #492f30;
   --nova-palette-info-dark: #b1caff;
   --nova-palette-info-surface-dark: #2a3544;
-  --nova-palette-danger-edge-light: #f1d3cc;
+  --nova-palette-danger-edge-light: #f0d3cc;
   --nova-palette-danger-edge-dark: #694346;
   --nova-palette-action-subtle-light: #eef3fa;
   --nova-palette-action-subtle-dark: #2a3544;
@@ -229,6 +229,8 @@
 
   --nova-navigation-type-label: 0.6rem;
   --nova-navigation-type-label-compact: 0.5125rem;
+  --nova-navigation-type-detail: 0.44375rem;
+  --nova-navigation-type-detail-compact: 0.41875rem;
   --nova-navigation-type-group: 0.44375rem;
   --nova-navigation-type-group-compact: 0.4rem;
   --nova-navigation-type-wordmark: 0.875rem;

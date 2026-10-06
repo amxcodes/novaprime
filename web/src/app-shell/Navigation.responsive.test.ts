@@ -83,7 +83,8 @@ describe("responsive navigation focus", () => {
     expect(source).toContain("PEOPLE + PROJECTS");
     expect(source).toContain("styles.brandWordmark");
     expect(source).toContain("styles.brandKicker");
-    expect(source).toContain("styles.toggleIcon");
+    expect(source).not.toContain("styles.toggleIcon");
+    expect(source).toContain('{compact ? "Expand" : "Compact"}');
     expect(navigationStyles).toContain(".toggleLabel");
     expect(navigationStyles).toContain(".desktopSidebar .icon { display: none; }");
     expect(compactGroupLabel).toContain("white-space: normal");
@@ -91,6 +92,15 @@ describe("responsive navigation focus", () => {
     expect(navigationStyles).toContain("border-radius: var(--nova-radius-option)");
     expect(navigationStyles).toContain("border-radius: var(--nova-radius-control)");
     expect(navigationStyles).toContain(".link[aria-current=\"page\"]");
+    expect(navigationStyles).toContain(".desktopSidebar .link[aria-current=\"page\"]::before");
+    expect(navigationStyles).toContain("var(--nova-color-control-highlight)");
+    expect(navigationStyles).toContain(".drawer .icon { display: none; }");
+    expect(source).toContain("item.detail");
+    expect(source).toContain('data-tone={item.detailTone ?? "muted"}');
+    expect(navigationStyles).toContain('.detail[data-tone="success"]');
+    expect(navigationStyles).toContain('.detail[data-tone="warning"]');
+    expect(designTokens).toContain("--nova-navigation-type-detail: 0.44375rem");
+    expect(designTokens).toContain("--nova-navigation-type-detail-compact: 0.41875rem");
     expect(navigationStyles).toContain("background: var(--nova-color-action-subtle)");
     expect(navigationStyles).toContain("var(--nova-color-focus)");
     expect(navigationStyles).not.toMatch(/#[0-9a-f]{3,8}\b/i);

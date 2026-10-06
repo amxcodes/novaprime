@@ -70,6 +70,9 @@ test("renders an accessible labeled combobox and submits the selected ID through
   assert.match(html, /placeholder="Select an assignment"/);
   assert.match(html, /Choose an eligible assignment\./);
   assert.doesNotMatch(html, /<select\b/);
+  const source = fs.readFileSync(require.resolve("./SearchableSelect.tsx"), "utf8");
+  assert.match(source, /className=\{styles\.selectedDetail\}[\s\S]*?option\.value === value \? "Selected" : ""/);
+  assert.doesNotMatch(source, /optionCheck|✓/);
 });
 
 test("preserves an empty named value so hosts can validate against their authorized options", () => {
@@ -88,8 +91,12 @@ test("the shared popup owns tokenized responsive and forced-colors styling", () 
   assert.match(css, /position:\s*fixed/);
   assert.match(css, /--nova-layer-menu/);
   assert.match(css, /var\(--nova-select-popup-shadow\)/);
-  assert.match(css, /\.optionLabel\s*\{[^}]*font-size:\s*var\(--nova-type-size-control-label\)/s);
+  assert.match(css, /\.optionLabel\s*\{[^}]*font-size:\s*var\(--nova-type-size-body\)/s);
   assert.match(css, /\.optionDetail\s*\{[^}]*font-size:\s*var\(--nova-type-size-detail\)/s);
+  assert.match(css, /padding:\s*calc\(var\(--nova-space-2\) - 1px\)/);
+  assert.match(css, /\.listbox\s*\{[^}]*gap:\s*0/s);
+  assert.match(css, /padding:\s*0\.25rem 1\.25rem 0\.25rem 0\.25rem/);
+  assert.match(css, /\.selectedDetail\s*\{[^}]*width:\s*4\.375rem[^}]*text-align:\s*end/s);
   assert.match(css, /--nova-control-touch-target/);
   assert.match(css, /\.option\s*\{\s*display:\s*flex;\s*min-width:\s*0;\s*min-height:\s*var\(--nova-control-height\)/);
   assert.match(css, /@media\s*\(any-pointer:\s*coarse\)[\s\S]*?\.option\s*\{\s*min-height:\s*var\(--nova-control-touch-target\)/);

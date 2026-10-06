@@ -73,11 +73,6 @@
   line-height: var(--nova-type-line-normal);
 }
 
-.status {
-  min-height: 1.5rem;
-  border-radius: var(--nova-radius-pill);
-}
-
 .dueDate {
   display: inline-flex;
   min-width: 0;

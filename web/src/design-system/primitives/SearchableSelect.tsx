@@ -408,7 +408,9 @@ export function SearchableSelect({
                       <span className={styles.optionLabel}>{option.label}</span>
                       {option.description ? <span className={styles.optionDetail}>{option.description}</span> : null}
                     </span>
-                    {option.value === value ? <span aria-hidden="true" className={styles.optionCheck}>✓</span> : null}
+                    <span aria-hidden="true" className={styles.selectedDetail}>
+                      {option.value === value ? "Selected" : ""}
+                    </span>
                   </div>
                 ))}
               </div>

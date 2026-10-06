@@ -31,8 +31,8 @@
 }
 
 .badge[data-tone="info"] {
-  color: var(--nova-color-info);
-  background: var(--nova-color-info-surface);
+  color: var(--nova-color-action-text);
+  background: var(--nova-color-surface-subtle);
 }
 
 .badge > span:last-child {

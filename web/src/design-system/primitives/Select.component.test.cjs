@@ -92,8 +92,13 @@ test("styles custom popup states with NOVA theme, touch, focus, reduced-motion a
   assert.match(css, /var\(--nova-select-popup-border\)/);
   assert.match(css, /var\(--nova-select-popup-shadow\)/);
   assert.match(css, /\.value\s*\{[^}]*font-size:\s*var\(--nova-type-size-body\)/s);
-  assert.match(css, /\.optionLabel\s*\{[^}]*font-size:\s*var\(--nova-type-size-control-label\)/s);
+  assert.match(css, /\.optionLabel\s*\{[^}]*font-size:\s*var\(--nova-type-size-body\)/s);
   assert.match(css, /\.optionDetail\s*\{[^}]*font-size:\s*var\(--nova-type-size-detail\)/s);
+  assert.match(css, /padding:\s*calc\(var\(--nova-space-2\) - 1px\)/);
+  assert.match(css, /\.listBox\s*\{[^}]*gap:\s*0/s);
+  assert.match(css, /padding:\s*0\.25rem 1\.25rem 0\.25rem 0\.25rem/);
+  assert.match(css, /\.selectedDetail\s*\{[^}]*width:\s*4\.375rem[^}]*text-align:\s*end/s);
+  assert.match(source, /className=\{styles\.selectedDetail\}[^>]*aria-hidden="true">Selected/);
   assert.match(css, /var\(--nova-select-option-hover\)/);
   assert.match(css, /var\(--nova-select-option-selected\)/);
   assert.match(css, /var\(--nova-control-touch-target\)/);
@@ -118,7 +123,7 @@ test("styles custom popup states with NOVA theme, touch, focus, reduced-motion a
   assert.match(forcedColorsCss, /\.trigger\[data-focus-visible\]\s*\{\s*outline:\s*1px solid Highlight;\s*outline-offset:\s*-2px/);
   assert.match(forcedColorsCss, /\.option\[data-selected\]\s+\.optionDetail,\s*\.option\[data-focused\]\s+\.optionDetail\s*\{\s*color:\s*inherit/);
   assert.match(css, /\.select\[data-invalid\]\s+\.trigger\s*\{\s*border-color:\s*Mark/);
-  assert.match(css, /\.option\[data-selected\]\s+\.check\s*\{\s*color:\s*inherit/);
+  assert.match(css, /\.option\[data-selected\]\s+\.selectedDetail\s*\{\s*color:\s*inherit/);
   assert.match(buttonCss, /\.button\[data-variant="primary"\]:hover:not\(:disabled\)[\s\S]*?background:\s*ButtonFace/);
   assert.match(buttonCss, /filter:\s*none/);
   assert.match(fieldCss, /\.control\[aria-invalid="true"\]\s*\{\s*border-color:\s*Mark/);

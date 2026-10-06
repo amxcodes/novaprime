@@ -95,6 +95,7 @@ function NavigationLinks({
                       {item.icon}
                     </span>
                     <span className={styles.label}>{item.label}</span>
+                    {item.detail ? <span className={styles.detail} data-tone={item.detailTone ?? "muted"}>{item.detail}</span> : null}
                   </a>
                 </li>
               );
@@ -138,11 +139,6 @@ export function DesktopSidebar({
           title={compact ? "Expand sidebar navigation" : "Collapse sidebar navigation"}
           type="button"
         >
-          <span aria-hidden="true" className={styles.toggleIcon}>
-            <svg viewBox="0 0 20 20" fill="none">
-              <path d={compact ? "m7 4 6 6-6 6" : "m13 4-6 6 6 6"} />
-            </svg>
-          </span>
           <span className={styles.toggleLabel}>
             {compact ? "Expand" : "Compact"}
           </span>

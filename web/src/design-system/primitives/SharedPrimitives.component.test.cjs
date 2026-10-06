@@ -133,10 +133,12 @@ test("shared primitive styles consume semantic appearance tokens and support res
   assert.match(field, /@media \(any-pointer: coarse\)\s*\{\s*\.control\s*\{[^}]*var\(--nova-control-touch-target\)/s);
   assert.match(field, /\.label\s*\{[^}]*font-size:\s*var\(--nova-type-size-control-label\)/s);
   assert.match(field, /\.control\s*\{[^}]*font-size:\s*var\(--nova-type-size-body\)/s);
+  assert.match(field, /\.control\s*\{[^}]*padding:\s*0 calc\(var\(--nova-space-4\) - 1px\)/s);
   assert.match(field, /\.hint,\s*\.error\s*\{[^}]*font-size:\s*var\(--nova-type-size-detail\)/s);
   assert.match(button, /@media \(any-pointer: coarse\)/);
   assert.match(pageHeader, /@media \(max-width: 47\.999rem\)/);
-  assert.match(badge, /var\(--nova-color-(?:success|warning|danger|info)-surface\)/);
+  assert.match(badge, /\.badge\[data-tone="info"\]\s*\{\s*color:\s*var\(--nova-color-action-text\);\s*background:\s*var\(--nova-color-surface-subtle\)/s);
+  assert.match(badge, /var\(--nova-color-(?:success|warning|danger)-surface\)/);
   assert.match(badge, /min-height:\s*1\.75rem/);
   assert.match(badge, /border-radius:\s*var\(--nova-radius-status\)/);
   assert.match(badge, /font-size:\s*var\(--nova-type-size-detail\)/);
@@ -147,10 +149,10 @@ test("shared primitive styles consume semantic appearance tokens and support res
   assert.match(segmentedControl, /\.group\s*\{[^}]*border:\s*1px solid var\(--nova-color-control-edge-quiet\)[^}]*border-radius:\s*var\(--nova-radius-control\)[^}]*background:\s*var\(--nova-color-control-fill-quiet\)/s);
   assert.match(segmentedControl, /\.group\s*\{[^}]*gap:\s*var\(--nova-space-2\)[^}]*padding:\s*3px/s);
   assert.match(segmentedControl, /\.option\s*\{[^}]*min-width:\s*10rem[^}]*min-height:\s*2rem[^}]*border-radius:\s*var\(--nova-radius-status\)/s);
-  assert.match(segmentedControl, /\.group::before\s*\{[^}]*inset-block-start:\s*1px[^}]*inset-inline:\s*8%[^}]*height:\s*1px[^}]*opacity:\s*var\(--nova-control-highlight-opacity\)/s);
+  assert.match(segmentedControl, /\.option\[data-selected="true"\]::before\s*\{[^}]*inset-block-start:\s*1px[^}]*inset-inline:\s*8%[^}]*height:\s*1px[^}]*opacity:\s*var\(--nova-control-highlight-opacity\)/s);
   assert.match(segmentedControl, /\.option\s*\{[^}]*font-size:\s*var\(--nova-type-size-control-label\)[^}]*font-weight:\s*var\(--nova-type-weight-regular\)[^}]*line-height:\s*var\(--nova-type-line-control\)/s);
   assert.match(segmentedControl, /\.option\[data-selected="true"\]\s*\{[^}]*border-color:\s*var\(--nova-color-action-edge\)[^}]*color:\s*var\(--nova-color-action-contrast\)[^}]*background:\s*var\(--nova-color-action\)/s);
-  assert.doesNotMatch(segmentedControl, /linear-gradient|\.option\[data-selected="true"\]::before/);
+  assert.doesNotMatch(segmentedControl, /linear-gradient|\.group::before/);
   assert.match(segmentedControl, /\.option:focus-visible\s*\{\s*outline:\s*none;[^}]*box-shadow:\s*inset 0 -2px 0 var\(--nova-color-action\)/s);
   assert.match(segmentedControl, /@media\s*\(forced-colors:\s*active\)[\s\S]*?\.option:focus-visible\s*\{[^}]*outline:\s*1px solid Highlight/);
   assert.match(segmentedControl, /@container segmented-control \(max-width:\s*22rem\)/);

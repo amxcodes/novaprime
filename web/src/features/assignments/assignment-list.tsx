@@ -12,7 +12,7 @@ export function AssignmentSummaryRow({ assignment, title, context, actions }: As
       <div className={styles.copy}>
         <h3 className={styles.title}>{title || assignment.title || "Untitled assignment"}</h3>
         <p className={styles.metadata}>
-          <Badge className={styles.status} tone={status.tone}>{status.label}</Badge>
+          <Badge tone={status.tone}>{status.label}</Badge>
           <span className={styles.dueDate}>
             <span className={styles.dueDateLabel}>Due </span>
             {dueDate ? <time dateTime={assignment.dueDate ?? undefined}>{dueDate}</time> : "No due date"}

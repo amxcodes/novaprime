@@ -108,7 +108,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
                 <span className={styles.optionLabel}>{option.label}</span>
                 {option.description ? <span className={styles.optionDetail}>{option.description}</span> : null}
               </span>
-              <span className={styles.check} aria-hidden="true">✓</span>
+              <span className={styles.selectedDetail} aria-hidden="true">Selected</span>
             </ListBoxItem>
           ))}
         </ListBox>

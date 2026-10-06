@@ -25,7 +25,8 @@
   width: 100%;
   min-width: 0;
   min-height: var(--nova-control-height);
-  padding: 0 var(--nova-space-3);
+  /* Figma's 16px content inset includes the 1px control stroke. */
+  padding: 0 calc(var(--nova-space-4) - 1px);
   border: 1px solid var(--nova-control-border);
   border-radius: var(--nova-radius-control);
   color: var(--nova-color-text-primary);

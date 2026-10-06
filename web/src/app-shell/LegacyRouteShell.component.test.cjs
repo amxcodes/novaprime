@@ -109,7 +109,7 @@ test("desktop rail toggle exposes the same supplied destinations in expanded and
   const groups = [
     { id: "core", label: "Workspace", items: [
       { id: "home", label: "Home", href: "/", icon: null },
-      { id: "work", label: "Work", href: "/work", icon: null },
+      { id: "work", label: "Work", href: "/work", icon: null, detail: "On site", detailTone: "success" },
     ] },
     { id: "admin", label: "Configuration", items: [
       { id: "settings", label: "Settings", href: "/settings", icon: null },
@@ -132,8 +132,10 @@ test("desktop rail toggle exposes the same supplied destinations in expanded and
   }));
 
   assert.match(expanded, /aria-label="Collapse sidebar navigation"/);
+  assert.match(expanded, /class="toggleLabel">Compact<\/span>/);
   assert.match(expanded, /aria-expanded="true"/);
   assert.match(compact, /aria-label="Expand sidebar navigation"/);
+  assert.match(compact, /class="toggleLabel">Expand<\/span>/);
   assert.match(compact, /aria-expanded="false"/);
   assert.match(expanded, /aria-controls="test-desktop-navigation"/);
   assert.match(compact, /id="test-desktop-navigation"/);
@@ -142,6 +144,7 @@ test("desktop rail toggle exposes the same supplied destinations in expanded and
   assert.match(compact, />Home<\/span>/);
   assert.match(compact, /title="Home"/);
   assert.match(compact, /title="Settings"/);
+  assert.match(expanded, /class="detail" data-tone="success">On site<\/span>/);
 
   const destinations = (markup) => Array.from(markup.matchAll(/<a\b[^>]*href="([^"]+)"/g), ([, href]) => href);
   assert.deepEqual(destinations(expanded), ["/", "/work", "/settings"]);
