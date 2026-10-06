@@ -6,7 +6,6 @@ import { planMyDayPage } from "../src/features/my-day/page-plan.ts";
 import type { MyDayPageProps } from "../src/features/my-day/contracts.ts";
 import type {
   AttendanceAction,
-  AttendanceProjection,
   FeatureReadState,
   WorkdayTimelineProjection,
 } from "../src/features/attendance/contracts.ts";
@@ -28,7 +27,7 @@ interface MyDayReadServices {
   getReadIssue: (result: unknown, resource: string) => ReadIssue;
 }
 
-type AttendanceReadRoute = (services: MyDayReadServices) => Promise<FeatureReadState<AttendanceProjection> | null>;
+type AttendanceReadRoute = (services: MyDayReadServices) => Promise<AttendancePulseProps["read"] | null>;
 type TimelineRouteFactory = (services: MyDayReadServices & {
   onChange: (read: FeatureReadState<WorkdayTimelineProjection>) => void;
 }) => { load: () => Promise<boolean> };
@@ -195,7 +194,7 @@ export async function mountMyDayPageRoute(services: HostServices): Promise<void>
     mountReactIsland(attendanceTarget, attendanceComponents!.AttendancePulse, {
       // The page plan only mounts Attendance Pulse when one of its attendance
       // reads is authorized, so the adapter returns a state while this page is current.
-      read: attendanceRead as FeatureReadState<AttendanceProjection>,
+      read: attendanceRead as AttendancePulseProps["read"],
       capabilities: attendanceCapabilities,
       onAction: (action: AttendanceAction, source: Element) =>
         runActionButton(source, (context) => performAttendanceAction(action, context)),

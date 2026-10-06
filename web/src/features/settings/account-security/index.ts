@@ -1,9 +1,12 @@
 export { AccountSecurity, AccountSecurityActionFeedback } from "./AccountSecurity";
-export { AccountSecurityActionError } from "./contracts";
+export { AccountSecurityActionError, AccountSessionFreshnessError } from "./contracts";
+export { createAccountSessionController } from "./session-controller";
 export type {
   AccountIdentityView,
+  AccountSessionView,
   AccountSecurityActionState,
   AccountSecurityProps,
   AccountSecurityReadState,
+  AccountSessionsState,
 } from "./contracts";
-export { projectAccountIdentity } from "./projection";
+export { projectAccountIdentity, projectAccountSessions } from "./projection";

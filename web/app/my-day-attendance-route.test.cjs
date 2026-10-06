@@ -82,8 +82,8 @@ test("keeps the office-assignment message and general recoverable error mapping"
   });
 
   assert.deepEqual(officeAssignment, {
-    status: "error",
-    message: "Attendance requires an active office assignment.",
+    status: "setup-required",
+    message: "An active office assignment is required to use attendance.",
   });
   assert.deepEqual(recoverable, {
     status: "error",

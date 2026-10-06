@@ -1642,9 +1642,13 @@ async function mountSettingsAccountSecurity(target, isCurrentSettings) {
     if (!identity || typeof accountEmail !== "string" || !contextIsCurrent()) {
       throw new feature.AccountSecurityActionError("Your account or Settings page changed. Refresh before trying again.");
     }
+    let result;
     try {
-      await request();
+      result = await request();
     } catch (error) {
+      if (error?.code === "SESSION_NOT_FRESH") {
+        throw new feature.AccountSessionFreshnessError();
+      }
       if (isCurrentCommandIdentity(context) && recoverProtectedCommandFailure(error, context)) {
         throw new feature.AccountSecurityActionError("Your session or access changed. Refresh Settings before continuing.");
       }
@@ -1656,7 +1660,11 @@ async function mountSettingsAccountSecurity(target, isCurrentSettings) {
     if (!contextIsCurrent()) {
       throw new feature.AccountSecurityActionError("Your account or Settings page changed. Refresh before trying again.");
     }
+    return result;
   }
+
+  const sessions = feature.createAccountSessionController((path, method, body) =>
+    runAuthAction(() => api(path, requestOptions(method, body))));
 
   mountReactIsland(target, feature.AccountSecurity, {
     readState,
@@ -1668,6 +1676,13 @@ async function mountSettingsAccountSecurity(target, isCurrentSettings) {
       newPassword,
       revokeOtherSessions: true,
     }))),
+    onLoadSessions: () => sessions.load(),
+    onRevokeSession: (sessionId) => sessions.revoke(sessionId),
+    onRevokeOtherSessions: () => sessions.revokeOthers(),
+    onReauthenticate: async () => {
+      await signOut();
+      go("login");
+    },
   });
 }
 

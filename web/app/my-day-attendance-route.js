@@ -35,6 +35,12 @@ export async function readMyDayAttendance({
 
   const issue = getReadIssue(result, resource);
   if (result?.readError) {
+    if (result.readError === "OFFICE_ASSIGNMENT_REQUIRED") {
+      return {
+        status: "setup-required",
+        message: "An active office assignment is required to use attendance.",
+      };
+    }
     if (result.readError === "PERMISSION_DENIED") {
       return {
         status: "denied",
@@ -43,9 +49,7 @@ export async function readMyDayAttendance({
     }
     return {
       status: "error",
-      message: result.readError === "OFFICE_ASSIGNMENT_REQUIRED"
-        ? "Attendance requires an active office assignment."
-        : issue?.message || "Attendance information could not be loaded.",
+      message: issue?.message || "Attendance information could not be loaded.",
     };
   }
 

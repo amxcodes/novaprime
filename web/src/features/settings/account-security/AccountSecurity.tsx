@@ -1,7 +1,7 @@
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Button, Field, Input, StateMessage } from "../../../design-system";
-import type { AccountSecurityActionState, AccountSecurityProps } from "./contracts";
-import { AccountSecurityActionError } from "./contracts";
+import type { AccountSecurityActionState, AccountSecurityProps, AccountSessionsState } from "./contracts";
+import { AccountSecurityActionError, AccountSessionFreshnessError } from "./contracts";
 import styles from "./AccountSecurity.module.css";
 
 const passwordMismatchMessage = "The two new passwords do not match.";
@@ -19,15 +19,109 @@ function actionErrorMessage(error: unknown): string {
   return "Something went wrong. Nothing was saved unless NOVA confirms it below.";
 }
 
-export function AccountSecurity({ readState, onRequestVerification, onChangePassword }: AccountSecurityProps) {
+export function AccountSecurity({ readState, onRequestVerification, onChangePassword, onLoadSessions, onRevokeSession, onRevokeOtherSessions, onReauthenticate }: AccountSecurityProps) {
   const id = useId();
   const [verificationState, setVerificationState] = useState<AccountSecurityActionState>({ status: "idle" });
   const [passwordState, setPasswordState] = useState<AccountSecurityActionState>({ status: "idle" });
   const [passwordMismatch, setPasswordMismatch] = useState(false);
+  const [sessionsState, setSessionsState] = useState<AccountSessionsState>({ status: "loading" });
+  const [sessionsRefreshing, setSessionsRefreshing] = useState(false);
+  const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
+  const [sessionActionState, setSessionActionState] = useState<AccountSecurityActionState>({ status: "idle" });
+  const [reauthenticationPending, setReauthenticationPending] = useState(false);
+  const [confirmRevokeOthers, setConfirmRevokeOthers] = useState(false);
+  const [revokeOthersPending, setRevokeOthersPending] = useState(false);
   const verificationInFlight = useRef(false);
   const passwordInFlight = useRef(false);
   const passwordForm = useRef<HTMLFormElement>(null);
   const confirmPasswordInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (readState.status !== "ready") return;
+    let current = true;
+    void onLoadSessions().then((sessions) => {
+      if (current) setSessionsState({ status: "ready", sessions });
+    }).catch((error: unknown) => {
+      if (current) setSessionsState(sessionReadFailure(error));
+    });
+    return () => { current = false; };
+  }, [onLoadSessions, readState.status]);
+
+  async function refreshSessions() {
+    if (sessionsRefreshing || sessionsState.status === "loading") return;
+    setSessionsRefreshing(true);
+    setSessionActionState({ status: "idle" });
+    try {
+      setSessionsState({ status: "ready", sessions: await onLoadSessions() });
+    } catch (error) {
+      setSessionsState(sessionReadFailure(error));
+    } finally {
+      setSessionsRefreshing(false);
+    }
+  }
+
+  async function revokeSession(sessionId: string) {
+    if (pendingSessionId) return;
+    setPendingSessionId(sessionId);
+    setSessionActionState({ status: "pending", label: "Signing out the selected session." });
+    try {
+      await onRevokeSession(sessionId);
+      setSessionActionState({ status: "success", message: "Session signed out." });
+      try {
+        setSessionsState({ status: "ready", sessions: await onLoadSessions() });
+      } catch (error) {
+        setSessionsState(sessionReadFailure(error));
+        setSessionActionState({ status: "error", message: "The session was signed out, but the active-session list could not be refreshed." });
+      }
+    } catch (error) {
+      handleSessionActionFailure(error);
+    } finally {
+      setPendingSessionId(null);
+    }
+  }
+
+  async function revokeOtherSessions() {
+    if (revokeOthersPending) return;
+    setRevokeOthersPending(true);
+    setSessionActionState({ status: "pending", label: "Signing out other sessions." });
+    try {
+      await onRevokeOtherSessions();
+      setConfirmRevokeOthers(false);
+      setSessionActionState({ status: "success", message: "Other sessions signed out." });
+      try {
+        setSessionsState({ status: "ready", sessions: await onLoadSessions() });
+      } catch (error) {
+        setSessionsState(sessionReadFailure(error));
+        setSessionActionState(error instanceof AccountSessionFreshnessError
+          ? { status: "idle" }
+          : { status: "error", message: "Other sessions were signed out, but the active-session list could not be refreshed." });
+      }
+    } catch (error) {
+      handleSessionActionFailure(error);
+    } finally {
+      setRevokeOthersPending(false);
+    }
+  }
+
+  function handleSessionActionFailure(error: unknown) {
+    if (error instanceof AccountSessionFreshnessError) {
+      setSessionsState(sessionReadFailure(error));
+      setSessionActionState({ status: "idle" });
+      return;
+    }
+    setSessionActionState({ status: "error", message: actionErrorMessage(error) });
+  }
+
+  async function reauthenticate() {
+    if (reauthenticationPending) return;
+    setReauthenticationPending(true);
+    try {
+      await onReauthenticate();
+    } catch (error) {
+      setReauthenticationPending(false);
+      setSessionsState({ status: "error", message: actionErrorMessage(error) });
+    }
+  }
 
   async function requestVerification() {
     if (verificationInFlight.current || readState.status !== "ready" || readState.identity.emailVerified) return;
@@ -67,6 +161,11 @@ export function AccountSecurity({ readState, onRequestVerification, onChangePass
       await onChangePassword(currentPassword, newPassword);
       passwordForm.current?.reset();
       setPasswordState({ status: "success", message: "Password changed. Other active sessions were signed out." });
+      try {
+        setSessionsState({ status: "ready", sessions: await onLoadSessions() });
+      } catch (error) {
+        setSessionsState(sessionReadFailure(error));
+      }
     } catch (error) {
       setPasswordState({ status: "error", message: actionErrorMessage(error) });
     } finally {
@@ -147,7 +246,98 @@ export function AccountSecurity({ readState, onRequestVerification, onChangePass
             </div>
           </form>
         </section>
+
+        <section className={styles.sessions} aria-labelledby={id + "-sessions-heading"}>
+          <div className={styles.sectionHeading}>
+            <div>
+              <h3 id={id + "-sessions-heading"}>Active sessions</h3>
+              <p>Review where you are signed in and end sessions you no longer use.</p>
+            </div>
+            {sessionsState.status === "ready" ? (
+              <div className={styles.sessionActions}>
+                {sessionsState.sessions.some((session) => !session.isCurrent) ? (
+                  <Button type="button" variant="danger" disabled={sessionsRefreshing || pendingSessionId !== null || revokeOthersPending} onClick={() => setConfirmRevokeOthers(true)}>
+                    Sign out other sessions
+                  </Button>
+                ) : null}
+                <Button type="button" variant="secondary" loading={sessionsRefreshing} loadingLabel="Refreshing sessions" disabled={sessionsRefreshing || pendingSessionId !== null || revokeOthersPending} onClick={() => void refreshSessions()}>
+                  Refresh
+                </Button>
+              </div>
+            ) : null}
+          </div>
+          {sessionsState.status === "loading" ? <StateMessage kind="loading">Loading active sessions.</StateMessage> : null}
+          {sessionsState.status === "error" ? (
+            <div className={styles.sessionRecovery}>
+              <StateMessage kind="error" title="Active sessions could not be loaded">{sessionsState.message}</StateMessage>
+              <Button type="button" variant="secondary" loading={sessionsRefreshing} loadingLabel="Retrying session list" disabled={sessionsRefreshing} onClick={() => void refreshSessions()}>
+                Retry
+              </Button>
+            </div>
+          ) : null}
+          {sessionsState.status === "reauthentication-required" ? (
+            <div className={styles.sessionRecovery}>
+              <StateMessage kind="error" title="Sign in again to continue">{sessionsState.message}</StateMessage>
+              <Button type="button" loading={reauthenticationPending} loadingLabel="Opening sign-in" disabled={reauthenticationPending} onClick={() => void reauthenticate()}>
+                Sign in again
+              </Button>
+            </div>
+          ) : null}
+          {sessionsState.status === "ready" ? (
+            sessionsState.sessions.length ? (
+              <>
+                <AccountSecurityActionFeedback state={sessionActionState} />
+                {confirmRevokeOthers ? (
+                  <div className={styles.sessionConfirmation} role="group" aria-label="Confirm sign out other sessions">
+                    <p>This will end every other active NOVA session. Your current session stays signed in.</p>
+                    <div>
+                      <Button type="button" variant="danger" loading={revokeOthersPending} loadingLabel="Signing out other sessions" disabled={revokeOthersPending} onClick={() => void revokeOtherSessions()}>
+                        Confirm sign out
+                      </Button>
+                      <Button type="button" variant="secondary" disabled={revokeOthersPending} onClick={() => setConfirmRevokeOthers(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+                <ul className={styles.sessionList} aria-label="Active sessions">
+                  {sessionsState.sessions.map((session) => (
+                    <li className={styles.sessionItem} key={session.id}>
+                      <div className={styles.sessionDetails}>
+                        <div className={styles.sessionTitle}>
+                          <strong>{session.device}</strong>
+                          {session.isCurrent ? <span className={styles.currentSession}>This device</span> : null}
+                        </div>
+                        <p>Last active <time dateTime={session.lastActiveAt}>{formatSessionDate(session.lastActiveAt)}</time></p>
+                      </div>
+                      {session.isCurrent ? null : (
+                        <Button type="button" variant="danger" aria-label={"Sign out " + session.device + " session"} disabled={pendingSessionId !== null || revokeOthersPending} loading={pendingSessionId === session.id} loadingLabel="Signing out session" onClick={() => void revokeSession(session.id)}>
+                          Sign out
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : <p className={styles.emptySessions}>No active sessions were returned.</p>
+          ) : null}
+        </section>
       </div>
     </section>
   );
+}
+
+function sessionReadFailure(error: unknown): AccountSessionsState {
+  if (error instanceof AccountSessionFreshnessError) {
+    return { status: "reauthentication-required", message: error.message };
+  }
+  return { status: "error", message: actionErrorMessage(error) };
+}
+
+function formatSessionDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "an unknown time" : new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }

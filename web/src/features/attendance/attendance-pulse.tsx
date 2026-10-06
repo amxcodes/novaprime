@@ -9,7 +9,7 @@ import type {
 } from "./contracts";
 
 export interface AttendancePulseProps {
-  read: FeatureReadState<AttendanceProjection>;
+  read: FeatureReadState<AttendanceProjection> | { status: "setup-required"; message: string };
   /** Derived by the route/page from the actor's current effective grants. */
   capabilities: AttendanceActionCapabilities;
   onAction: (action: AttendanceAction, source: HTMLButtonElement) => void | Promise<void>;
@@ -54,6 +54,10 @@ export function AttendancePulse({
 
   if (read.status === "denied") {
     return <MessageState titleId={titleId} title="Attendance unavailable" message={read.message ?? "Attendance information is unavailable for this view."} />;
+  }
+
+  if (read.status === "setup-required") {
+    return <MessageState titleId={titleId} title="Attendance setup needed" message={read.message} />;
   }
 
   if (read.status === "error") {

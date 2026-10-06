@@ -33,6 +33,10 @@ function render(overrides = {}) {
     readState: { status: "ready", identity: { name: "Aman", email: "aman@example.test", emailVerified: false } },
     async onRequestVerification() {},
     async onChangePassword() {},
+    async onLoadSessions() { return []; },
+    async onRevokeSession() {},
+    async onRevokeOtherSessions() {},
+    async onReauthenticate() {},
     ...overrides,
   }));
 }
@@ -58,6 +62,8 @@ test("identity, verification, password fields, autocomplete, and minimum length 
   assert.match(html, /<input[^>]*autoComplete="new-password"[^>]*minLength="8"[^>]*name="newPassword"/);
   assert.match(html, /<input[^>]*autoComplete="new-password"[^>]*minLength="8"[^>]*name="confirmPassword"/);
   assert.match(html, /Change password/);
+  assert.match(html, /Active sessions/);
+  assert.match(html, /Loading active sessions/);
 });
 
 test("verified identity hides the redundant verification action", () => {
@@ -104,9 +110,20 @@ test("styles use semantic tokens and adapt within the feature container", () => 
   assert.match(css, /container: account-security \/ inline-size/);
   assert.match(css, /@container account-security \(min-width: 52rem\)/);
   assert.match(css, /@container account-security \(max-width: 40rem\)/);
+  assert.match(css, /\.sessionList/);
+  assert.match(css, /\.sessionItem[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(css, /@media \(any-pointer: coarse\)[\s\S]*?--nova-control-touch-target/);
   assert.match(css, /@media \(forced-colors: active\)/);
   assert.match(css, /:focus-visible/);
   assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i);
   for (const token of referenced) assert.ok(declared.has(token), `undefined NOVA token: ${token}`);
+});
+
+test("session actions expose only opaque IDs to the component and provide explicit confirmation", () => {
+  const source = fs.readFileSync(path.join(__dirname, "AccountSecurity.tsx"), "utf8");
+  assert.match(source, /onRevokeSession\(sessionId\)/);
+  assert.match(source, /onRevokeOtherSessions\(\)/);
+  assert.match(source, /Confirm sign out/);
+  assert.match(source, /Sign in again/);
+  assert.doesNotMatch(source, /tokenBySessionId|ipAddress|userAgent/);
 });

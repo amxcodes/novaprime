@@ -38,7 +38,8 @@
 }
 
 .identity,
-.password {
+.password,
+.sessions {
   display: grid;
   align-content: start;
   gap: var(--nova-space-4);
@@ -155,6 +156,109 @@
   padding-block-start: var(--nova-space-2);
 }
 
+.sessions {
+  grid-column: 1 / -1;
+}
+
+.sessionActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: var(--nova-space-2);
+}
+
+.sessionRecovery {
+  display: grid;
+  justify-items: start;
+  gap: var(--nova-space-3);
+}
+
+.sessionConfirmation {
+  display: grid;
+  gap: var(--nova-space-3);
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+}
+
+.sessionConfirmation p {
+  margin: 0;
+  color: var(--nova-color-text-primary);
+  font-size: var(--nova-type-size-sm);
+}
+
+.sessionConfirmation > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nova-space-2);
+}
+
+.sessionList {
+  display: grid;
+  gap: var(--nova-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sessionItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--nova-space-4);
+  min-width: 0;
+  padding: var(--nova-space-3);
+  border: 1px solid var(--nova-color-border);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-surface-subtle);
+}
+
+.sessionDetails {
+  display: grid;
+  gap: var(--nova-space-1);
+  min-width: 0;
+}
+
+.sessionTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nova-space-2);
+  min-width: 0;
+}
+
+.sessionTitle strong {
+  overflow-wrap: anywhere;
+  font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-semibold);
+}
+
+.sessionDetails p {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+}
+
+.currentSession {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--nova-control-height-compact);
+  padding-inline: var(--nova-space-2);
+  border: 1px solid var(--nova-color-success);
+  border-radius: var(--nova-radius-pill);
+  color: var(--nova-color-success);
+  background: var(--nova-color-success-surface);
+  font-size: var(--nova-type-size-xs);
+  font-weight: var(--nova-type-weight-medium);
+}
+
+.emptySessions {
+  margin: 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-sm);
+}
+
 .root :focus-visible {
   outline: 2px solid var(--nova-color-focus);
   outline-offset: 2px;
@@ -165,11 +269,16 @@
     grid-template-columns: minmax(16rem, 0.8fr) minmax(22rem, 1.2fr);
     align-items: start;
   }
+
+  .sessions {
+    grid-column: 1 / -1;
+  }
 }
 
 @container account-security (max-width: 40rem) {
   .identity,
-  .password {
+  .password,
+  .sessions {
     padding: var(--nova-space-3);
   }
 
@@ -177,22 +286,40 @@
     flex-direction: column;
   }
 
-  .identityActions > button,
-  .formActions > button {
+  .sessionActions,
+  .sessionConfirmation > div {
     width: 100%;
+  }
+
+  .identityActions > button,
+  .formActions > button,
+  .sessionActions > button,
+  .sessionConfirmation > div > button,
+  .sessionItem > button {
+    width: 100%;
+  }
+
+  .sessionItem {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
   }
 }
 
 @media (any-pointer: coarse) {
   .identityActions > button,
-  .formActions > button {
+  .formActions > button,
+  .sessionActions > button,
+  .sessionConfirmation > div > button,
+  .sessionItem > button {
     min-height: var(--nova-control-touch-target);
   }
 }
 
 @media (forced-colors: active) {
   .identity,
-  .password {
+  .password,
+  .sessions,
+  .sessionItem {
     border-color: CanvasText;
   }
 
