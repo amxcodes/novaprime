@@ -18,6 +18,7 @@ import type {
 } from "./contracts";
 import {
   assignableRoleScopes,
+  filterRoleRecords,
   roleGrantTargetId,
   rolePermissionModules,
 } from "./role-editor-model";
@@ -56,6 +57,7 @@ const policyFields: ReadonlyArray<{
 export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
   const id = useId();
   const editorRef = useRef<HTMLFormElement>(null);
+  const roleSearchRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const submittingRef = useRef(false);
@@ -63,10 +65,12 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
   const [draft, setDraft] = useState<EditorDraft | null>(() => props.canCreate ? emptyDraft() : null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [roleQuery, setRoleQuery] = useState("");
   const [presetId, setPresetId] = useState("");
   const [presetMessage, setPresetMessage] = useState("");
   const [expandedModules, setExpandedModules] = useState<ReadonlySet<string>>(() => new Set());
   const modules = useMemo(() => rolePermissionModules(props.permissions), [props.permissions]);
+  const filteredRoles = useMemo(() => filterRoleRecords(props.roles, roleQuery), [props.roles, roleQuery]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -250,7 +254,28 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
             </div>
             <Badge tone="neutral">{props.roles.length} roles</Badge>
           </div>
-          {props.roles.length ? props.roles.map((role) => (
+            <Field
+              id={`${id}-roles-search`}
+              className={styles.roleSearch}
+              label="Search configured roles"
+              hint="Search by role name, key, or status. This only filters the list."
+            >
+              {(control) => (
+                <Input
+                  {...control}
+                  ref={roleSearchRef}
+                  type="search"
+                  maxLength={100}
+                  value={roleQuery}
+                  onChange={(event) => setRoleQuery(event.currentTarget.value)}
+                  placeholder="Role name, key, or status"
+                />
+              )}
+            </Field>
+            <p className={styles.roleSearchSummary} role="status" aria-live="polite" aria-atomic="true">
+              {filteredRoles.length} {filteredRoles.length === 1 ? "role" : "roles"} shown.
+            </p>
+            {props.roles.length && filteredRoles.length ? filteredRoles.map((role) => (
             <article className={styles.roleCard} key={role.id}>
               <div className={styles.roleCopy}>
                 <strong className={styles.roleName}>{role.name}</strong>
@@ -263,7 +288,21 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
                 <Button variant="secondary" size="compact" onClick={() => editRole(role)}>Edit role</Button>
               ) : null}
             </article>
-          )) : (
+            )) : props.roles.length ? (
+              <div className={styles.noRoleMatches}>
+                <StateMessage kind="info" title="No roles match this search">
+                  Try a different role name, key, or status.
+                </StateMessage>
+                <Button
+                  variant="quiet"
+                  size="compact"
+                  onClick={() => {
+                    setRoleQuery("");
+                    roleSearchRef.current?.focus();
+                  }}
+                >Clear search</Button>
+              </div>
+            ) : (
             <StateMessage kind="info" title="No roles found">There are no configured roles in this organization.</StateMessage>
           )}
         </div>

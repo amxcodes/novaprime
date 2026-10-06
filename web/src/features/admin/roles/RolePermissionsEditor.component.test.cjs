@@ -243,6 +243,10 @@ test("the configured-role list is introduced by its visible heading", () => {
   const html = render();
 
   assert.match(html, /<h3[^>]*>Configured roles<\/h3>/);
+  assert.match(html, /Search configured roles/);
+  assert.match(html, /Search by role name, key, or status/);
+  assert.match(html, /type="search"/);
+  assert.match(html, /1 role shown\./);
   assert.doesNotMatch(html, /aria-label="Configured roles"/);
 });
 

@@ -21,6 +21,23 @@
   gap: var(--nova-space-4);
 }
 
+.roleSearch,
+.roleSearchSummary,
+.noRoleMatches { min-width: 0; }
+
+.roleSearchSummary {
+  margin: calc(-1 * var(--nova-space-2)) 0 0;
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-xs);
+  line-height: var(--nova-type-line-normal);
+}
+
+.noRoleMatches {
+  display: grid;
+  justify-items: start;
+  gap: var(--nova-space-3);
+}
+
 .roleList,
 .form {
   padding: var(--nova-space-4);

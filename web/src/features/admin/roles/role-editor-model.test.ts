@@ -1,12 +1,14 @@
 import { describe, expect, it } from "bun:test";
 import {
   assignableRoleScopes,
+  filterRoleRecords,
   roleGrantTargetId,
   roleGrantTargetOptions,
   roleScopeChoices,
 } from "./role-editor-model";
 import type {
   PermissionCatalogueEntry,
+  RoleRecord,
   RoleScopeTargetReads,
 } from "./contracts";
 
@@ -28,7 +30,43 @@ const targetReads: RoleScopeTargetReads = {
   group: ready([]),
 };
 
+const roleRecord = (overrides: Partial<RoleRecord>): RoleRecord => ({
+  id: "role",
+  key: "custom_role",
+  name: "Custom Role",
+  revision: 1,
+  isProtected: false,
+  archivedAt: null,
+  operationalPolicy: {
+    workEnabled: false,
+    canReceiveAssignments: false,
+    attendanceRequired: false,
+    wfhAllowed: false,
+    canWorkWithoutAttendance: false,
+    payrollApplicable: false,
+    payrollAttendanceContributes: false,
+    payrollOvertimeApplicable: false,
+  },
+  permissionGrants: [],
+  ...overrides,
+});
+
+const roleRecords = [
+  roleRecord({ id: "protected", key: "super_admin", name: "Super Admin", isProtected: true }),
+  roleRecord({ id: "active", key: "people_partner", name: "People Partner" }),
+  roleRecord({ id: "archived", key: "ops_viewer", name: "Operations Viewer", archivedAt: "2026-01-01T00:00:00Z" }),
+];
+
 describe("role editor scope availability", () => {
+  it("filters role name, key, protected/custom status, and active/archive status without changing order", () => {
+    expect(filterRoleRecords(roleRecords, "  PEOPLE ").map((role) => role.id)).toEqual(["active"]);
+    expect(filterRoleRecords(roleRecords, "ops_viewer").map((role) => role.id)).toEqual(["archived"]);
+    expect(filterRoleRecords(roleRecords, "archived").map((role) => role.id)).toEqual(["archived"]);
+    expect(filterRoleRecords(roleRecords, "PROTECTED").map((role) => role.id)).toEqual(["protected"]);
+    expect(filterRoleRecords(roleRecords, "").map((role) => role.id)).toEqual(["protected", "active", "archived"]);
+    expect(filterRoleRecords(roleRecords, "missing")).toEqual([]);
+  });
+
   it("keeps non-target scopes active while disabling only unavailable target scopes", () => {
     const choices = roleScopeChoices(permission([
       "organisation", "own_record", "office", "organisation_department", "client",

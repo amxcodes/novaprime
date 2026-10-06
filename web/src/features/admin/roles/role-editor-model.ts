@@ -1,10 +1,29 @@
 import type {
   PermissionCatalogueEntry,
   RolePermissionGrant,
+  RoleRecord,
   RolePermissionScope,
   RoleScopeTargetReads,
   RoleTargetScope,
 } from "./contracts";
+
+export function filterRoleRecords(
+  roles: ReadonlyArray<RoleRecord>,
+  query: string,
+): RoleRecord[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return [...roles];
+  return roles.filter((role) => {
+    const status = [
+      role.isProtected ? "protected super admin" : "custom role",
+      role.archivedAt ? "archived" : "active",
+    ];
+    return [role.name, role.key, ...status]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery);
+  });
+}
 
 export const ROLE_SCOPE_LABELS: Readonly<Record<RolePermissionScope, string>> = {
   organisation: "Organisation",
