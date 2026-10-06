@@ -35,8 +35,8 @@ function routeHarness(overrides = {}) {
   const host = {
     isCurrentPageRequest: () => current,
     readIssue: (result) => result?.readError ? { message: "Assignments are unavailable." } : undefined,
-    readAssignmentCandidates: async (id, lifetime) => {
-      candidateCalls.push({ id, lifetime });
+    readAssignmentCandidates: async (id, lifetime, query) => {
+      candidateCalls.push({ id, lifetime, ...(typeof query === "string" ? { query } : {}) });
       return {
         reviewers: [{ id: "reviewer-1", display_name: "Rae Reviewer", privateValue: "strip" }],
         handoverTargets: [{ id: "person-2", display_name: "Sam Person" }],
@@ -144,6 +144,28 @@ test("wires candidate reads through the host lifetime, caches by assignment, and
   await props.onLoadCandidates(row, { retry: true });
   assert.equal(harness.candidateCalls.length, 2);
   assert.deepEqual(harness.candidateCalls[0], { id: "assignment-1", lifetime });
+});
+
+test("candidate searches pass bounded query intent to the server and do not reuse the initial page cache", async () => {
+  const harness = routeHarness();
+  const lifetime = { id: "page-search" };
+  harness.route({
+    authorized: true,
+    target: {},
+    lifetime,
+    Component: function MyAssignments() {},
+    result: { assignments: [] },
+    filters: {},
+    callbacks: {},
+  });
+  const props = harness.mounted[2];
+  await props.onLoadCandidates(assignment());
+  const searched = await props.onLoadCandidates(assignment(), { query: "Rae" });
+  assert.deepEqual(harness.candidateCalls, [
+    { id: "assignment-1", lifetime },
+    { id: "assignment-1", lifetime, query: "Rae" },
+  ]);
+  assert.deepEqual(searched.reviewers, [{ id: "reviewer-1", displayName: "Rae Reviewer" }]);
 });
 
 test("passes host actions, filters, saved views and history navigation through unchanged", () => {

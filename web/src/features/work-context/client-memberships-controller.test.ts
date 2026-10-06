@@ -37,7 +37,7 @@ function dependencies(
     client: { id: "client/one", name: "Northstar" },
     canViewMemberships: true,
     canManageMemberships: true,
-    peopleOptions: [{ id: "person-1", label: "Aman Verma" }],
+    canSearchPeople: true,
     request: async () => ({ memberships: [], limit: 50, hasMore: false, nextCursor: null }),
     runCommand: async (command) => command(),
     isCurrent: () => true,
@@ -98,10 +98,10 @@ describe("ClientMembershipsController", () => {
     expect(controller.getSnapshot().read.status).toBe("idle");
   });
 
-  it("does not add a membership without authorized people options", async () => {
+  it("does not add a membership without the people-view capability", async () => {
     const calls: ClientMembershipRequest[] = [];
     const controller = new ClientMembershipsController(dependencies({
-      peopleOptions: null,
+      canSearchPeople: false,
       request: async (request) => {
         calls.push(request);
         return {};

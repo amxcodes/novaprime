@@ -1,4 +1,4 @@
-import { hasPermissionGrant, type EffectivePermissionRead } from "../../app-shell/permission-grants";
+import { hasPermissionGrant, type EffectivePermissionRead } from "../../app-shell/permission-grants.ts";
 import type { PersonDirectoryRecord } from "./contracts";
 
 export interface PersonLifecycleCapabilities {

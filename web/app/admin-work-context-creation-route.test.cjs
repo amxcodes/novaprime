@@ -47,6 +47,7 @@ async function createHarness(options = {}) {
   const target = { isConnected: true };
   const lifetime = { id: "admin-work-context-life" };
   const events = [];
+  const searches = [];
   const route = createAdminWorkContextCreationRoute({
     state,
     target,
@@ -59,6 +60,10 @@ async function createHarness(options = {}) {
       hasPermissionGrant(read?.actorGrants, permission, permissionTarget),
     hasAnyPermissionGrant,
     adminReadIssue: (read) => read?.readError ? { message: "Work context choices could not be loaded." } : undefined,
+    searchWorkContext: options.searchWorkContext || (async (query) => {
+      searches.push(query);
+      return options.searchResult || data.workContext;
+    }),
     adminCommandUiError: (message) => Object.assign(new Error(message), { uiMessage: true }),
     runProtectedCommand: (permission, permissionTarget, method, path, payload, successMessage) => {
       if (!permission(state.adminData)) throw Object.assign(new Error("Current work-context access changed."), { uiMessage: true });
@@ -66,7 +71,7 @@ async function createHarness(options = {}) {
       return Promise.resolve(undefined);
     },
   });
-  return { data, state, target, lifetime, route, events };
+  return { data, state, target, lifetime, route, events, searches };
 }
 
 test("route projects only grant-authorized client and workstream selector options", async () => {
@@ -79,6 +84,31 @@ test("route projects only grant-authorized client and workstream selector option
   assert.equal(props.canCreateOrganisationWorkstream, false);
   assert.equal(props.canCreateGroup, true);
   assert.doesNotMatch(JSON.stringify(props), /client-hidden|stream-hidden|privateField|private-group/);
+});
+
+test("remote selector search rechecks exact grants against server results and strips unrelated fields", async () => {
+  const harness = await createHarness();
+  const props = harness.route.createProps(harness.data);
+
+  const clients = await props.onSearchClients("Northstar");
+  const groups = await props.onSearchGroupWorkstreams("Delivery");
+
+  assert.deepEqual(harness.searches, ["Northstar", "Delivery"]);
+  assert.deepEqual(clients, [{ value: "client-authorized", label: "Northstar" }]);
+  assert.deepEqual(groups, [{ value: "client:stream-authorized", label: "Client · Delivery" }]);
+  assert.doesNotMatch(JSON.stringify([...clients, ...groups]), /client-hidden|stream-hidden|privateField/);
+});
+
+test("discards remote search results when the Admin snapshot changes in flight", async () => {
+  let finishSearch;
+  const deferred = await createHarness({
+    searchWorkContext: () => new Promise((resolve) => { finishSearch = resolve; }),
+  });
+  const deferredProps = deferred.route.createProps(deferred.data);
+  const pending = deferredProps.onSearchClients("Northstar");
+  deferred.state.adminData = { ...deferred.data };
+  finishSearch(deferred.data.workContext);
+  await assert.rejects(pending, /page or account changed during work-context search/);
 });
 
 test("existing client, client-workstream, organisation-workstream, and group POST contracts stay exact", async () => {

@@ -253,6 +253,10 @@ const errorMessages = {
   ROLE_NOT_FOUND: "That role no longer exists or cannot be changed.",
   ROLE_VERSION_CONFLICT: "Another administrator changed this role. Your changes were not saved; reopen the latest role and reapply them.",
   ROLE_INPUT_INVALID: "Check the role name, permissions, scopes, and policy choices.",
+  ROLE_SEARCH_INPUT_INVALID: "Enter a role search of 100 characters or fewer.",
+  AUDIT_SEARCH_INPUT_INVALID: "Enter an audit search of 100 characters or fewer.",
+  WORK_CONTEXT_SEARCH_INPUT_INVALID: "Enter a work-context search of 120 characters or fewer.",
+  BILLING_POLICY_SEARCH_INPUT_INVALID: "Enter a task-definition search of 100 characters or fewer.",
   ROLE_GRANT_REQUIRED: "Keep at least one scope for every selected permission, or turn that permission off.",
   ROLE_GRANT_TARGET_REQUIRED: "Choose a target for each office, department, client, workstream, or group scope.",
   ROLE_GRANT_DUPLICATE: "Remove duplicate permission scopes before saving this role.",
@@ -413,10 +417,11 @@ const myAssignmentsRoute = createMyAssignmentsRoute({
   isCurrentPageRequest,
   readIssue: adminReadIssue,
   mountReactIsland,
-  readAssignmentCandidates: (assignmentId, lifetime) => readOrError(
-    pageApi("/api/task-assignments/" + encodeURIComponent(assignmentId) + "/candidates", lifetime),
-    { reviewers: [], handoverTargets: [] },
-  ),
+  readAssignmentCandidates: (assignmentId, lifetime, query) => {
+    const path = "/api/task-assignments/" + encodeURIComponent(assignmentId) + "/candidates" +
+      (typeof query === "string" ? "?q=" + encodeURIComponent(query.trim()) : "");
+    return readOrError(pageApi(path, lifetime), { reviewers: [], handoverTargets: [] });
+  },
 });
 
 const workSetupRoute = createWorkSetupRoute({
@@ -1918,6 +1923,14 @@ async function loadAdmin(lifetime, pageReady) {
     await renderAdminContent(state.adminData, lifetime);
   } catch (error) {
     if (!isCurrentPageRequest(lifetime)) return;
+    const diagnostic = {
+      name: typeof error?.name === "string" && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(error.name) ? error.name : "Error",
+      ...(typeof error?.code === "string" && /^[A-Z0-9_]{1,80}$/.test(error.code) ? { code: error.code } : {}),
+      ...(Number.isInteger(error?.httpStatus) && error.httpStatus >= 100 && error.httpStatus <= 599
+        ? { httpStatus: error.httpStatus }
+        : {}),
+    };
+    console.error("[NOVA Admin] page load failed", diagnostic);
     const target = app.querySelector("#admin-console");
     if (target) await mountAdminPage(target, lifetime, {
       state: { status: "error", message: errorText(error) },
@@ -2548,6 +2561,17 @@ async function renderWork(date, lifetime) {
         hasPermission: hasPermissionGrant,
         getReadIssue: adminReadIssue,
         mountIsland: mountReactIsland,
+        searchWorkContext: async (query) => {
+          try {
+            return await pageApi("/api/work-context?q=" + encodeURIComponent(query), lifetime);
+          } catch (error) {
+            if (error?.httpStatus === 403) {
+              recoverProtectedCommandFailure(error, captureCommandContext(workContextHost),
+                "Your work-context access changed. NOVA is refreshing your permissions.");
+            }
+            throw new Error(errorText(error));
+          }
+        },
         showFeatureMessage: showWorkFeatureMessage,
         runCommand: createWorkContextDepartmentCommandAction({
           target: workContextHost,

@@ -9,7 +9,7 @@ import type {
   WorkSetupReadState,
 } from "./contracts";
 import { errorCode, mutationCanReload, mutationMessage, ReadFeedback, SectionHeading, TextAreaField } from "./WorkSetupShared";
-import { definitionSearchStatus, filterBillingDefinitions, filterWorkstreams, workstreamSearchStatus } from "./billing-search";
+import { definitionSearchStatus, workstreamSearchStatus } from "./billing-search";
 import styles from "./WorkSetupSections.module.css";
 
 const SEARCH_ANNOUNCEMENT_DELAY_MS = 300;
@@ -126,28 +126,55 @@ function WorkstreamPicker({
   workstreams,
   selectedId,
   onChange,
+  onSearch,
 }: {
   workstreams: ReadonlyArray<BillingWorkstreamSummary>;
   selectedId: string;
   onChange: (id: string) => void;
+  onSearch: BillingPolicySectionProps["onSearchWorkstreams"];
 }) {
   const [search, setSearch] = useState("");
-  const [searchChanged, setSearchChanged] = useState(false);
-  const filtered = filterWorkstreams(workstreams, search);
-  const announcementQuery = useDebouncedSearchQuery(search, searchChanged);
-  const searchStatus = announcementQuery === null ? "" : workstreamSearchStatus(
+  const [searchResult, setSearchResult] = useState<{
+    query: string;
+    status: "loading" | "ready" | "error";
+    workstreams?: ReadonlyArray<BillingWorkstreamSummary>;
+    message?: string;
+  } | null>(null);
+  const generation = useRef(0);
+  const query = search.trim();
+  useEffect(() => {
+    const current = ++generation.current;
+    if (!query) { setSearchResult(null); return; }
+    setSearchResult({ query, status: "loading" });
+    const timer = window.setTimeout(() => {
+      void onSearch(query).then((results) => {
+        if (current === generation.current) setSearchResult({ query, status: "ready", workstreams: results });
+      }).catch((error: unknown) => {
+        if (current !== generation.current) return;
+        setSearchResult({ query, status: "error", message: mutationMessage(error, "client workstream search") });
+      });
+    }, 180);
+    return () => { window.clearTimeout(timer); generation.current += 1; };
+  }, [onSearch, query]);
+  const activeSearch = query && searchResult?.query === query ? searchResult : null;
+  const visibleWorkstreams = query
+    ? activeSearch?.status === "ready" ? activeSearch.workstreams || [] : []
+    : workstreams;
+  const announcementQuery = useDebouncedSearchQuery(search, Boolean(query));
+  const searchStatus = announcementQuery === null || announcementQuery !== query ? "" : workstreamSearchStatus(
     announcementQuery,
-    filterWorkstreams(workstreams, announcementQuery).length,
-    workstreams.length,
+    announcementQuery === query ? visibleWorkstreams.length : 0,
   );
   return (
     <div className={styles.picker}>
-      <Field label="Choose a client workstream" hint="Only workstreams where you can manage billing policy are listed.">
-        {(control) => <Input {...control} type="search" value={search} onChange={(event) => { setSearch(event.currentTarget.value); setSearchChanged(true); }} placeholder="Filter by client or workstream" />}
+      <Field label="Choose a client workstream" hint="Search runs on NOVA and returns only workstreams where you can manage billing policy.">
+        {(control) => <Input {...control} type="search" maxLength={120} value={search} onChange={(event) => setSearch(event.currentTarget.value)} placeholder="Search client or workstream" />}
       </Field>
-      <p className={styles.searchStatus} role="status" aria-live="polite" aria-atomic="true">{searchStatus}</p>
+      {activeSearch?.status === "loading" || (query && !activeSearch) ? <p className={styles.searchStatus} role="status">Searching authorized workstreams…</p> : null}
+      {activeSearch?.status === "error" ? <StateMessage kind="error">{activeSearch.message}</StateMessage> : null}
+      {searchStatus ? <p className={styles.searchStatus} role="status" aria-live="polite" aria-atomic="true">{searchStatus}</p> : null}
       <div className={styles.pickerOptions} role="group" aria-label="Authorized client workstreams">
-        {filtered.map((workstream) => (
+        {visibleWorkstreams.map((workstream) => (
           <Button
             className={styles.pickerOption}
             key={workstream.id}
@@ -166,11 +193,13 @@ function WorkstreamPicker({
 function BillingRuleEditor({
   workstreamId,
   rules,
+  onLoadRules,
   onSave,
   onReload,
 }: {
   workstreamId: string;
   rules: BillingRulesSnapshot;
+  onLoadRules: BillingPolicySectionProps["onLoadRules"];
   onSave: BillingPolicySectionProps["onSaveRule"];
   onReload: () => void;
 }) {
@@ -183,7 +212,15 @@ function BillingRuleEditor({
   const [search, setSearch] = useState("");
   const [searchChanged, setSearchChanged] = useState(false);
   const [entries, setEntries] = useState(rules.entries);
-  const entry = entries.find((item) => item.entryId === selectedEntryId);
+  const [searchResult, setSearchResult] = useState<{
+    query: string;
+    status: "loading" | "ready" | "error";
+    snapshot?: BillingRulesSnapshot;
+    message?: string;
+  } | null>(null);
+  const searchGeneration = useRef(0);
+  const selectedEntryIdRef = useRef(selectedEntryId);
+  selectedEntryIdRef.current = selectedEntryId;
   useEffect(() => {
     const currentEntries = rules.entries;
     const current = currentEntries.find((item) => item.entryId === selectedEntryId) ?? currentEntries[0];
@@ -192,12 +229,40 @@ function BillingRuleEditor({
     setRuleClass(current?.billingClass ?? null);
     setReason(""); setError(null); setFeedback(null);
   }, [workstreamId, rules]);
-  const filtered = filterBillingDefinitions(entries, search);
+  const query = search.trim();
+  useEffect(() => {
+    const current = ++searchGeneration.current;
+    if (!query) { setSearchResult(null); return; }
+    setSearchResult({ query, status: "loading" });
+    const timer = window.setTimeout(() => {
+      void onLoadRules(workstreamId, query).then((snapshot) => {
+        if (current !== searchGeneration.current) return;
+        setSearchResult({ query, status: "ready", snapshot });
+        if (!snapshot.entries.some((item) => item.entryId === selectedEntryIdRef.current)) {
+          const first = snapshot.entries[0];
+          setSelectedEntryId(first?.entryId ?? "");
+          setRuleClass(first?.billingClass ?? null);
+          setReason(""); setError(null); setFeedback(null);
+        }
+      }).catch((error: unknown) => {
+        if (current !== searchGeneration.current) return;
+        setSearchResult({ query, status: "error", message: mutationMessage(error, "task-definition search") });
+      });
+    }, 180);
+    return () => { window.clearTimeout(timer); searchGeneration.current += 1; };
+  }, [onLoadRules, query, workstreamId]);
+  const activeSearch = query && searchResult?.query === query ? searchResult : null;
+  const activeRules = activeSearch?.status === "ready" && activeSearch.snapshot
+    ? activeSearch.snapshot
+    : rules;
+  const visibleEntries = query
+    ? activeSearch?.status === "ready" ? activeSearch.snapshot?.entries || [] : []
+    : entries;
+  const entry = visibleEntries.find((item) => item.entryId === selectedEntryId);
   const announcementQuery = useDebouncedSearchQuery(search, searchChanged);
-  const searchStatus = announcementQuery === null ? "" : definitionSearchStatus(
+  const searchStatus = announcementQuery === null || announcementQuery !== query || (query && activeSearch?.status !== "ready") ? "" : definitionSearchStatus(
     announcementQuery,
-    filterBillingDefinitions(entries, announcementQuery).length,
-    entries.length,
+    announcementQuery === query ? visibleEntries.length : 0,
   );
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -211,9 +276,13 @@ function BillingRuleEditor({
         expectedRevision: entry.ruleRevision,
         reason: cleanReason,
       });
-      setEntries((current) => current.map((item) => item.entryId === entry.entryId
+      const updateEntry = (items: ReadonlyArray<BillingRulesSnapshot["entries"][number]>) => items.map((item) => item.entryId === entry.entryId
         ? { ...item, billingClass: saved.policyClass, ruleRevision: saved.revision }
-        : item));
+        : item);
+      setEntries((current) => updateEntry(current));
+      setSearchResult((current) => current?.status === "ready" && current.snapshot
+        ? { ...current, snapshot: { ...current.snapshot, entries: updateEntry(current.snapshot.entries) } }
+        : current);
       setRuleClass(saved.policyClass);
       setFeedback("Saved for future tasks in this workstream only. Existing tasks and timers are unchanged.");
       setReason("");
@@ -228,14 +297,16 @@ function BillingRuleEditor({
         <div><h3>Predefined-task billing rules</h3><p>These rules override the workstream default for future tasks selected from that definition.</p></div>
         <span className={styles.policyBadge}>Future tasks only</span>
       </div>
-      {entries.length ? (
-        <>
-          <Field label="Find a predefined task" hint="Choose a definition to inspect its current workstream rule.">
-            {(control) => <Input {...control} type="search" value={search} onChange={(event) => { setSearch(event.currentTarget.value); setSearchChanged(true); }} placeholder="Search task definitions" />}
-          </Field>
-          <p className={styles.searchStatus} role="status" aria-live="polite" aria-atomic="true">{searchStatus}</p>
+      <>
+        <Field label="Find a predefined task" hint="Search runs on NOVA across the task catalog; matching rules stay limited to this workstream.">
+          {(control) => <Input {...control} type="search" maxLength={100} value={search} onChange={(event) => { setSearch(event.currentTarget.value); setSearchChanged(true); }} placeholder="Search task definitions" />}
+        </Field>
+        {activeSearch?.status === "loading" || (query && !activeSearch) ? <p className={styles.searchStatus} role="status">Searching task definitions…</p> : null}
+        {activeSearch?.status === "error" ? <StateMessage kind="error">{activeSearch.message}</StateMessage> : null}
+        {searchStatus ? <p className={styles.searchStatus} role="status" aria-live="polite" aria-atomic="true">{searchStatus}</p> : null}
+        {visibleEntries.length ? (
           <div className={styles.pickerOptions} role="group" aria-label="Predefined task definitions">
-            {filtered.map((item) => (
+            {visibleEntries.map((item) => (
               <Button
                 className={styles.pickerOption}
                 key={item.entryId}
@@ -249,14 +320,20 @@ function BillingRuleEditor({
               </Button>
             ))}
           </div>
-          {entry ? (
+        ) : activeSearch?.status === "ready" || (!query && !entries.length) ? (
+          <EmptyState
+            title={query ? "No matching task definitions" : "No reusable definitions available"}
+            description={query ? "Try another task name." : "Create or approve task definitions first. Tasks entered freely use the workstream default."}
+          />
+        ) : null}
+        {entry ? (
             <form className={styles.editor} onSubmit={(event) => void submit(event)}>
               <div className={styles.currentRule}>
                 <strong>{entry.title}</strong>
-                <p>{entry.billingClass ? `Current rule: ${entry.billingClass === "billable" ? "Billable" : "Non-billable"}` : `No separate rule. Future tasks inherit ${rules.defaultClass === "billable" ? "the billable" : rules.defaultClass === "non_billable" ? "the non-billable" : "the unset"} workstream default.`} · rule revision {entry.ruleRevision}</p>
+                <p>{entry.billingClass ? `Current rule: ${entry.billingClass === "billable" ? "Billable" : "Non-billable"}` : `No separate rule. Future tasks inherit ${activeRules.defaultClass === "billable" ? "the billable" : activeRules.defaultClass === "non_billable" ? "the non-billable" : "the unset"} workstream default.`} · rule revision {entry.ruleRevision}</p>
               </div>
-              <PolicyChoices name={`rule-${workstreamId}-${entry.entryId}`} value={ruleClass} onChange={setRuleClass} allowInherit disabled={!rules.defaultClass} />
-              {!rules.defaultClass ? <StateMessage kind="warning">Set the workstream default before configuring task-specific rules.</StateMessage> : null}
+              <PolicyChoices name={`rule-${workstreamId}-${entry.entryId}`} value={ruleClass} onChange={setRuleClass} allowInherit disabled={!activeRules.defaultClass} />
+              {!activeRules.defaultClass ? <StateMessage kind="warning">Set the workstream default before configuring task-specific rules.</StateMessage> : null}
               <div className={styles.field}>
                 <label htmlFor={`rule-reason-${workstreamId}`}>Why is this task rule being set or changed? <span aria-hidden="true">*</span></label>
                 <textarea id={`rule-reason-${workstreamId}`} required maxLength={2000} rows={3} value={reason} onChange={(event) => setReason(event.currentTarget.value)} />
@@ -264,11 +341,10 @@ function BillingRuleEditor({
               </div>
               {error ? <StateMessage kind="error">{error}</StateMessage> : null}
               {feedback ? <StateMessage kind="success">{feedback}</StateMessage> : null}
-              <Button type="submit" loading={busy} disabled={!rules.defaultClass}>Save task rule</Button>
+              <Button type="submit" loading={busy} disabled={!activeRules.defaultClass}>Save task rule</Button>
             </form>
-          ) : null}
-        </>
-      ) : <EmptyState title="No reusable definitions available" description="Create or approve task definitions first. Tasks entered freely use the workstream default." />}
+        ) : null}
+      </>
     </div>
   );
 }
@@ -276,6 +352,7 @@ function BillingRuleEditor({
 function BillingPolicyContent({
   workstreams,
   catalogAccess,
+  onSearchWorkstreams,
   onLoadRules,
   onSaveDefault,
   onSaveRule,
@@ -349,9 +426,9 @@ function BillingPolicyContent({
       {catalogAccess === "loading" ? <StateMessage kind="loading" title="Checking task-catalog visibility">Workstream defaults remain available independently.</StateMessage> : null}
       {selected && catalogAccess === "available" ? (
         <section className={styles.ruleSection} aria-label="Predefined-task rule editor">
-          <WorkstreamPicker workstreams={rows} selectedId={selected.id} onChange={setSelectedId} />
+          <WorkstreamPicker workstreams={rows} selectedId={selected.id} onChange={setSelectedId} onSearch={onSearchWorkstreams} />
           {selectedRules?.status === "ready" ? (
-            <BillingRuleEditor key={`${selected.id}-${selectedRules.data.defaultRevision}`} workstreamId={selected.id} rules={selectedRules.data} onSave={onSaveRule} onReload={retryRules} />
+            <BillingRuleEditor key={`${selected.id}-${selectedRules.data.defaultRevision}`} workstreamId={selected.id} rules={selectedRules.data} onLoadRules={onLoadRules} onSave={onSaveRule} onReload={retryRules} />
           ) : selectedRules ? (
             <ReadFeedback state={selectedRules} resource="predefined-task billing rules" onRetry={retryRules} />
           ) : <StateMessage kind="loading">Loading rules for {selected.clientName} · {selected.name}…</StateMessage>}

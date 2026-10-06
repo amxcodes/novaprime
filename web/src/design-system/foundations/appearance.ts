@@ -12,21 +12,21 @@ export interface PersonalAppearance {
 }
 
 export const ACCENT_SWATCHES = {
-  nova: "#176a43",
-  forest: "#145638",
-  teal: "#08736e",
-  lime: "#5c7418",
+  nova: "#3d6bff",
+  forest: "#27674a",
+  teal: "#2b7489",
+  lime: "#778642",
 } as const;
 
 const APPEARANCE_SURFACES = {
   light: {
-    canvas: "#f7faf8",
-    surfaces: ["#ffffff", "#f0f5f1"],
+    canvas: "#f3f6fc",
+    surfaces: ["#ffffff", "#eef3fa"],
     subtleAccentMix: 0.1,
   },
   dark: {
-    canvas: "#0b100d",
-    surfaces: ["#121a15", "#19241d", "#18221b"],
+    canvas: "#1a212c",
+    surfaces: ["#242d39", "#2a3544", "#202a37"],
     subtleAccentMix: 0.16,
   },
 } as const;
@@ -57,6 +57,8 @@ export function applyAppearanceTokens(appearance: PersonalAppearance): void {
   root.style.setProperty("--nova-user-accent-text-light-hover", getReadableAccentText(hover, "light", accent));
   root.style.setProperty("--nova-user-accent-text-dark", getReadableAccentText(accent, "dark"));
   root.style.setProperty("--nova-user-accent-text-dark-hover", getReadableAccentText(hover, "dark", accent));
+  root.style.setProperty("--nova-user-focus-light", getReadableAccentText(accent, "light"));
+  root.style.setProperty("--nova-user-focus-dark", getReadableAccentText(accent, "dark"));
 }
 
 export function getAccentForeground(hex: string): "#000000" | "#ffffff" {

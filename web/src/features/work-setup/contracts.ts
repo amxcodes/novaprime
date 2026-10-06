@@ -128,7 +128,8 @@ export interface BillingPolicySectionProps {
   workstreams: WorkSetupReadState<ReadonlyArray<BillingWorkstreamSummary>>;
   /** Catalog view/manage is a separate capability from billing-policy management. */
   catalogAccess: CatalogAccessState;
-  onLoadRules: (workstreamId: string) => Promise<BillingRulesSnapshot>;
+  onLoadRules: (workstreamId: string, query?: string) => Promise<BillingRulesSnapshot>;
+  onSearchWorkstreams: (query: string) => Promise<ReadonlyArray<BillingWorkstreamSummary>>;
   onSaveDefault: (workstreamId: string, input: BillingDefaultInput) => Promise<BillingMutationResult>;
   onSaveRule: (workstreamId: string, entryId: string, input: BillingRuleInput) => Promise<BillingMutationResult>;
   onRetryWorkstreams?: () => void;

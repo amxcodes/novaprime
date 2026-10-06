@@ -81,24 +81,52 @@ export function createAdminClientMembershipsRoute({
     const clientProps = { id: client.id, name: client.name };
     const canViewMemberships = true;
     const canManageMemberships = true;
-    // The membership writer's People selector is a separately authorized
-    // organization roster. Client membership grants do not imply people.view.
-    const peopleOptions = canViewAdminPeople(data.actorGrants) &&
-      Array.isArray(data.people?.people) && !data.people.readError
-      ? data.people.people.map((person) => ({
-        id: person.id,
-        label: person.displayName || person.email || "Unnamed person",
-      }))
-      : null;
+    // The People selector is a separately authorized organization roster.
+    // Client membership grants do not imply people.view, and options are read
+    // remotely for each query rather than filtering a preloaded organization list.
+    const canSearchPeople = canViewAdminPeople(data.actorGrants);
 
     const isCurrent = () => isClientTargetCurrent() && isCurrentAdminSnapshot(data) &&
       hasAdminPermission(state.adminData, "clients.members.manage", { clientId: client.id });
+
+    const readRequest = async (path) => {
+      const context = captureCommandContext(target);
+      try {
+        return await pageApi(path, lifetime);
+      } catch (error) {
+        if (!isCurrentCommand(context)) return undefined;
+        if (recoverProtectedCommandFailure(error, context)) return undefined;
+        throw error;
+      }
+    };
+
+    const searchOptions = async (kind, query) => {
+      if (!isCurrent()) {
+        throw adminCommandUiError("The Admin page or client membership access changed. Refresh Admin before searching.");
+      }
+      if (kind === "person" && !canViewAdminPeople(state.adminData?.actorGrants)) {
+        throw adminCommandUiError("People search requires organization-level people viewing access.");
+      }
+      const normalized = typeof query === "string" ? query.trim() : "";
+      if (normalized.length > 100) return [];
+      const params = new URLSearchParams({ kind, q: normalized });
+      const result = await readRequest(`/api/clients/${encodeURIComponent(client.id)}/membership-options?${params.toString()}`);
+      if (!isCurrent()) return [];
+      if (!Array.isArray(result?.options)) throw adminCommandUiError("The authorized selector response was invalid.");
+      return result.options.flatMap((option) =>
+        option && typeof option.id === "string" && typeof option.label === "string"
+          ? [{ value: option.id, label: option.label }]
+          : [],
+      ).slice(0, 30);
+    };
 
     return {
       client: clientProps,
       canViewMemberships,
       canManageMemberships,
-      peopleOptions,
+      canSearchPeople,
+      onSearchPeople: (query) => searchOptions("person", query),
+      onSearchDepartments: (query) => searchOptions("department", query),
       request: async ({ method, path, body }) => {
         if (!isCurrent()) {
           throw adminCommandUiError("The Admin page or client membership access changed. Refresh Admin before continuing.");
@@ -109,14 +137,7 @@ export function createAdminClientMembershipsRoute({
           }
           return api(path, requestOptions(method, body));
         }
-        const context = captureCommandContext(target);
-        try {
-          return await pageApi(path, lifetime);
-        } catch (error) {
-          if (!isCurrentCommand(context)) return undefined;
-          if (recoverProtectedCommandFailure(error, context)) return undefined;
-          throw error;
-        }
+        return readRequest(path);
       },
       runCommand: async (command, successMessage) => {
         if (!isCurrent()) {

@@ -1,10 +1,13 @@
 import { useId, useRef, useState, type FormEvent } from "react";
-import { Button, EmptyState, Field, Input, SearchableSelect, StateMessage } from "../../../design-system";
+import { Button, EmptyState, Field, Input, SearchableSelect, StateMessage, type SearchableSelectOption } from "../../../design-system";
 import type {
   AuthorizedOptions,
   TaskCatalogOption,
+  TaskCorrectionOption,
   TaskComposerProps,
   TaskCreationTargetOption,
+  TaskDepartmentOption,
+  TaskGroupOption,
 } from "./contracts";
 import type { TaskComposerDraft, TaskComposerField } from "./task-composer-model";
 import { applyCatalogSelection, parseTaskComposerDraft, targetLabel } from "./task-composer-model";
@@ -54,22 +57,37 @@ export function TaskComposer(props: TaskComposerProps) {
   const [errors, setErrors] = useState<Partial<Record<TaskComposerField, string>>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [remoteOptions, setRemoteOptions] = useState<{
+    targets: readonly TaskCreationTargetOption[];
+    groups: readonly TaskGroupOption[];
+    catalog: readonly TaskCatalogOption[];
+    corrections: readonly TaskCorrectionOption[];
+    departments: readonly TaskDepartmentOption[];
+  }>({ targets: [], groups: [], catalog: [], corrections: [], departments: [] });
+  const [selectedOptions, setSelectedOptions] = useState<{
+    target?: TaskCreationTargetOption;
+    group?: TaskGroupOption;
+    catalog?: TaskCatalogOption;
+    correction?: TaskCorrectionOption;
+    department?: TaskDepartmentOption;
+  }>({});
+  const searchGeneration = useRef({ targets: 0, groups: 0, catalog: 0, corrections: 0, departments: 0 });
   const formRef = useRef<HTMLFormElement>(null);
   const id = useId();
 
   if (!props.canCreate) return null;
 
-  if (props.targets.status === "not-requested") {
+  if (props.targets.status === "not-requested" && !props.onSearchTargets) {
     return <StateMessage kind="info" title="Workstream choices are not available">Refresh this view to load the task creation targets for your current access.</StateMessage>;
   }
-  if (props.targets.status === "denied") {
+  if (props.targets.status === "denied" && !props.onSearchTargets) {
     return <StateMessage kind="info" title="Workstream choices are unavailable">{props.targets.message}</StateMessage>;
   }
-  if (props.targets.status === "error") {
+  if (props.targets.status === "error" && !props.onSearchTargets) {
     return <StateMessage kind="error" title="Workstream choices could not load">{props.targets.message}</StateMessage>;
   }
   const targetOptions = ready(props.targets);
-  if (targetOptions.length === 0) {
+  if (targetOptions.length === 0 && !props.onSearchTargets) {
     return <EmptyState title="No workstream is available for task creation" description="Your current task creation access has no eligible workstream target." />;
   }
 
@@ -80,7 +98,9 @@ export function TaskComposer(props: TaskComposerProps) {
   };
 
   function selectTarget(targetKey: string) {
-    const target = targetOptions.find((item) => item.key === targetKey);
+    const target = remoteOptions.targets.find((item) => item.key === targetKey) ||
+      targetOptions.find((item) => item.key === targetKey);
+    setSelectedOptions({ target, group: undefined, catalog: undefined, correction: undefined, department: undefined });
     setDraft((current) => ({
       ...current,
       targetKey,
@@ -95,7 +115,15 @@ export function TaskComposer(props: TaskComposerProps) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) return;
-    const result = parseTaskComposerDraft(draft, props);
+    const validationProps: TaskComposerProps = {
+      ...props,
+      targets: withSelectedOption(props.targets, selectedOptions.target) || props.targets,
+      groups: withSelectedOption(props.groups, selectedOptions.group),
+      catalog: withSelectedOption(props.catalog, selectedOptions.catalog),
+      corrections: withSelectedOption(props.corrections, selectedOptions.correction),
+      departments: withSelectedOption(props.departments, selectedOptions.department),
+    };
+    const result = parseTaskComposerDraft(draft, validationProps);
     setErrors(result.errors);
     setSubmitError(null);
     if (!result.input) {
@@ -112,12 +140,56 @@ export function TaskComposer(props: TaskComposerProps) {
     }
   }
 
-  const target = targetOptions.find((item) => item.key === draft.targetKey);
-  const groups = ready(props.groups).filter((group) => target && belongsToTarget(group, target));
-  const corrections = ready(props.corrections).filter((correction) => target && belongsToTarget(correction, target));
-  const catalog = ready(props.catalog);
-  const departments = ready(props.departments);
-  const catalogSelection = catalog.find((entry) => entry.id === draft.catalogEntryId);
+  const target = (selectedOptions.target?.key === draft.targetKey ? selectedOptions.target : undefined) ||
+    targetOptions.find((item) => item.key === draft.targetKey) ||
+    remoteOptions.targets.find((item) => item.key === draft.targetKey);
+  const groupOptions = uniqueById([...ready(props.groups), ...remoteOptions.groups]);
+  const groups = groupOptions.filter((group) => target && belongsToTarget(group, target));
+  const corrections = uniqueById([...ready(props.corrections), ...remoteOptions.corrections])
+    .filter((correction) => target && belongsToTarget(correction, target));
+  const catalog = uniqueById([...ready(props.catalog), ...remoteOptions.catalog]);
+  const departments = uniqueById([...ready(props.departments), ...remoteOptions.departments]);
+  const catalogSelection = matchingSelected(selectedOptions.catalog, draft.catalogEntryId) ||
+    catalog.find((entry) => entry.id === draft.catalogEntryId);
+
+  async function searchTargets(query: string): Promise<readonly SearchableSelectOption[]> {
+    const generation = ++searchGeneration.current.targets;
+    const results = await props.onSearchTargets?.(query) ?? [];
+    if (generation === searchGeneration.current.targets) setRemoteOptions((current) => ({ ...current, targets: results }));
+    return results.map((option) => ({ value: option.key, label: targetLabel(option), description: billingDetail(option) }));
+  }
+
+  async function searchGroups(query: string): Promise<readonly SearchableSelectOption[]> {
+    if (!target || !props.onSearchGroups) return [];
+    const generation = ++searchGeneration.current.groups;
+    const results = await props.onSearchGroups(target, query);
+    if (generation === searchGeneration.current.groups) setRemoteOptions((current) => ({ ...current, groups: results }));
+    return results.map((option) => ({ value: option.id, label: option.name }));
+  }
+
+  async function searchCatalog(query: string): Promise<readonly SearchableSelectOption[]> {
+    if (!target || !props.onSearchCatalog) return [];
+    const generation = ++searchGeneration.current.catalog;
+    const results = await props.onSearchCatalog(target, query);
+    if (generation === searchGeneration.current.catalog) setRemoteOptions((current) => ({ ...current, catalog: results }));
+    return results.map((option) => ({ value: option.id, label: option.title, description: `${option.priority} priority · revision ${option.revision}` }));
+  }
+
+  async function searchCorrections(query: string): Promise<readonly SearchableSelectOption[]> {
+    if (!target || !props.onSearchCorrections) return [];
+    const generation = ++searchGeneration.current.corrections;
+    const results = await props.onSearchCorrections(target, query);
+    if (generation === searchGeneration.current.corrections) setRemoteOptions((current) => ({ ...current, corrections: results }));
+    return results.map((option) => ({ value: option.id, label: option.title }));
+  }
+
+  async function searchDepartments(query: string): Promise<readonly SearchableSelectOption[]> {
+    if (!target || !props.onSearchDepartments) return [];
+    const generation = ++searchGeneration.current.departments;
+    const results = await props.onSearchDepartments(target, query);
+    if (generation === searchGeneration.current.departments) setRemoteOptions((current) => ({ ...current, departments: results }));
+    return results.map((option) => ({ value: option.id, label: option.name }));
+  }
 
   return (
     <div className={styles.root}>
@@ -139,7 +211,9 @@ export function TaskComposer(props: TaskComposerProps) {
             label="Workstream"
             required
             value={draft.targetKey}
-            options={targetOptions.map((option) => ({ value: option.key, label: targetLabel(option), description: billingDetail(option) }))}
+            options={props.onSearchTargets ? [] : targetOptions.map((option) => ({ value: option.key, label: targetLabel(option), description: billingDetail(option) }))}
+            {...searchBehavior(props.onSearchTargets ? searchTargets : undefined,
+              target ? { value: target.key, label: targetLabel(target), description: billingDetail(target) } : null)}
             placeholder="Choose an available workstream"
             emptyMessage="No workstreams match this search."
             error={errors.targetKey}
@@ -152,12 +226,14 @@ export function TaskComposer(props: TaskComposerProps) {
           </p>
         </div>
 
-        {catalog.length > 0 ? (
+        {catalog.length > 0 || props.onSearchCatalog ? (
           <SearchableSelect
             id={`${id}-catalog`}
             label="Task definition (optional)"
             value={draft.catalogEntryId}
-            options={catalog.map((entry) => ({ value: entry.id, label: entry.title, description: `${entry.priority} priority · revision ${entry.revision}` }))}
+            options={props.onSearchCatalog ? [] : catalog.map((entry) => ({ value: entry.id, label: entry.title, description: `${entry.priority} priority · revision ${entry.revision}` }))}
+            {...searchBehavior(props.onSearchCatalog ? searchCatalog : undefined,
+              catalogSelection ? { value: catalogSelection.id, label: catalogSelection.title, description: `${catalogSelection.priority} priority · revision ${catalogSelection.revision}` } : null)}
             placeholder="One-off task"
             emptyMessage="No task definitions match this search."
             error={errors.catalogEntryId}
@@ -165,6 +241,8 @@ export function TaskComposer(props: TaskComposerProps) {
             clearLabel="Use a one-off task"
             onChange={(entryId) => {
               const nextDraft = applyCatalogSelection(draft, entryId, catalog);
+              const selected = entryId ? catalog.find((entry) => entry.id === entryId) : undefined;
+              setSelectedOptions((current) => ({ ...current, catalog: selected }));
               setDraft(nextDraft);
               setErrors((current) => ({ ...current, catalogEntryId: undefined, title: undefined, description: undefined, priority: undefined }));
               setSubmitError(null);
@@ -208,39 +286,51 @@ export function TaskComposer(props: TaskComposerProps) {
           </fieldset>
         </div>
 
-        {(target?.requiredGroupId || groups.length > 0 || props.groups?.status === "error" || props.groups?.status === "denied") ? (
+        {(target?.requiredGroupId || groups.length > 0 || (target && props.onSearchGroups) || props.groups?.status === "error" || props.groups?.status === "denied") ? (
           target?.requiredGroupId ? (
             <Field label="Group" hint="This task target is scoped to the selected group." className={styles.field}>
               {() => <div className={styles.lockedValue}>{target.groupName || "Selected group"}</div>}
             </Field>
-          ) : groups.length ? (
+          ) : groups.length || props.onSearchGroups ? (
             <SearchableSelect
               id={`${id}-group`}
               label="Group (optional)"
               value={draft.groupId}
-              options={groups.map((group) => ({ value: group.id, label: group.name }))}
+              options={props.onSearchGroups ? [] : groups.map((group) => ({ value: group.id, label: group.name }))}
+              {...searchBehavior(props.onSearchGroups ? searchGroups : undefined,
+                selectedOptions.group?.id === draft.groupId ? { value: selectedOptions.group.id, label: selectedOptions.group.name } : null)}
               placeholder="No group"
               emptyMessage="No available groups match this search."
               error={errors.groupId}
               disabled={submitting || !target}
               clearLabel="No group"
-              onChange={(value) => setField("groupId", value)}
+              onChange={(value) => {
+                const selected = groupOptions.find((group) => group.id === value && target && belongsToTarget(group, target));
+                setSelectedOptions((current) => ({ ...current, group: selected }));
+                setField("groupId", value);
+              }}
             />
           ) : <OptionalReadMessage title="Groups unavailable" message={props.groups?.status === "ready" ? "There are no authorized groups in this workstream." : props.groups?.status === "not-requested" ? "Group options were not requested." : props.groups?.message || "Group choices are unavailable."} />
         ) : null}
 
-        {props.departments?.status === "ready" && departments.length > 0 ? (
+        {(props.departments?.status === "ready" || props.onSearchDepartments) ? (
           <SearchableSelect
             id={`${id}-department`}
             label="Department (optional)"
             value={draft.departmentId}
-            options={departments.map((department) => ({ value: department.id, label: department.name }))}
+            options={props.onSearchDepartments ? [] : departments.map((department) => ({ value: department.id, label: department.name }))}
+              {...searchBehavior(props.onSearchDepartments ? searchDepartments : undefined,
+                selectedOptions.department?.id === draft.departmentId ? { value: selectedOptions.department.id, label: selectedOptions.department.name } : null)}
             placeholder="No department"
             emptyMessage="No departments match this search."
             error={errors.departmentId}
             disabled={submitting}
             clearLabel="No department"
-            onChange={(value) => setField("departmentId", value)}
+            onChange={(value) => {
+              const selected = departments.find((department) => department.id === value);
+              setSelectedOptions((current) => ({ ...current, department: selected }));
+              setField("departmentId", value);
+            }}
           />
         ) : null}
 
@@ -254,32 +344,38 @@ export function TaskComposer(props: TaskComposerProps) {
           {(control) => <textarea {...control} className={styles.textarea} value={draft.description} maxLength={10000} rows={4} disabled={submitting} onChange={(event) => setField("description", event.currentTarget.value)} />}
         </Field>
 
-        {props.corrections?.status === "ready" ? corrections.length > 0 ? (
+        {props.corrections?.status === "ready" || props.onSearchCorrections ? (
+          corrections.length > 0 || props.onSearchCorrections ? (
           <div className={styles.full}>
             <SearchableSelect
               id={`${id}-correction`}
               label="Completed task to correct (optional)"
               hint="A correction creates separate new work; it never reopens the original."
               value={draft.correctionOfTaskId}
-              options={corrections.map((correction) => ({ value: correction.id, label: correction.title }))}
+              options={props.onSearchCorrections ? [] : corrections.map((correction) => ({ value: correction.id, label: correction.title }))}
+              {...searchBehavior(props.onSearchCorrections ? searchCorrections : undefined,
+                selectedOptions.correction?.id === draft.correctionOfTaskId ? { value: selectedOptions.correction.id, label: selectedOptions.correction.title } : null)}
               placeholder="This is not a correction task"
               emptyMessage="No completed task in this workstream matches this search."
               error={errors.correctionOfTaskId}
               disabled={submitting || !target}
               clearLabel="This is not a correction task"
               onChange={(value) => {
+                const selected = corrections.find((correction) => correction.id === value && target && belongsToTarget(correction, target));
+                setSelectedOptions((current) => ({ ...current, correction: selected }));
                 setField("correctionOfTaskId", value);
                 if (!value) setField("correctionReason", "");
               }}
             />
           </div>
-        ) : null : null}
-        {draft.correctionOfTaskId && props.corrections?.status === "ready" ? (
+          ) : null
+        ) : null}
+        {draft.correctionOfTaskId && (props.corrections?.status === "ready" || props.onSearchCorrections) ? (
           <Field label="What needs correcting?" required hint="A separate reason is required for the correction record." error={errors.correctionReason} className={`${styles.field} ${styles.full}`}>
             {(control) => <textarea {...control} className={styles.textarea} value={draft.correctionReason} maxLength={2000} rows={3} disabled={submitting} onChange={(event) => setField("correctionReason", event.currentTarget.value)} />}
           </Field>
         ) : null}
-        {props.corrections?.status === "ready" && corrections.length === 0 && target ? (
+        {props.corrections?.status === "ready" && corrections.length === 0 && !props.onSearchCorrections && target ? (
           <p className={styles.hint}>Correction links are available only for visible, completed, non-correction work in this same workstream.</p>
         ) : null}
 
@@ -306,6 +402,33 @@ export function TaskComposer(props: TaskComposerProps) {
 
 function ready<T>(options?: AuthorizedOptions<T>): readonly T[] {
   return options?.status === "ready" ? options.items : [];
+}
+
+function uniqueById<T extends { id: string }>(items: readonly T[]): readonly T[] {
+  const byId = new Map<string, T>();
+  for (const item of items) byId.set(item.id, item);
+  return [...byId.values()];
+}
+
+type SearchBehavior =
+  | { searchMode: "local"; onSearch?: never; selectedOption?: never }
+  | { searchMode: "remote"; onSearch: (query: string) => Promise<readonly SearchableSelectOption[]>; selectedOption?: SearchableSelectOption | null };
+
+function searchBehavior(
+  onSearch: ((query: string) => Promise<readonly SearchableSelectOption[]>) | undefined,
+  selectedOption: SearchableSelectOption | null,
+): SearchBehavior {
+  return onSearch ? { searchMode: "remote", onSearch, selectedOption } : { searchMode: "local" };
+}
+
+function matchingSelected<T extends { id: string }>(option: T | undefined, id: string): T | undefined {
+  return option?.id === id ? option : undefined;
+}
+
+function withSelectedOption<T extends { id: string }>(options: AuthorizedOptions<T> | undefined, selected: T | undefined): AuthorizedOptions<T> | undefined {
+  if (!selected) return options;
+  const items = options?.status === "ready" ? options.items : [];
+  return { status: "ready", items: uniqueById([...items, selected]) };
 }
 
 function belongsToTarget(

@@ -48,6 +48,17 @@ export const clientAccessManagePermissionSql = `SELECT EXISTS (
          AND (grants.scope = 'organisation' OR (grants.scope = 'client' AND grants.client_id = $3))
      ) AS permitted`;
 
+export const clientMembershipPeopleViewPermissionSql = `SELECT EXISTS (
+  SELECT 1 FROM nova.person_role_assignments assignments
+  JOIN nova.roles roles ON roles.id = assignments.role_id
+  JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
+  WHERE assignments.person_id = $1 AND roles.organisation_id = $2
+    AND assignments.effective_on <= nova.person_business_date($1)
+    AND (assignments.effective_until IS NULL OR assignments.effective_until >= nova.person_business_date($1))
+    AND roles.archived_at IS NULL
+    AND grants.permission_key = 'people.view' AND grants.scope = 'organisation'
+) AS permitted`;
+
 async function canManage(
   transaction: PoolClient,
   actorId: string,
@@ -206,6 +217,11 @@ export async function createClientMembership(request: Request, clientId: string)
   try {
     const result = await withDatabaseRequest(actor.context, async (transaction) => {
       if (!await canManage(transaction, actor.context.userId, "clients.members.manage", clientId, actor.context.organisationId)) return "PERMISSION_DENIED" as const;
+      const peoplePermission = await transaction.query<{ permitted: boolean }>(
+        clientMembershipPeopleViewPermissionSql,
+        [actor.context.userId, actor.context.organisationId],
+      );
+      if (peoplePermission.rows[0]?.permitted !== true) return "PERMISSION_DENIED" as const;
       const person = await transaction.query("SELECT 1 FROM nova.people WHERE id = $1 AND organisation_id = $2", [personId, actor.context.organisationId]);
       if (!person.rows[0]) return "PERSON_NOT_FOUND" as const;
       if (departmentId) {

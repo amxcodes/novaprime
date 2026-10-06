@@ -18,9 +18,9 @@ export const DEFAULT_WORKSPACE = Object.freeze({
 });
 
 export const DEFAULT_APPEARANCE = Object.freeze({
-  theme: "system",
+  theme: "light",
   accent: "nova",
-  customAccent: "#126a52",
+  customAccent: "#2b57aa",
   density: "comfortable",
   typeScale: "default",
   font: "geist",
@@ -31,7 +31,7 @@ export const DEFAULT_APPEARANCE = Object.freeze({
 });
 
 export const ACCENT_PRESETS = Object.freeze({
-  nova: Object.freeze({ name: "NOVA green" }),
+  nova: Object.freeze({ name: "NOVA cobalt" }),
   forest: Object.freeze({ name: "Forest" }),
   teal: Object.freeze({ name: "Teal" }),
   lime: Object.freeze({ name: "Lime" }),

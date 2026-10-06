@@ -73,7 +73,8 @@
 }
 
 .inviteForm,
-.onboardingForm {
+.onboardingForm,
+.directorySearch {
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
@@ -95,10 +96,20 @@
 
 .directoryTitle { font-size: var(--nova-type-size-md); }
 
+.directorySearch {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  padding-block-end: var(--nova-space-4);
+  border-block-end: 1px solid var(--nova-color-border);
+}
+
+.directorySearch > button { min-width: 8rem; min-height: var(--nova-control-touch-target); }
+
 .peopleList {
   display: grid;
   min-width: 0;
-  gap: var(--nova-space-3);
+  max-width: 100%;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -106,12 +117,13 @@
 
 .person {
   display: grid;
+  box-sizing: border-box;
   min-width: 0;
+  max-width: 100%;
   gap: var(--nova-space-4);
-  padding: var(--nova-space-4);
-  border: 1px solid var(--nova-color-border);
-  border-radius: var(--nova-radius-control);
-  background: var(--nova-color-surface);
+  padding: var(--nova-space-4) var(--nova-space-2);
+  border-block-start: 1px solid var(--nova-color-border);
+  background: transparent;
 }
 
 .personHeader { align-items: center; }
@@ -174,6 +186,7 @@
 .actions {
   display: flex;
   min-width: 0;
+  max-width: 100%;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: var(--nova-space-2);
@@ -288,6 +301,7 @@
 .onboarding {
   display: grid;
   min-width: 0;
+  max-width: 100%;
   gap: var(--nova-space-4);
   padding: var(--nova-space-4);
   border: 1px solid var(--nova-color-border);
@@ -321,9 +335,33 @@
   .onboardingForm { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
+@container people-administration (min-width: 56rem) {
+  .person {
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+    align-items: center;
+    column-gap: var(--nova-space-5);
+  }
+
+  .personHeader { grid-column: 1; }
+  .actions {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+    padding: 0;
+    border: 0;
+  }
+  .onboarding { grid-column: 1 / -1; }
+}
+
+@container people-administration (max-width: 56rem) {
+  .directorySearch { grid-template-columns: minmax(0, 1fr) auto; }
+}
+
 @container people-administration (max-width: 36rem) {
   .section { gap: var(--nova-space-4); }
-  .person { padding: var(--nova-space-3); }
+  .directorySearch { grid-template-columns: minmax(0, 1fr); }
+  .directorySearch > button { width: 100%; }
+  .person { padding: var(--nova-space-4) 0; }
   .personHeader { align-items: flex-start; flex-direction: column; gap: var(--nova-space-2); }
   .actions { display: grid; grid-template-columns: minmax(0, 1fr); }
   .actions > button,
@@ -335,10 +373,36 @@
   .freezeConfirmationActions > button { width: 100%; }
 }
 
+.directoryPagination {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nova-space-3);
+  padding-block-start: var(--nova-space-3);
+  border-block-start: 1px solid var(--nova-color-border);
+}
+
+.directoryPagination > span {
+  min-width: 0;
+  color: var(--nova-color-text-muted);
+  font-size: var(--nova-type-size-sm);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.directoryPagination > button { min-height: var(--nova-control-touch-target); }
+
+@container people-administration (max-width: 36rem) {
+  .directoryPagination { align-items: stretch; }
+  .directoryPagination > button { flex: 1 1 7rem; }
+  .directoryPagination > span { flex-basis: 100%; order: -1; }
+}
+
 @media (forced-colors: active) {
   .invitePanel,
   .directory,
-  .person,
   .status,
   .reasonAction[open],
   .reasonAction summary,
@@ -347,6 +411,9 @@
   .freezeConfirmation { border-color: CanvasText; background: Canvas; }
   .freezeConfirmation p { color: CanvasText; }
   .status { color: CanvasText; background: Canvas; }
+  .person,
+  .directorySearch,
+  .directoryPagination { border-color: CanvasText; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -30,8 +30,6 @@ const { BillingPolicySection, TaskCatalogSection } = require("./WorkSetupSection
 const { mutationCanReload } = require("./WorkSetupShared.tsx");
 const {
   definitionSearchStatus,
-  filterBillingDefinitions,
-  filterWorkstreams,
   workstreamSearchStatus,
 } = require("./billing-search.ts");
 
@@ -70,6 +68,7 @@ function renderBilling(overrides = {}) {
     workstreams: { status: "ready", data: [workstream] },
     catalogAccess: "missing",
     onLoadRules: async () => ({ defaultClass: "billable", defaultRevision: 3, entries: [] }),
+    onSearchWorkstreams: async () => [workstream],
     onSaveDefault: noopAsync,
     onSaveRule: noopAsync,
     ...overrides,
@@ -148,30 +147,11 @@ test("billing-policy scope displays only projected manageable workstreams and ma
   assert.doesNotMatch(html, /<select|Broad employee directory|billingClass/);
 });
 
-test("billing selectors filter immediately and project concise result and empty-state announcements", () => {
-  const workstreams = [
-    { id: "1", clientName: "Northstar", name: "Product delivery" },
-    { id: "2", clientName: "Northstar", name: "Support" },
-    { id: "3", clientName: "Acme", name: "Research" },
-  ];
-  const north = filterWorkstreams(workstreams, "NORTH");
-  assert.deepEqual(north.map(({ name }) => name), ["Product delivery", "Support"]);
-  assert.equal(workstreamSearchStatus("NORTH", north.length, workstreams.length), "2 matching client workstreams.");
-  const noWorkstreams = filterWorkstreams(workstreams, "unmatched");
-  assert.equal(noWorkstreams.length, 0);
-  assert.equal(workstreamSearchStatus("unmatched", noWorkstreams.length, workstreams.length), "No client workstreams match the current filter.");
-
-  const definitions = [
-    { entryId: "a", title: "Prepare delivery brief" },
-    { entryId: "b", title: "Review delivery brief" },
-    { entryId: "c", title: "Research" },
-  ];
-  const delivery = filterBillingDefinitions(definitions, "delivery");
-  assert.deepEqual(delivery.map(({ entryId }) => entryId), ["a", "b"]);
-  assert.equal(definitionSearchStatus("delivery", delivery.length, definitions.length), "2 matching predefined task definitions.");
-  const noDefinitions = filterBillingDefinitions(definitions, "unmatched");
-  assert.equal(noDefinitions.length, 0);
-  assert.equal(definitionSearchStatus("unmatched", noDefinitions.length, definitions.length), "No predefined task definitions match the current search.");
+test("search result announcements describe server-returned authorized matches", () => {
+  assert.equal(workstreamSearchStatus("NORTH", 2), "2 matching client workstreams returned by NOVA.");
+  assert.equal(workstreamSearchStatus("unmatched", 0), "No client workstreams match the current search.");
+  assert.equal(definitionSearchStatus("delivery", 2), "2 matching predefined task definitions returned by NOVA.");
+  assert.equal(definitionSearchStatus("unmatched", 0), "No predefined task definitions match the current search.");
 });
 
 test("both selector counts use a polite debounced live region rather than announcing keystrokes", () => {
@@ -179,8 +159,10 @@ test("both selector counts use a polite debounced live region rather than announ
   assert.match(source, /const SEARCH_ANNOUNCEMENT_DELAY_MS = 300/);
   assert.match(source, /window\.setTimeout\(\(\) => setSettledQuery\(query\), SEARCH_ANNOUNCEMENT_DELAY_MS\)/);
   assert.equal((source.match(/role="status" aria-live="polite" aria-atomic="true">\{searchStatus\}<\/p>/g) || []).length, 2);
-  assert.match(source, /const filtered = filterWorkstreams\(workstreams, search\)/);
-  assert.match(source, /const filtered = filterBillingDefinitions\(entries, search\)/);
+  assert.match(source, /onSearch\(query\)/);
+  assert.match(source, /onLoadRules\(workstreamId, query\)/);
+  assert.doesNotMatch(source, /filterWorkstreams|filterBillingDefinitions/);
+  assert.match(source, /Search runs on NOVA/);
 });
 
 test("workstream read does not leak server rows when access is denied", () => {

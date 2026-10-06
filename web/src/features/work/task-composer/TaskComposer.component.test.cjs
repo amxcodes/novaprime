@@ -118,6 +118,27 @@ test("renders host-projected target choices with accessible searchable comboboxe
   assert.doesNotMatch(html, /name="taskCatalogEntryId"/);
 });
 
+test("keeps remote business search available when the initial Admin pages are empty", () => {
+  const html = render({
+    targets: { status: "ready", items: [] },
+    catalog: { status: "ready", items: [] },
+    corrections: { status: "ready", items: [] },
+    departments: { status: "ready", items: [] },
+    onSearchTargets: async () => [target],
+    onSearchCatalog: async () => [catalogEntry],
+    onSearchCorrections: async () => [{ id: "task-2", title: "Approved task", workstreamId: "stream-1", workstreamKind: "client" }],
+    onSearchDepartments: async () => [{ id: "department-2", name: "Research" }],
+  });
+  assert.match(html, /Create task/);
+  assert.match(html, /Workstream/);
+  assert.match(html, /Task definition \(optional\)/);
+  assert.match(html, /Completed task to correct \(optional\)/);
+  assert.match(html, /Department \(optional\)/);
+  assert.equal((html.match(/role="combobox"/g) || []).length, 4);
+  assert.doesNotMatch(html, /No workstream is available for task creation/);
+  assert.doesNotMatch(html, /No approved task definitions are available/);
+});
+
 test("moves validation focus from an invalid group wrapper to its first enabled control", () => {
   const calls = [];
   const radio = {
@@ -155,6 +176,20 @@ test("keeps compact form layout single-column and makes responsive radio focus v
   assert.match(css, /\.priorityChoice\s*\{[^}]*min-height:\s*var\(--nova-control-touch-target\)/s);
   assert.match(css, /\.priorityChoice:focus-within\s*\{\s*outline:\s*2px solid var\(--nova-color-focus\)/);
   assert.match(css, /\.priorityChoice:focus-within\s*\{\s*outline-color:\s*Highlight/s);
+});
+
+test("keeps task form copy and single-field rows within their available container width", () => {
+  const css = fs.readFileSync(`${__dirname}/TaskComposer.module.css`, "utf8");
+
+  assert.match(css, /\.root\s*\{[^}]*container-type:\s*inline-size/s);
+  assert.match(css, /\.root\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(css, /\.header h2\s*\{[^}]*min-width:\s*0[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(css, /\.header p\s*\{[^}]*min-width:\s*0[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(css, /\.pairedFields\s*>\s*\.field:only-child\s*\{\s*grid-column:\s*1 \/ -1;\s*\}/);
+  assert.match(css, /\.pairedFields\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s);
+  assert.match(css, /@container task-composer \(min-width:\s*42rem\)/);
+  assert.match(css, /@media \(any-pointer:\s*coarse\)/);
+  assert.doesNotMatch(css, /#[\da-f]{3,8}\b|\brgb\(|\bhsl\(/i);
 });
 
 test("shows optional read failures without collapsing a usable create form", () => {

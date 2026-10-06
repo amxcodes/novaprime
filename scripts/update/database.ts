@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Pool, type QueryResultRow } from "pg";
+import type { QueryResultRow } from "pg";
 import { migrationSha256 } from "../../server/src/migration-checksum.js";
 import { validateSupabaseProjectConfirmation } from "../../server/src/supabase-project-confirmation.js";
 
@@ -62,7 +62,7 @@ interface PgPoolLike {
   end(): Promise<void>;
 }
 
-type PgPoolFactory = (connectionString: string) => PgPoolLike;
+type PgPoolFactory = (connectionString: string) => PgPoolLike | Promise<PgPoolLike>;
 
 export interface PostgresUpdateOptions {
   databaseUrl: string;
@@ -288,7 +288,7 @@ export async function planPostgresUpdate(options: PostgresUpdateOptions): Promis
   const target = postgresTargetLabel(options.databaseUrl);
   requireExactTargetConfirmation(target, options.confirmation);
   const migrations = await loadCanonicalMigrations(options.targetManifest, options.migrationDirectory);
-  const pool = (options.createPool ?? defaultPoolFactory)(options.databaseUrl);
+  const pool = await (options.createPool ?? defaultPoolFactory)(options.databaseUrl);
   try {
     const client = await pool.connect();
     try {
@@ -314,7 +314,7 @@ export async function applyPostgresUpdate(options: PostgresUpdateOptions): Promi
   const target = postgresTargetLabel(options.databaseUrl);
   requireExactTargetConfirmation(target, options.confirmation);
   const migrations = await loadCanonicalMigrations(options.targetManifest, options.migrationDirectory);
-  const pool = (options.createPool ?? defaultPoolFactory)(options.databaseUrl);
+  const pool = await (options.createPool ?? defaultPoolFactory)(options.databaseUrl);
   const appliedDuringRun: string[] = [];
   let client: PgClientLike | undefined;
   let lockHeld = false;
@@ -953,5 +953,7 @@ function safeErrorCode(error: unknown): string {
   return "DATABASE_ERROR";
 }
 
-const defaultPoolFactory: PgPoolFactory = (connectionString) =>
-  new Pool({ connectionString, max: 1, connectionTimeoutMillis: 10_000 }) as unknown as PgPoolLike;
+const defaultPoolFactory: PgPoolFactory = async (connectionString) => {
+  const { Pool } = await import("pg");
+  return new Pool({ connectionString, max: 1, connectionTimeoutMillis: 10_000 }) as unknown as PgPoolLike;
+};

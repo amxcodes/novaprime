@@ -11,6 +11,8 @@
   gap: var(--nova-space-8);
 }
 
+.content > * { min-width: 0; }
+
 .header {
   display: grid;
   min-width: 0;
@@ -79,11 +81,13 @@
 
 .emptyState {
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .routeState {
   min-width: 0;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 @container admin-page (max-width: 60rem) {

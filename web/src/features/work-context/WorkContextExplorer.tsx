@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { Button, Field, Input } from "../../design-system";
+import { Button, Field, Input, StateMessage } from "../../design-system";
 import type {
   WorkContextClientDepartmentCreation,
   WorkContextClientSummary,
@@ -9,7 +9,7 @@ import type {
   WorkContextTaskCreationTargetSummary,
 } from "./explorer-contracts";
 import { ClientDepartmentCreate } from "./ClientDepartmentCreate";
-import { formatWorkContextSearchSummary, searchWorkContextProjection, type WorkContextSearchSummary } from "./search";
+import { formatWorkContextSearchSummary, summarizeWorkContextProjection, type WorkContextSearchSummary } from "./search";
 import styles from "./WorkContextExplorer.module.css";
 
 export type {
@@ -311,19 +311,59 @@ function ReadyContext({
   );
 }
 
-export function WorkContextExplorer({ readState, departmentCreation }: WorkContextExplorerProps) {
+export function WorkContextExplorer({ readState, departmentCreation, onSearch }: WorkContextExplorerProps) {
   const id = useId();
   const [search, setSearch] = useState("");
   const [announcedSearch, setAnnouncedSearch] = useState<{ query: string; summary: WorkContextSearchSummary } | null>(null);
+  const [searchRead, setSearchRead] = useState<{
+    query: string;
+    status: "loading" | "ready" | "error";
+    result?: WorkContextExplorerProps["readState"];
+    message?: string;
+  } | null>(null);
+  const searchGeneration = useRef(0);
   const searchInput = useRef<HTMLInputElement>(null);
-  const searchActive = search.trim().length > 0;
-  const searchResult = readState.status === "ready" && searchActive
-    ? searchWorkContextProjection(readState.projection, search)
+  const query = search.trim();
+  const searchActive = query.length > 0;
+  const activeSearch = searchActive && searchRead?.query === query ? searchRead : null;
+  const searchResult = activeSearch?.status === "ready" && activeSearch.result?.status === "ready"
+    ? activeSearch.result
     : null;
-  const searchSummary = searchResult?.summary;
+  const searchSummary = searchResult ? summarizeWorkContextProjection(searchResult.projection) : null;
 
   useEffect(() => {
-    if (!searchActive || !searchResult?.hasMatches || !searchSummary) {
+    const generation = ++searchGeneration.current;
+    if (!query) {
+      setSearchRead(null);
+      setAnnouncedSearch(null);
+      return;
+    }
+
+    setSearchRead({ query, status: "loading" });
+    setAnnouncedSearch(null);
+    const timer = window.setTimeout(() => {
+      void onSearch(query).then((result) => {
+        if (generation !== searchGeneration.current) return;
+        setSearchRead({ query, status: "ready", result });
+      }).catch((error: unknown) => {
+        if (generation !== searchGeneration.current) return;
+        const message = error instanceof Error ? error.message.trim() : "";
+        setSearchRead({
+          query,
+          status: "error",
+          message: message || "Work-context search could not be completed. Try again.",
+        });
+      });
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+      searchGeneration.current += 1;
+    };
+  }, [onSearch, query]);
+
+  useEffect(() => {
+    if (!searchActive || !searchResult || !searchSummary) {
       setAnnouncedSearch(null);
       return;
     }
@@ -331,7 +371,7 @@ export function WorkContextExplorer({ readState, departmentCreation }: WorkConte
       setAnnouncedSearch({ query: search.trim(), summary: searchSummary });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [search, searchActive, searchResult?.hasMatches, searchSummary?.clientContexts,
+  }, [search, searchActive, searchSummary?.clientContexts,
     searchSummary?.workstreams, searchSummary?.visibleGroups, searchSummary?.taskTargets]);
 
   const preventSearchSubmit = (event: FormEvent<HTMLFormElement>) => event.preventDefault();
@@ -350,7 +390,7 @@ export function WorkContextExplorer({ readState, departmentCreation }: WorkConte
             <Field
               className={styles.searchField}
               label="Search work context"
-              hint="Search client, workstream, visible group and eligible task-target labels in this response."
+              hint="Search client, workstream, visible group and eligible task-target names on the server."
             >
               {(control) => (
                 <Input
@@ -372,7 +412,7 @@ export function WorkContextExplorer({ readState, departmentCreation }: WorkConte
               Clear search
             </Button>
             <p className={styles.searchScope}>
-              Search is local to this authorized response; it does not request or page through other records or change your access.
+              Search runs on NOVA and returns only the work context allowed by your current access.
             </p>
             {announcedSearch?.query === search.trim() ? (
               <p className={styles.searchResultSummary} role="status" aria-live="polite" aria-atomic="true">
@@ -399,13 +439,23 @@ export function WorkContextExplorer({ readState, departmentCreation }: WorkConte
             <p>{readState.message}</p>
           </div>
         ) : null}
+        {searchActive && (!activeSearch || activeSearch.status === "loading") ? (
+          <div className={styles.status} role="status" aria-live="polite" aria-busy="true">
+            <span className={styles.spinner} aria-hidden="true" /> Searching authorized work context…
+          </div>
+        ) : null}
+        {activeSearch?.status === "error" ? (
+          <StateMessage kind="error" title="Work-context search could not be completed">
+            {activeSearch.message}
+          </StateMessage>
+        ) : null}
         {readState.status === "empty" ? (
           <div className={styles.emptyState} role="status">
             <h3>No visible work context</h3>
             <p>No clients, workstreams, or groups were included in this response.</p>
           </div>
         ) : null}
-        {readState.status === "ready" ? (
+        {readState.status === "ready" && (!searchActive || searchResult) ? (
           <ReadyContext
             projection={searchResult?.projection ?? readState.projection}
             departmentCreation={departmentCreation}

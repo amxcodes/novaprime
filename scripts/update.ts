@@ -57,6 +57,54 @@ type DatabaseTarget =
   | { kind: "postgres"; url: string; label: string }
   | { kind: "supabase"; projectRef: string; accessToken: string; label: string };
 
+interface OfferPushAdapters {
+  repoRoot: string;
+  inspectGitCheckout: typeof inspectGitCheckout;
+  confirm: typeof confirm;
+  promptLine: typeof promptLine;
+  verifyCandidateApplicationRole: typeof verifyCandidateApplicationRole;
+  verifyPinnedReleaseStillCurrent: typeof verifyPinnedReleaseStillCurrent;
+  pushUpdateBranch: typeof pushUpdateBranch;
+  saveUpdateJournal: typeof saveUpdateJournal;
+}
+
+interface MigrationApplyAdapters {
+  confirm: typeof confirm;
+  promptLine: typeof promptLine;
+  confirmBackup: typeof confirmBackup;
+  saveUpdateJournal: typeof saveUpdateJournal;
+  applyPostgresUpdate: typeof applyPostgresUpdate;
+  applySupabaseUpdate: typeof applySupabaseUpdate;
+}
+
+/** Narrow orchestration seam: production defaults remain the real local services. */
+export interface UpdateRuntimeOverrides {
+  repoRoot?: string;
+  confirm?: typeof confirm;
+  promptLine?: typeof promptLine;
+  requireInteractiveTerminal?: typeof requireInteractiveTerminal;
+  acquireUpdateLock?: typeof acquireUpdateLock;
+  inspectGitCheckout?: typeof inspectGitCheckout;
+  readPackageVersion?: typeof readPackageVersion;
+  loadUpdateJournal?: typeof loadUpdateJournal;
+  discoverRelease?: typeof discoverRelease;
+  verifyBaseline?: typeof verifyBaseline;
+  verifyPinnedReleaseStillCurrent?: typeof verifyPinnedReleaseStillCurrent;
+  fetchPinnedRelease?: typeof fetchPinnedRelease;
+  getUpdateWorktreeDirectory?: typeof getUpdateWorktreeDirectory;
+  findPreparedUpdateWorktree?: typeof findPreparedUpdateWorktree;
+  prepareUpdateWorktree?: typeof prepareUpdateWorktree;
+  newUpdateJournal?: typeof newUpdateJournal;
+  saveUpdateJournal?: typeof saveUpdateJournal;
+  loadVerifiedReleaseTreeFromRoot?: typeof loadVerifiedReleaseTreeFromRoot;
+  buildCandidate?: typeof buildCandidate;
+  chooseDatabaseTarget?: typeof chooseDatabaseTarget;
+  planDatabase?: typeof planDatabase;
+  applyMigrations?: typeof applyMigrations;
+  migrationApplyAdapters?: Partial<MigrationApplyAdapters>;
+  offerPushAdapters?: Partial<OfferPushAdapters>;
+}
+
 function parseArguments(args: readonly string[]): Options {
   let mode: Mode = "apply";
   let modeSeen = false;
@@ -207,11 +255,16 @@ function printCheckout(checkout: GitCheckoutInfo, currentVersion: string): void 
   }
 }
 
-async function runCheck(options: Options): Promise<void> {
-  const currentVersion = await readPackageVersion(repoRoot);
+export async function runCheck(options: Options, overrides: UpdateRuntimeOverrides = {}): Promise<void> {
+  const root = overrides.repoRoot ?? repoRoot;
+  const readVersion = overrides.readPackageVersion ?? readPackageVersion;
+  const inspect = overrides.inspectGitCheckout ?? inspectGitCheckout;
+  const findRelease = overrides.discoverRelease ?? discoverRelease;
+  const verifyRelease = overrides.verifyPinnedReleaseStillCurrent ?? verifyPinnedReleaseStillCurrent;
+  const currentVersion = await readVersion(root);
   let checkout: GitCheckoutInfo;
   try {
-    checkout = await inspectGitCheckout(repoRoot);
+    checkout = await inspect(root);
   } catch (error) {
     console.error(`Checkout unsupported: ${userSafeError(error)}`);
     process.exitCode = 2;
@@ -220,7 +273,7 @@ async function runCheck(options: Options): Promise<void> {
   printCheckout(checkout, currentVersion);
   let release: StableRelease | undefined;
   try {
-    release = await discoverRelease(currentVersion, options, checkout.headCommit);
+    release = await findRelease(currentVersion, options, checkout.headCommit);
   } catch (error) {
     if (recordErrorCode(error).startsWith("NO_STABLE_RELEASE")) {
       console.info("No published stable NOVA release is available yet; no branch or database fallback was used.");
@@ -229,7 +282,7 @@ async function runCheck(options: Options): Promise<void> {
     throw error;
   }
   if (!release) return;
-  await verifyPinnedReleaseStillCurrent(release);
+  await verifyRelease(release);
   console.info(`Update available: ${currentVersion} → ${release.version}`);
   console.info(`Release: ${release.tag}; commit ${release.commit}; published ${release.publishedAt}`);
   console.info(`Compatibility: ${release.manifest.migrationClass} — ${terminalText(release.manifest.impact)}`);
@@ -256,8 +309,8 @@ function isWithinPath(parent: string, candidate: string): boolean {
   return normalizedTarget.startsWith(`${normalizedRoot}${process.platform === "win32" ? "\\" : "/"}`);
 }
 
-async function verifyBaseline(currentVersion: string): Promise<VerifiedReleaseTree> {
-  const localTree = await loadVerifiedReleaseTreeFromRoot(repoRoot);
+async function verifyBaseline(currentVersion: string, sourceRoot = repoRoot): Promise<VerifiedReleaseTree> {
+  const localTree = await loadVerifiedReleaseTreeFromRoot(sourceRoot);
   if (localTree.manifest.version !== currentVersion) throw new Error("BASELINE_VERSION_MISMATCH");
   const baseline = await discoverStableBaselineRelease({ tag: `v${currentVersion}`, version: currentVersion });
   assertSameManifest(localTree.manifest, baseline.manifest);
@@ -522,18 +575,28 @@ async function applyMigrations(
   baselineManifest: MigrationHashManifest,
   targetManifest: MigrationHashManifest,
   migrationDirectory: string,
+  overrides: Partial<MigrationApplyAdapters> = {},
 ): Promise<void> {
+  const services: MigrationApplyAdapters = {
+    confirm,
+    promptLine,
+    confirmBackup,
+    saveUpdateJournal,
+    applyPostgresUpdate,
+    applySupabaseUpdate,
+    ...overrides,
+  };
   if (plan.pending.length > 0 && journal.release && journal.release.version && !plan.pending.every((migration) => migration.sha256 === targetManifest[migration.filename])) {
     throw new Error("MIGRATION_PLAN_HASH_MISMATCH");
   }
-  if (plan.pending.length > 0 && !await confirm(`Are you ready to apply ${plan.pending.length} migration(s) to ${target.label} after the backup check?`)) {
+  if (plan.pending.length > 0 && !await services.confirm(`Are you ready to apply ${plan.pending.length} migration(s) to ${target.label} after the backup check?`)) {
     throw new Error("UPDATE_CANCELLED");
   }
   if (plan.pending.length > 0) {
     const expectedPhrase = `APPLY ${target.kind === "supabase" ? target.projectRef : target.label}`;
-    const answer = await promptLine(`Type exactly: ${expectedPhrase}`);
+    const answer = await services.promptLine(`Type exactly: ${expectedPhrase}`);
     if (answer !== expectedPhrase) throw new Error("DATABASE_WRITE_CONFIRMATION_MISMATCH");
-    journal.backupConfirmedAt = await confirmBackup(target.label);
+    journal.backupConfirmedAt = await services.confirmBackup(target.label);
   }
 
   journal.database = {
@@ -542,13 +605,13 @@ async function applyMigrations(
     label: target.label,
   };
   journal.phase = plan.pending.length ? "applying-database" : "database-applied";
-  await saveUpdateJournal(journal);
+  await services.saveUpdateJournal(journal);
   if (plan.pending.length === 0) return;
 
   const onMigrationStarting = async (filename: string, sha256: string) => {
     journal.inFlightMigration = { filename, sha256 };
     journal.phase = "applying-database";
-    await saveUpdateJournal(journal);
+    await services.saveUpdateJournal(journal);
     console.info(`Applying ${filename}…`);
   };
   const onMigrationApplied = async (filename: string) => {
@@ -560,7 +623,7 @@ async function applyMigrations(
       journal.appliedMigrations.push({ filename, sha256: hash });
     }
     journal.inFlightMigration = undefined;
-    await saveUpdateJournal(journal);
+    await services.saveUpdateJournal(journal);
     console.info(`Verified ${filename}.`);
   };
   const common = {
@@ -572,12 +635,12 @@ async function applyMigrations(
     onMigrationApplied,
   };
   const result = target.kind === "postgres"
-    ? await applyPostgresUpdate({
+    ? await services.applyPostgresUpdate({
       databaseUrl: target.url,
       confirmation: target.label,
       ...common,
     })
-    : await applySupabaseUpdate({
+    : await services.applySupabaseUpdate({
       projectRef: target.projectRef,
       accessToken: target.accessToken,
       confirmation: target.projectRef,
@@ -591,7 +654,7 @@ async function applyMigrations(
   }
   journal.inFlightMigration = undefined;
   journal.phase = "database-applied";
-  await saveUpdateJournal(journal);
+  await services.saveUpdateJournal(journal);
   console.info(`Database migrations applied: ${result.applied.length} applied, ${result.alreadyApplied.length} already recorded; migration ledger reconciled.`);
 }
 
@@ -609,8 +672,27 @@ function isSupportedCustomerPushRemote(remote: GitRemoteInfo): boolean {
   }
 }
 
-async function offerPush(checkout: GitCheckoutInfo, candidatePath: string, candidateBranch: string, journal: UpdateJournal, release: StableRelease, target: DatabaseTarget): Promise<void> {
-  const sourceBeforePush = await inspectGitCheckout(repoRoot);
+async function offerPush(
+  checkout: GitCheckoutInfo,
+  candidatePath: string,
+  candidateBranch: string,
+  journal: UpdateJournal,
+  release: StableRelease,
+  target: DatabaseTarget,
+  overrides: Partial<OfferPushAdapters> = {},
+): Promise<void> {
+  const services: OfferPushAdapters = {
+    repoRoot,
+    inspectGitCheckout,
+    confirm,
+    promptLine,
+    verifyCandidateApplicationRole,
+    verifyPinnedReleaseStillCurrent,
+    pushUpdateBranch,
+    saveUpdateJournal,
+    ...overrides,
+  };
+  const sourceBeforePush = await services.inspectGitCheckout(services.repoRoot);
   if (sourceBeforePush.headCommit.toLowerCase() !== journal.originalHead.toLowerCase() || sourceBeforePush.dirtyPaths.length) {
     console.info(`Source checkout changed after the database update. No push was offered; candidate ${candidateBranch} remains at ${candidatePath} for manual review.`);
     return;
@@ -620,31 +702,31 @@ async function offerPush(checkout: GitCheckoutInfo, candidatePath: string, candi
     console.info("No customer push remote is configured. The update candidate remains local; review/merge it manually when ready.");
     return;
   }
-  if (!await confirm("Database migrations are applied. Would you like to prepare a GitHub push? Restricted application-role preflight will run before the push.")) {
+  if (!await services.confirm("Database migrations are applied. Would you like to prepare a GitHub push? Restricted application-role preflight will run before the push.")) {
     console.info(`Push skipped. Candidate ${candidateBranch} is retained at ${candidatePath}; the running hosted app remains on its previous deployed commit.`);
     return;
   }
   let remote = eligible[0]!;
   if (eligible.length > 1) {
     const names = eligible.map(({ name }) => name).join(", ");
-    const answer = await promptLine(`Choose a configured customer remote (${names})`);
+    const answer = await services.promptLine(`Choose a configured customer remote (${names})`);
     const chosen = eligible.find(({ name }) => name === answer);
     if (!chosen) throw new Error("PUSH_REMOTE_CHOICE_INVALID");
     remote = chosen;
   }
-  const destinationBranch = await promptLine("Destination branch for the candidate", candidateBranch);
+  const destinationBranch = await services.promptLine("Destination branch for the candidate", candidateBranch);
   if (!destinationBranch) throw new Error("PUSH_BRANCH_REQUIRED");
   console.info(`Push target: ${remote.name}/${destinationBranch}`);
   console.info(`Remote: ${remote.pushUrl}`);
   console.info("This may start a preview or production deployment if your host watches the selected branch. NOVA cannot confirm provider deployment from a Git push.");
   const phrase = `PUSH ${remote.name}/${destinationBranch} ${remote.pushUrl}`;
-  if (await promptLine(`Type exactly: ${phrase}`) !== phrase) throw new Error("PUSH_CONFIRMATION_MISMATCH");
-  await verifyCandidateApplicationRole(candidatePath, target);
-  await verifyPinnedReleaseStillCurrent(release);
+  if (await services.promptLine(`Type exactly: ${phrase}`) !== phrase) throw new Error("PUSH_CONFIRMATION_MISMATCH");
+  await services.verifyCandidateApplicationRole(candidatePath, target);
+  await services.verifyPinnedReleaseStillCurrent(release);
   let pushed;
   try {
-    pushed = await pushUpdateBranch({
-      repoRoot,
+    pushed = await services.pushUpdateBranch({
+      repoRoot: services.repoRoot,
       worktreePath: candidatePath,
       remoteName: remote.name,
       confirmedPushUrl: remote.pushUrl!,
@@ -658,25 +740,64 @@ async function offerPush(checkout: GitCheckoutInfo, candidatePath: string, candi
   } catch (error) {
     if (error instanceof GitWorkspaceError && error.code === "SOURCE_CHECKOUT_CHANGED") {
       journal.phase = "complete";
-      await saveUpdateJournal(journal);
+      await services.saveUpdateJournal(journal);
       console.info(`Source checkout changed before the push. No push was made; candidate ${candidateBranch} remains at ${candidatePath} for manual review.`);
       return;
     }
     throw error;
   }
   journal.phase = "complete";
-  await saveUpdateJournal(journal);
+  await services.saveUpdateJournal(journal);
   console.info(`Push accepted: ${pushed.commit.slice(0, 12)} → ${pushed.destination.remoteName}/${pushed.destination.branch}. Provider deployment is pending and unverified.`);
 }
 
-async function runGuided(options: Options): Promise<void> {
-  requireInteractiveTerminal();
-  const releaseGuard = await acquireUpdateLock(repoRoot);
+export async function runGuided(options: Options, overrides: UpdateRuntimeOverrides = {}): Promise<void> {
+  const root = overrides.repoRoot ?? repoRoot;
+  const askConfirm = overrides.confirm ?? confirm;
+  const askLine = overrides.promptLine ?? promptLine;
+  const requireTerminal = overrides.requireInteractiveTerminal ?? requireInteractiveTerminal;
+  const acquireLock = overrides.acquireUpdateLock ?? acquireUpdateLock;
+  const inspect = overrides.inspectGitCheckout ?? inspectGitCheckout;
+  const readVersion = overrides.readPackageVersion ?? readPackageVersion;
+  const loadJournal = overrides.loadUpdateJournal ?? loadUpdateJournal;
+  const findRelease = overrides.discoverRelease ?? discoverRelease;
+  const getBaseline = overrides.verifyBaseline ?? ((version: string) => verifyBaseline(version, root));
+  const verifyRelease = overrides.verifyPinnedReleaseStillCurrent ?? verifyPinnedReleaseStillCurrent;
+  const fetchRelease = overrides.fetchPinnedRelease ?? fetchPinnedRelease;
+  const worktreeDirectory = overrides.getUpdateWorktreeDirectory ?? getUpdateWorktreeDirectory;
+  const findCandidate = overrides.findPreparedUpdateWorktree ?? findPreparedUpdateWorktree;
+  const prepareCandidate = overrides.prepareUpdateWorktree ?? prepareUpdateWorktree;
+  const createJournal = overrides.newUpdateJournal ?? newUpdateJournal;
+  const saveJournal = overrides.saveUpdateJournal ?? saveUpdateJournal;
+  const loadReleaseTree = overrides.loadVerifiedReleaseTreeFromRoot ?? loadVerifiedReleaseTreeFromRoot;
+  const build = overrides.buildCandidate ?? buildCandidate;
+  const chooseTarget = overrides.chooseDatabaseTarget ?? chooseDatabaseTarget;
+  const planTarget = overrides.planDatabase ?? planDatabase;
+  const applyTarget = overrides.applyMigrations ?? (
+    (target: DatabaseTarget, plan: MigrationPlan, journal: UpdateJournal,
+      baselineManifest: MigrationHashManifest, targetManifest: MigrationHashManifest, migrationDirectory: string) =>
+      applyMigrations(target, plan, journal, baselineManifest, targetManifest, migrationDirectory, {
+        confirm: askConfirm,
+        promptLine: askLine,
+        saveUpdateJournal: saveJournal,
+        ...overrides.migrationApplyAdapters,
+      })
+  );
+  const pushAdapters: Partial<OfferPushAdapters> = {
+    repoRoot: root,
+    inspectGitCheckout: inspect,
+    verifyPinnedReleaseStillCurrent: verifyRelease,
+    saveUpdateJournal: saveJournal,
+    ...overrides.offerPushAdapters,
+  };
+
+  requireTerminal();
+  const releaseGuard = await acquireLock(root);
   try {
-    const checkout = await inspectGitCheckout(repoRoot);
+    const checkout = await inspect(root);
     ensureRootCheckout(checkout);
-    const currentVersion = await readPackageVersion(repoRoot);
-    const oldJournal = await loadUpdateJournal(checkout.root);
+    const currentVersion = await readVersion(root);
+    const oldJournal = await loadJournal(checkout.root);
     if (options.resume) {
       if (!oldJournal) throw new Error("UPDATE_JOURNAL_NOT_FOUND");
     } else if (oldJournal && oldJournal.phase !== "complete") {
@@ -685,29 +806,29 @@ async function runGuided(options: Options): Promise<void> {
 
     const selectedTag = options.resume ? oldJournal!.release.tag : options.releaseTag;
     const releaseOptions: Options = { ...options, releaseTag: selectedTag };
-    const release = await discoverRelease(currentVersion, releaseOptions, checkout.headCommit);
+    const release = await findRelease(currentVersion, releaseOptions, checkout.headCommit);
     if (!release) throw new Error("NO_UPDATE_AVAILABLE");
     if (release.manifest.migrationClass !== "online-compatible") {
       throw new Error(`AUTOMATED_UPDATE_CLASS_BLOCKED: ${release.manifest.migrationClass} requires a separately coordinated maintenance procedure`);
     }
     if (options.resume) journalForResume(oldJournal!, checkout, release);
 
-    const baseline = await verifyBaseline(currentVersion);
+    const baseline = await getBaseline(currentVersion);
     const baselineManifest = manifestMap(baseline);
     const targetManifest = Object.fromEntries(release.manifest.migrations.map(({ filename, sha256 }) => [filename, sha256]));
-    await verifyPinnedReleaseStillCurrent(release);
-    await fetchPinnedRelease(repoRoot, canonicalUrl, release.tag, release.commit);
+    await verifyRelease(release);
+    await fetchRelease(root, canonicalUrl, release.tag, release.commit);
 
     let journal: UpdateJournal;
     let candidatePath: string;
     let candidateBranch: string;
     if (options.resume) {
       journal = oldJournal!;
-      const durableWorktreeRoot = await getUpdateWorktreeDirectory(checkout.root);
+      const durableWorktreeRoot = await worktreeDirectory(checkout.root);
       if (!isWithinPath(durableWorktreeRoot, journal.candidate.path)) {
         throw new Error("UPDATE_CANDIDATE_PATH_UNTRUSTED: the saved candidate path is outside NOVA's updater state directory");
       }
-      let existing = await findPreparedUpdateWorktree(repoRoot, journal.candidate.branch, {
+      let existing = await findCandidate(root, journal.candidate.branch, {
         expectedOriginalHead: journal.originalHead,
         expectedTargetCommit: release.commit,
         expectedCandidateHead: journal.candidate.expectedHead,
@@ -715,14 +836,14 @@ async function runGuided(options: Options): Promise<void> {
       });
       let candidateCreatedThisRun = false;
       if (!existing) {
-        await prepareUpdateWorktree(repoRoot, {
+        await prepareCandidate(root, {
           targetCommit: release.commit,
           releaseTag: release.tag,
           expectedHead: checkout.headCommit,
           worktreePath: journal.candidate.path,
         });
         candidateCreatedThisRun = true;
-        existing = await findPreparedUpdateWorktree(repoRoot, journal.candidate.branch, {
+        existing = await findCandidate(root, journal.candidate.branch, {
           expectedOriginalHead: journal.originalHead,
           expectedTargetCommit: release.commit,
           expectedCandidateHead: journal.candidate.expectedHead,
@@ -739,21 +860,21 @@ async function runGuided(options: Options): Promise<void> {
         if (!candidateCreatedThisRun && existing.headCommit.toLowerCase() !== release.commit.toLowerCase()) {
           const adoption = `ADOPT CANDIDATE ${existing.headCommit}`;
           console.info(`The candidate merge HEAD was not saved before the previous run stopped. Review the candidate diff at ${existing.path} before adopting it.`);
-          if (await promptLine(`After review, type exactly: ${adoption}`) !== adoption) {
+          if (await askLine(`After review, type exactly: ${adoption}`) !== adoption) {
             throw new Error(`UPDATE_CANDIDATE_REVIEW_REQUIRED: candidate retained at ${existing.path}`);
           }
         }
         journal.candidate.expectedHead = existing.headCommit;
-        await saveUpdateJournal(journal);
+        await saveJournal(journal);
       }
     } else {
-      if (!await confirm(`Prepare isolated update candidate ${release.tag} at ${release.commit.slice(0, 12)}?`)) {
+      if (!await askConfirm(`Prepare isolated update candidate ${release.tag} at ${release.commit.slice(0, 12)}?`)) {
         throw new Error("UPDATE_CANCELLED");
       }
-      const worktreeParent = await getUpdateWorktreeDirectory(checkout.root);
+      const worktreeParent = await worktreeDirectory(checkout.root);
       candidatePath = await mkdtemp(join(worktreeParent, `nova-update-${release.version}-`));
       candidateBranch = `nova/update/${release.tag}`;
-      journal = newUpdateJournal({
+      journal = createJournal({
         repoRoot: checkout.root,
         originalHead: checkout.headCommit,
         release: { tag: release.tag, version: release.version, commit: release.commit },
@@ -761,10 +882,10 @@ async function runGuided(options: Options): Promise<void> {
       });
       // Journal the exact durable path before Git creates a branch or worktree.
       // A restart can then distinguish an untouched empty path from a partial merge.
-      await saveUpdateJournal(journal);
+      await saveJournal(journal);
       let candidate;
       try {
-        candidate = await prepareUpdateWorktree(repoRoot, {
+        candidate = await prepareCandidate(root, {
           targetCommit: release.commit,
           releaseTag: release.tag,
           expectedHead: checkout.headCommit,
@@ -773,7 +894,7 @@ async function runGuided(options: Options): Promise<void> {
       } catch (error) {
         if (error instanceof Error && error.message.startsWith("UPDATE_BRANCH_EXISTS")) {
           journal.phase = "complete";
-          await saveUpdateJournal(journal);
+          await saveJournal(journal);
         }
         throw error;
       }
@@ -782,22 +903,22 @@ async function runGuided(options: Options): Promise<void> {
       }
       if (candidate.status !== "prepared" || !candidate.path || !candidate.branch) {
         journal.phase = "complete";
-        await saveUpdateJournal(journal);
+        await saveJournal(journal);
         throw new Error("UPDATE_RELEASE_ALREADY_INCLUDED: this checkout already contains the pinned release; verify the package version and database state manually");
       }
       candidatePath = candidate.path;
       candidateBranch = candidate.branch;
-      const prepared = await findPreparedUpdateWorktree(repoRoot, candidateBranch, {
+      const prepared = await findCandidate(root, candidateBranch, {
         expectedOriginalHead: checkout.headCommit,
         expectedTargetCommit: release.commit,
         allowUnpinnedMerge: true,
       });
       if (!prepared) throw new Error("UPDATE_CANDIDATE_NOT_FOUND: candidate preparation could not be verified");
       journal.candidate.expectedHead = prepared.headCommit;
-      await saveUpdateJournal(journal);
+      await saveJournal(journal);
     }
 
-    const pinnedCandidate = await findPreparedUpdateWorktree(repoRoot, candidateBranch, {
+    const pinnedCandidate = await findCandidate(root, candidateBranch, {
       expectedOriginalHead: journal.originalHead,
       expectedTargetCommit: release.commit,
       expectedCandidateHead: journal.candidate.expectedHead,
@@ -807,19 +928,19 @@ async function runGuided(options: Options): Promise<void> {
     }
     if (!journal.candidate.expectedHead) {
       journal.candidate.expectedHead = pinnedCandidate.headCommit;
-      await saveUpdateJournal(journal);
+      await saveJournal(journal);
     }
 
-    const targetTree = await loadVerifiedReleaseTreeFromRoot(candidatePath);
+    const targetTree = await loadReleaseTree(candidatePath);
     assertSameManifest(targetTree.manifest, release.manifest);
-    const candidateVersion = await readPackageVersion(candidatePath);
+    const candidateVersion = await readVersion(candidatePath);
     if (candidateVersion !== release.version) throw new Error("CANDIDATE_PACKAGE_VERSION_MISMATCH");
     console.info(`Candidate ready: branch ${candidateBranch}; source ${release.commit.slice(0, 12)}; path ${candidatePath}`);
     console.info(`Migrations and manifest verified: ${targetTree.manifest.migrations.length} canonical files.`);
 
     if (options.mode === "apply") {
-      await buildCandidate(candidatePath);
-      const builtCandidate = await findPreparedUpdateWorktree(repoRoot, candidateBranch, {
+      await build(candidatePath);
+      const builtCandidate = await findCandidate(root, candidateBranch, {
         expectedOriginalHead: journal.originalHead,
         expectedTargetCommit: release.commit,
         expectedCandidateHead: journal.candidate.expectedHead,
@@ -827,16 +948,16 @@ async function runGuided(options: Options): Promise<void> {
       if (!builtCandidate || !samePath(builtCandidate.path, candidatePath)) {
         throw new Error("CANDIDATE_BUILD_DIRTY: candidate files or HEAD changed during build; inspect the retained worktree");
       }
-      const currentCheckout = await inspectGitCheckout(repoRoot);
+      const currentCheckout = await inspect(root);
       if (currentCheckout.headCommit !== checkout.headCommit || currentCheckout.dirtyPaths.length) {
         throw new Error("SOURCE_CHECKOUT_CHANGED: the source checkout changed while the candidate was being built; no database write was made");
       }
     }
 
-    const target = await chooseDatabaseTarget();
+    const target = await chooseTarget();
     assertAttemptTarget(journal, target);
     const migrationDirectory = resolve(candidatePath, "database", "migrations");
-    const pendingPlan = await planDatabase(
+    const pendingPlan = await planTarget(
       target,
       baselineManifest,
       targetManifest,
@@ -849,11 +970,11 @@ async function runGuided(options: Options): Promise<void> {
       return;
     }
 
-    const sourceAgain = await inspectGitCheckout(repoRoot);
+    const sourceAgain = await inspect(root);
     if (sourceAgain.headCommit !== checkout.headCommit || sourceAgain.dirtyPaths.length) {
       throw new Error("SOURCE_CHECKOUT_CHANGED: source changed after review; no database write was made");
     }
-    const reviewedCandidate = await findPreparedUpdateWorktree(repoRoot, candidateBranch, {
+    const reviewedCandidate = await findCandidate(root, candidateBranch, {
       expectedOriginalHead: journal.originalHead,
       expectedTargetCommit: release.commit,
       expectedCandidateHead: journal.candidate.expectedHead,
@@ -861,12 +982,12 @@ async function runGuided(options: Options): Promise<void> {
     if (!reviewedCandidate || !samePath(reviewedCandidate.path, candidatePath)) {
       throw new Error("CANDIDATE_HEAD_MISMATCH: candidate changed after review; no database write was made");
     }
-    await verifyPinnedReleaseStillCurrent(release);
-    await applyMigrations(target, pendingPlan, journal, baselineManifest, targetManifest, migrationDirectory);
-    await offerPush(checkout, candidatePath, candidateBranch, journal, release, target);
+    await verifyRelease(release);
+    await applyTarget(target, pendingPlan, journal, baselineManifest, targetManifest, migrationDirectory);
+    await offerPush(checkout, candidatePath, candidateBranch, journal, release, target, pushAdapters);
     if (journal.phase !== "complete") {
       journal.phase = "complete";
-      await saveUpdateJournal(journal);
+      await saveJournal(journal);
     }
     console.info(`Update operation complete for ${target.label}. Database and source are staged separately; check your deployment provider before calling the app updated.`);
   } finally {

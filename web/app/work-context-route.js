@@ -103,10 +103,12 @@ export function mountWorkContextRoute({
   runCommand,
   getReadIssue,
   mountIsland,
+  searchWorkContext,
   showFeatureMessage,
 } = {}) {
   if (typeof getReadIssue !== "function") throw new TypeError("getReadIssue must be a function");
   if (typeof mountIsland !== "function") throw new TypeError("mountIsland must be a function");
+  if (typeof searchWorkContext !== "function") throw new TypeError("searchWorkContext must be a function");
   if (typeof showFeatureMessage !== "function") throw new TypeError("showFeatureMessage must be a function");
 
   const issue = getReadIssue(result, "work context");
@@ -121,6 +123,10 @@ export function mountWorkContextRoute({
 
     mountIsland(target, Component, {
       readState,
+      onSearch: async (query) => {
+        const searchResult = await searchWorkContext(query);
+        return projectWorkContextExplorerRead(searchResult, getReadIssue(searchResult, "work context search"));
+      },
       departmentCreation: departmentCapability.authorizedClientIds.length
         ? departmentCapability
         : undefined,

@@ -50,11 +50,19 @@ test("People route frame uses a narrow, token-based responsive composition", () 
   assert.match(page, /container:\s*people-page\s*\/\s*inline-size/);
   assert.match(page, /width:\s*100%;/);
   assert.match(page, /min-width:\s*0;/);
-  assert.doesNotMatch(page, /max-width:|padding-inline:|margin-inline:/);
+  assert.doesNotMatch(page, /max-width:\s*\d+(?:\.\d+)?(?:px|rem|em)|padding-inline:|margin-inline:/);
   assert.match(css, /@container people-page \(max-width: 60rem\)/);
   assert.match(css, /@container people-page \(max-width: 40rem\)/);
   assert.match(css, /var\(--nova-color-border\)/);
   assert.doesNotMatch(css, /#[\da-f]{3,8}\b|rgba?\(|hsla?\(/i);
+  for (const selector of [".page", ".content", ".feature"]) {
+    const block = css.match(new RegExp(`${selector.replace(".", "\\.")}\\s*\\{([^}]*)\\}`, "s"))?.[1] || "";
+    assert.match(block, /min-width:\s*0;/);
+    assert.match(block, /max-width:\s*100%;/);
+  }
+  assert.match(css, /box-sizing:\s*border-box;/);
+  assert.match(css, /@container people-page \(max-width: 40rem\)/);
+  assert.doesNotMatch(css, /overflow-x:\s*(?:auto|scroll)/);
 });
 
 test("People host delegates composition while retaining route ownership and popstate integration", () => {

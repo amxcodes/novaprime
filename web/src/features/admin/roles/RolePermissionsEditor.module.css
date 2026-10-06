@@ -199,12 +199,27 @@
 
 @container role-editor (min-width: 40rem) and (max-width: 63.999rem) {
   .roleList, .form { padding: var(--nova-space-5); }
+}
+
+@container role-editor (min-width: 40rem) and (max-width: 47.999rem) {
+  .identityGrid, .policyGrid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@container role-editor (min-width: 48rem) and (max-width: 63.999rem) {
   .identityGrid, .policyGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @container role-editor (min-width: 64rem) {
   .editor[data-has-draft="true"] .layout { grid-template-columns: minmax(16rem, 0.72fr) minmax(0, 1.65fr); }
-  .roleList { position: sticky; inset-block-start: var(--nova-space-4); }
+  .roleList {
+    position: sticky;
+    inset-block-start: var(--nova-space-4);
+    max-block-size: 72vh;
+    max-block-size: min(72dvh, 52rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
   .identityGrid, .policyGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .formActions { justify-content: flex-end; }
 }

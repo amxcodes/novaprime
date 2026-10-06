@@ -35,6 +35,8 @@ const baseProps = {
   canCreateGroup: false,
   clientOptions: [],
   groupWorkstreamOptions: [],
+  onSearchClients: async () => [],
+  onSearchGroupWorkstreams: async () => [],
   onCreateClient: async () => {},
   onCreateClientWorkstream: async () => {},
   onCreateOrganisationWorkstream: async () => {},
@@ -60,8 +62,8 @@ test("keeps independent client and organisation forms available when parent choi
 
   assert.match(html, /New client/);
   assert.match(html, /New organisation workstream/);
-  assert.match(html, /client choices unavailable/i);
-  assert.match(html, /workstream choices unavailable/);
+  assert.match(html, /initial choices could not be loaded/i);
+  assert.match(html, /Search still checks the current authorized workstreams/i);
   assert.doesNotMatch(html, /<select\b/);
 });
 
@@ -76,6 +78,7 @@ test("uses authored searchable choices only for authorized client and group targ
   assert.match(html, /New client workstream/);
   assert.match(html, /New group/);
   assert.match(html, /role="combobox"/);
+  assert.match(html, /aria-autocomplete="list"/);
   assert.match(html, /Client/);
   assert.match(html, /Workstream/);
   assert.doesNotMatch(html, /<select\b/);

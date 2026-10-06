@@ -4,11 +4,10 @@ import type {
   WfhPolicyDraft,
   WfhPolicyFieldErrors,
   WfhPolicyOverridesProps,
-  WfhPolicyTargetOption,
   WfhPolicyTargetReadState,
   WfhPolicyTargetType,
 } from "./wfh-policy-contracts";
-import { buildWfhPolicyInput, wfhPolicyTargetLabel, wfhPolicyTargetTypeLabel } from "./wfh-policy-model";
+import { buildWfhPolicyInput, wfhPolicyTargetTypeLabel } from "./wfh-policy-model";
 import styles from "./WfhPolicyOverrides.module.css";
 
 const targetTypes: ReadonlyArray<WfhPolicyTargetType> = ["office", "organisation_department", "person"];
@@ -19,26 +18,13 @@ export function availableWfhPolicyTargetTypes(
 ): WfhPolicyTargetType[] {
   return targetTypes.filter((type) => {
     const read = targetReads[type];
-    return read.status === "ready" && read.targets.length > 0;
+    return read.status === "ready";
   });
 }
 
 export function projectWfhPolicyTargetTypeOptions(types: ReadonlyArray<WfhPolicyTargetType>) {
   return types.map((type) => ({ value: type, label: wfhPolicyTargetTypeLabel(type) }));
 }
-
-export function projectWfhPolicyTargetOptions(targets: ReadonlyArray<WfhPolicyTargetOption>) {
-  return [
-    { value: "", label: "Choose a target" },
-    ...targets.map((target) => ({ value: target.id, label: wfhPolicyTargetLabel(target) })),
-  ];
-}
-
-type TargetReadProblem = Readonly<{
-  type: WfhPolicyTargetType;
-  status: "error" | "loading";
-  message: string;
-}>;
 
 export function WfhPolicyOverrides(props: WfhPolicyOverridesProps) {
   const idPrefix = useId();
@@ -60,9 +46,7 @@ export function WfhPolicyOverrides(props: WfhPolicyOverridesProps) {
   const targetType = preferredTargetType && availableTypes.includes(preferredTargetType)
     ? preferredTargetType
     : availableTypes[0] ?? null;
-  const availableTargets = targetType ? props.targetReads[targetType].targets : [];
-  const availableTargetOptions = useMemo(() => projectWfhPolicyTargetOptions(availableTargets), [availableTargets]);
-  const selectedTargetId = availableTargets.some((target) => target.id === targetId) ? targetId : "";
+  const selectedTargetId = targetId;
   const createError = props.createError?.trim() || localCreateError;
   const isBusy = submitting || props.isCreating === true;
   const errorsId = `${idPrefix}-create-errors`;
@@ -72,13 +56,6 @@ export function WfhPolicyOverrides(props: WfhPolicyOverridesProps) {
   }, [createError]);
 
   if (!props.canView && !props.canManage) return null;
-
-  const targetReadProblems = props.canManage ? targetTypes.flatMap<TargetReadProblem>((type) => {
-    const read = props.targetReads[type];
-    if (read.status === "error") return [{ type, status: "error" as const, message: read.error?.trim() || `Could not load ${wfhPolicyTargetTypeLabel(type).toLowerCase()} targets.` }];
-    if (read.status === "loading") return [{ type, status: "loading" as const, message: `${wfhPolicyTargetTypeLabel(type)} targets are still loading.` }];
-    return [];
-  }) : [];
 
   function clearFormErrors() {
     if (Object.keys(fieldErrors).length) setFieldErrors({});
@@ -98,7 +75,7 @@ export function WfhPolicyOverrides(props: WfhPolicyOverridesProps) {
       effectiveUntil,
       reason,
     };
-    const result = buildWfhPolicyInput(draft, availableTargets);
+    const result = buildWfhPolicyInput(draft);
     if (!result.input) {
       setFieldErrors(result.errors);
       setLocalCreateError("Check the highlighted fields before adding this override.");
@@ -172,31 +149,10 @@ export function WfhPolicyOverrides(props: WfhPolicyOverridesProps) {
     }
   })();
 
-  const canRenderForm = props.canManage && Boolean(targetType);
-  const hasTargetReadError = targetReadProblems.some((problem) => problem.status === "error");
-  const hasTargetReadLoading = targetReadProblems.some((problem) => problem.status === "loading");
+  const canRenderForm = props.canManage && Boolean(targetType) && Boolean(props.onSearchTargets);
 
   return (
     <div className={styles.section} aria-busy={isBusy || undefined}>
-      {props.canManage && targetReadProblems.length > 0 ? (
-        <div className={styles.targetReadNotices} role="group" aria-label="Target list status">
-          {targetReadProblems.map((problem) => (
-            <StateMessage
-              key={problem.type}
-              kind={problem.status === "error" ? "warning" : "info"}
-              title={`${wfhPolicyTargetTypeLabel(problem.type)} targets ${problem.status === "error" ? "unavailable" : "loading"}`}
-            >
-              {problem.message}
-              {availableTypes.length
-                ? " Available target categories remain usable."
-                : problem.status === "loading"
-                  ? " Override creation is available when a target list loads."
-                  : " Override creation is unavailable until a target list can be provided."}
-            </StateMessage>
-          ))}
-        </div>
-      ) : null}
-
       <div className={styles.workspace}>
         {props.canManage ? (
           <section className={styles.panel} aria-labelledby={`${idPrefix}-create-heading`}>
@@ -241,16 +197,20 @@ export function WfhPolicyOverrides(props: WfhPolicyOverridesProps) {
                   id={`${idPrefix}-target`}
                   name="targetId"
                   label="Target"
-                  hint="Only target options supplied for this authorized form are shown."
+                  hint="Search the targets available to your current permissions."
                   value={selectedTargetId}
-                  options={availableTargetOptions}
+                  options={[]}
+                  searchMode="remote"
+                  onSearch={(query) => props.onSearchTargets
+                    ? props.onSearchTargets(targetType!, query)
+                    : Promise.resolve([])}
                   placeholder="Choose a target"
                   emptyMessage="No authorized targets match this search."
+                  searchErrorMessage="Target options could not be loaded. Edit the search to try again."
                   required
                   disabled={isBusy}
                   error={fieldErrors.targetId}
                   onChange={(value) => {
-                    if (value && !availableTargets.some((target) => target.id === value)) return;
                     setTargetId(value);
                     clearFormErrors();
                   }}
@@ -313,13 +273,7 @@ export function WfhPolicyOverrides(props: WfhPolicyOverridesProps) {
               </form>
             ) : (
               <div className={styles.noTargets}>
-                {hasTargetReadLoading ? (
-                  <StateMessage kind="loading" title="Loading override targets">Target options are being prepared.</StateMessage>
-                ) : hasTargetReadError ? (
-                  <StateMessage kind="warning" title="Override targets unavailable">No target list is ready. Resolve an available target-list error before creating an override.</StateMessage>
-                ) : (
-                  <EmptyState title="No target options available" description="Creating an override also needs a separately authorized office, department, or people list." />
-                )}
+                <EmptyState title="No target options available" description="Choose an office, department, or person category covered by your current permissions." />
               </div>
             )}
           </section>

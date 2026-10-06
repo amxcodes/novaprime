@@ -103,8 +103,34 @@ export function createAdminWorkOperationsRoute({
       if (!task || !taskAllowsAssignmentOptions(task)) {
         throw adminCommandUiError("Your current access does not allow assignment choices for this task.");
       }
+      if (typeof readOptions.query === "string") {
+        const query = readOptions.query.trim();
+        const path = `/api/tasks/${encodeURIComponent(taskId)}/assignment-options?q=${encodeURIComponent(query)}`;
+        return pageApi(path, lifetime).then((result) => {
+          ensureCurrentMount();
+          const options = projectAssignmentOptions(result);
+          const cached = assignmentOptionsByTask.get(taskId);
+          if (cached?.settled) {
+            const merge = (current, incoming) => [...current, ...incoming.filter((candidate) =>
+              !current.some((existing) => existing.id === candidate.id))];
+            cached.options = {
+              assignees: merge(cached.options.assignees, options.assignees),
+              reviewers: merge(cached.options.reviewers, options.reviewers),
+            };
+          }
+          return options;
+        }).catch((error) => {
+          if (!mountIsCurrent()) {
+            throw adminCommandUiError("The Admin page or account changed. Refresh Admin before trying again.");
+          }
+          if (error?.uiMessage) throw error;
+          throw adminCommandUiError(errorText(error));
+        });
+      }
       const cached = assignmentOptionsByTask.get(taskId);
-      if (cached && (readOptions.refresh !== true || cached.settled !== true)) return cached.promise;
+      if (cached && (readOptions.refresh !== true || cached.settled !== true)) {
+        return cached.settled ? Promise.resolve(cached.options) : cached.promise;
+      }
       if (cached) assignmentOptionsByTask.delete(taskId);
 
       const entry = { promise: null, options: null, settled: false };

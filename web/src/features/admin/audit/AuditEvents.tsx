@@ -1,24 +1,7 @@
-import { useState } from "react";
-import { Button, Field, Input, Select, StateMessage, type SelectOption } from "../../../design-system";
-import type { AuditEventSummary, AuditEventsProps } from "./contracts";
+import { useEffect, useRef, useState } from "react";
+import { Button, Field, Input, StateMessage } from "../../../design-system";
+import type { AuditEventSummary, AuditEventsProps, AuditReadState } from "./contracts";
 import styles from "./AuditEvents.module.css";
-
-const ALL_ACTIONS = "all-actions";
-
-export function filterAuditEvents(
-  events: readonly AuditEventSummary[],
-  filters: { search: string; action: string | null },
-): AuditEventSummary[] {
-  const query = filters.search.trim().toLocaleLowerCase();
-  return events.filter((event) => {
-    if (filters.action !== null && event.action !== filters.action) return false;
-    if (!query) return true;
-    const actor = event.actorName || "System";
-    return `${event.action} ${actionLabel(event.action)} ${actor}`
-      .toLocaleLowerCase()
-      .includes(query);
-  });
-}
 
 function timestamp(value: string): { iso: string; label: string } | null {
   const parsed = new Date(value);
@@ -69,24 +52,55 @@ function EventRow({ event }: { event: AuditEventSummary }) {
   );
 }
 
-export function AuditEvents({ readState }: AuditEventsProps) {
-  const [search, setSearch] = useState("");
-  const [action, setAction] = useState<string | null>(null);
+type SearchState = {
+  query: string;
+  status: "idle" | "loading" | "ready" | "error";
+  result?: AuditReadState;
+  message?: string;
+};
 
-  const actions = readState.status === "ready"
-    ? [...new Set(readState.events.map((event) => event.action))]
-      .sort((left, right) => actionLabel(left).localeCompare(actionLabel(right)) || left.localeCompare(right))
-    : [];
-  const actionValues = action !== null && !actions.includes(action)
-    ? [...actions, action].sort((left, right) => actionLabel(left).localeCompare(actionLabel(right)) || left.localeCompare(right))
-    : actions;
-  const actionOptions: readonly SelectOption[] = [
-    { value: ALL_ACTIONS, label: "All actions" },
-    ...actionValues.map((value) => ({ value: JSON.stringify(value), label: actionLabel(value) })),
-  ];
-  const filteredEvents = readState.status === "ready"
-    ? filterAuditEvents(readState.events, { search, action })
-    : [];
+export function AuditEvents({ readState, onSearch }: AuditEventsProps) {
+  const generation = useRef(0);
+  const [search, setSearch] = useState("");
+  const [searchState, setSearchState] = useState<SearchState>({ query: "", status: "idle" });
+  const query = search.trim();
+  const searching = query.length > 0;
+
+  useEffect(() => {
+    const currentGeneration = ++generation.current;
+    if (!query) {
+      setSearchState({ query: "", status: "idle" });
+      return;
+    }
+
+    setSearchState({ query, status: "loading" });
+    const timer = window.setTimeout(() => {
+      void onSearch({ search: query, action: null }).then((result) => {
+        if (currentGeneration !== generation.current) return;
+        setSearchState({ query, status: "ready", result });
+      }).catch((error: unknown) => {
+        if (currentGeneration !== generation.current) return;
+        const message = error instanceof Error ? error.message.trim() : "";
+        setSearchState({
+          query,
+          status: "error",
+          message: message || "Audit search could not be completed. Try again.",
+        });
+      });
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+      generation.current += 1;
+    };
+  }, [onSearch, query]);
+
+  const activeSearch = searching && searchState.query === query ? searchState : undefined;
+  const activeRead = searching
+    ? activeSearch?.status === "ready" ? activeSearch.result : undefined
+    : readState;
+  const rows = activeRead?.status === "ready" ? activeRead.events : [];
+  const searchable = readState.status === "ready" || readState.status === "empty";
 
   return (
     <section className={styles.section} aria-labelledby="admin-audit-title">
@@ -114,83 +128,52 @@ export function AuditEvents({ readState }: AuditEventsProps) {
         </StateMessage>
       ) : null}
 
-      {readState.status === "empty" ? (
-        <>
-          <div className={styles.empty}>
-            <h3 className={styles.emptyTitle}>No audit events</h3>
-            <p>No events were returned for this view.</p>
-          </div>
-          <p className={styles.scopeNote}>This view contains only events returned by the request (maximum {readState.requestLimit}).</p>
-        </>
-      ) : null}
-
-      {readState.status === "ready" ? (
+      {searchable ? (
         <div className={styles.collection}>
           <p className={styles.scopeNote}>
-            {readState.events.length} loaded · request limit {readState.requestLimit}. Only returned events are shown.
+            Search runs on the server across organisation events; each response is limited to the 50 newest matches.
           </p>
-          {readState.events.length ? (
-            <>
-              <div className={styles.filters}>
-                <Field className={styles.searchField} label="Search loaded actions and actors">
-                  {(control) => (
-                    <Input
-                      {...control}
-                      type="search"
-                      value={search}
-                      onChange={(event) => setSearch(event.currentTarget.value)}
-                    />
-                  )}
-                </Field>
-                <div className={styles.actionFilter}>
-                  <Select
-                    label="Action"
-                    value={action === null ? ALL_ACTIONS : JSON.stringify(action)}
-                    options={actionOptions}
-                    onChange={(value) => {
-                      if (value === ALL_ACTIONS) {
-                        setAction(null);
-                        return;
-                      }
-                      try {
-                        const selected: unknown = JSON.parse(value);
-                        setAction(typeof selected === "string" ? selected : null);
-                      } catch {
-                        setAction(null);
-                      }
-                    }}
-                  />
-                </div>
-                {search || action !== null ? (
-                  <Button
-                    className={styles.clearButton}
-                    variant="quiet"
-                    onClick={() => { setSearch(""); setAction(null); }}
-                  >
-                    Clear filters
-                  </Button>
-                ) : null}
-              </div>
-              <p className={styles.scopeNote} role="status" aria-live="polite">
-                {filteredEvents.length} of {readState.events.length} loaded events shown. Filters apply only to this request’s returned rows.
-              </p>
-              {filteredEvents.length ? (
-                <ol className={styles.events} aria-label="Most recent audit events">
-                  {filteredEvents.map((event) => <EventRow key={event.id} event={event} />)}
-                </ol>
-              ) : (
-                <div className={styles.empty} role="status">
-                  <h3 className={styles.emptyTitle}>No loaded events match these filters</h3>
-                  <p>Clear the filters to see the loaded recent activity.</p>
-                </div>
+          <div className={styles.filters}>
+            <Field className={styles.searchField} label="Search audit actions and actors">
+              {(control) => (
+                <Input
+                  {...control}
+                  type="search"
+                  maxLength={100}
+                  value={search}
+                  onChange={(event) => setSearch(event.currentTarget.value)}
+                />
               )}
+            </Field>
+            {searching ? (
+              <Button className={styles.clearButton} variant="quiet" onClick={() => setSearch("")}>
+                Clear search
+              </Button>
+            ) : null}
+          </div>
+
+          {searching && (!activeSearch || activeSearch.status === "loading") ? (
+            <p className={styles.scopeNote} role="status" aria-live="polite">Searching audit activity…</p>
+          ) : null}
+          {activeSearch?.status === "error" ? (
+            <StateMessage kind="error" title="Audit search could not be completed">{activeSearch.message}</StateMessage>
+          ) : null}
+          {activeRead?.status === "ready" ? (
+            <>
+              <p className={styles.scopeNote} role="status" aria-live="polite">
+                {rows.length} matching event{rows.length === 1 ? "" : "s"} returned (maximum 50).
+              </p>
+              <ol className={styles.events} aria-label="Most recent audit events">
+                {rows.map((event) => <EventRow key={event.id} event={event} />)}
+              </ol>
             </>
-          ) : (
-            <div className={styles.empty}>
-              <h3 className={styles.emptyTitle}>No audit events</h3>
-              <p>No events were returned for this view.</p>
+          ) : null}
+          {activeRead?.status === "empty" ? (
+            <div className={styles.empty} role="status">
+              <h3 className={styles.emptyTitle}>{searching ? "No events match this search" : "No audit events"}</h3>
+              <p>{searching ? "Try a different action or actor name." : "No events were returned for this view."}</p>
             </div>
-          )}
+          ) : null}
         </div>
       ) : null}
     </section>

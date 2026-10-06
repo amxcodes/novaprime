@@ -35,6 +35,11 @@
   background: var(--nova-color-info-surface);
 }
 
+.badge > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .dot {
   width: 0.375rem;
   height: 0.375rem;

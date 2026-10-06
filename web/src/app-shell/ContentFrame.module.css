@@ -24,7 +24,10 @@
 
 @media (max-width: 639px) {
   .inner {
-    padding: var(--nova-space-4) var(--nova-space-3) calc(5rem + env(safe-area-inset-bottom));
+    padding-block-start: var(--nova-space-4);
+    padding-block-end: calc(5rem + env(safe-area-inset-bottom));
+    padding-inline-start: max(var(--nova-space-3), env(safe-area-inset-left));
+    padding-inline-end: max(var(--nova-space-3), env(safe-area-inset-right));
   }
 }
 

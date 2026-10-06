@@ -7,6 +7,11 @@
   min-width: 0;
 }
 
+.choiceShell input {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 .choiceInputHasClear {
   padding-inline-end: 4.5rem;
 }
@@ -23,6 +28,7 @@
   box-shadow: var(--nova-select-popup-shadow);
   overscroll-behavior: contain;
   touch-action: pan-y;
+  scrollbar-gutter: stable;
 }
 
 .listbox {
@@ -39,8 +45,9 @@
   justify-content: space-between;
   gap: var(--nova-space-3);
   padding: var(--nova-space-2) var(--nova-space-3);
-  border-radius: var(--nova-radius-control);
+  border-radius: calc(var(--nova-radius-control) - var(--nova-space-1));
   cursor: pointer;
+  outline: none;
 }
 
 .option:hover,
@@ -68,6 +75,8 @@
 .optionLabel {
   overflow-wrap: anywhere;
   font-size: var(--nova-type-size-sm);
+  font-weight: var(--nova-type-weight-medium);
+  line-height: var(--nova-type-line-normal);
 }
 
 .optionDetail {
@@ -83,10 +92,18 @@
 }
 
 .noResults {
+  display: flex;
+  min-height: var(--nova-control-height);
+  align-items: center;
   padding: var(--nova-space-3);
   color: var(--nova-color-text-secondary);
   font-size: var(--nova-type-size-sm);
   line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
+}
+
+.noResults[data-state="error"] {
+  color: var(--nova-color-danger);
 }
 
 .clearChoice {

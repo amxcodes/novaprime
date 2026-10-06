@@ -7,24 +7,6 @@ import type {
   RoleTargetScope,
 } from "./contracts";
 
-export function filterRoleRecords(
-  roles: ReadonlyArray<RoleRecord>,
-  query: string,
-): RoleRecord[] {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) return [...roles];
-  return roles.filter((role) => {
-    const status = [
-      role.isProtected ? "protected super admin" : "custom role",
-      role.archivedAt ? "archived" : "active",
-    ];
-    return [role.name, role.key, ...status]
-      .join(" ")
-      .toLowerCase()
-      .includes(normalizedQuery);
-  });
-}
-
 export const ROLE_SCOPE_LABELS: Readonly<Record<RolePermissionScope, string>> = {
   organisation: "Organisation",
   own_record: "Own record",
@@ -55,6 +37,7 @@ export function roleScopeChoices(
   permission: PermissionCatalogueEntry,
   targetReads: RoleScopeTargetReads,
   savedScope?: string,
+  remoteTargetSearch = false,
 ): RoleScopeChoice[] {
   const allowedScopes: readonly string[] = permission.allowedScopes.length
     ? permission.allowedScopes
@@ -66,9 +49,9 @@ export function roleScopeChoices(
     const targetScope = targetScopeByScope[scope as RolePermissionScope];
     const targetRead = targetScope ? targetReads[targetScope] : undefined;
     let unavailableReason: string | undefined;
-    if (targetRead && targetRead.status !== "ready") {
+    if (!remoteTargetSearch && targetRead && targetRead.status !== "ready") {
       unavailableReason = targetRead.message || `${ROLE_SCOPE_LABELS[scope as RolePermissionScope]} targets are unavailable.`;
-    } else if (targetRead && targetRead.options.length === 0) {
+    } else if (!remoteTargetSearch && targetRead && targetRead.options.length === 0) {
       unavailableReason = `No ${ROLE_SCOPE_LABELS[scope as RolePermissionScope].toLowerCase()} targets are available.`;
     } else if (savedScope === scope && !allowedScopes.includes(scope)) {
       unavailableReason = "This saved scope is absent from the current permission catalogue. It is kept unchanged for review.";
@@ -85,8 +68,13 @@ export function roleScopeChoices(
   });
 }
 
-export function assignableRoleScopes(permission: PermissionCatalogueEntry, targetReads: RoleScopeTargetReads): string[] {
-  return roleScopeChoices(permission, targetReads).filter((choice) => !choice.disabled).map((choice) => choice.value);
+export function assignableRoleScopes(
+  permission: PermissionCatalogueEntry,
+  targetReads: RoleScopeTargetReads,
+  remoteTargetSearch = false,
+): string[] {
+  return roleScopeChoices(permission, targetReads, undefined, remoteTargetSearch)
+    .filter((choice) => !choice.disabled).map((choice) => choice.value);
 }
 
 export function roleGrantTargetId(grant: Partial<RolePermissionGrant> | null | undefined): string {

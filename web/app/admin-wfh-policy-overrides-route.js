@@ -23,6 +23,7 @@ export function createWfhPolicyOverridesRoute({
   setMessage,
   renderAdminContent,
   showFeedback,
+  searchTargets,
 } = {}) {
   const callbacks = {
     isCurrentPageRequest,
@@ -48,26 +49,6 @@ export function createWfhPolicyOverridesRoute({
   }
   if (!state || !target || !lifetime) throw new TypeError("state, target, and lifetime are required");
 
-  function currentTargetRows(adminData, targetType) {
-    if (!adminData || !adminData.actorGrants) return null;
-    if (targetType === "office") {
-      if (!hasPermissionGrant(adminData.actorGrants, "organisation.settings.manage") || adminData.offices?.readError ||
-          !Array.isArray(adminData.offices?.offices)) return null;
-      return adminData.offices.offices;
-    }
-    if (targetType === "organisation_department") {
-      if (!hasPermissionGrant(adminData.actorGrants, "organisation.settings.manage") || adminData.departments?.readError ||
-          !Array.isArray(adminData.departments?.departments)) return null;
-      return adminData.departments.departments;
-    }
-    if (targetType === "person") {
-      if (!canViewAdminPeople(adminData.actorGrants) || adminData.people?.readError ||
-          !Array.isArray(adminData.people?.people)) return null;
-      return adminData.people.people;
-    }
-    return null;
-  }
-
   async function create(input, data) {
     const currentData = state.adminData;
     if (!target.isConnected || !isCurrentPageRequest(lifetime) || currentData !== data ||
@@ -77,10 +58,15 @@ export function createWfhPolicyOverridesRoute({
     if (!hasPermissionGrant(currentData.actorGrants, "availability.wfh_policy.manage")) {
       throw adminCommandUiError("Your current access no longer allows WFH override management. Refresh Admin to check access.");
     }
-    const authorizedTargets = currentTargetRows(currentData, input?.targetType);
-    if (!Array.isArray(authorizedTargets) || typeof input?.targetId !== "string" ||
-        !authorizedTargets.some((row) => row.id === input.targetId)) {
-      throw adminCommandUiError("This target is no longer in the currently authorized options. Refresh Admin and choose again.");
+    if ((input?.targetType === "office" || input?.targetType === "organisation_department") &&
+        !hasPermissionGrant(currentData.actorGrants, "organisation.settings.manage")) {
+      throw adminCommandUiError("Your current access no longer allows selecting this WFH target. Refresh Admin to check permissions.");
+    }
+    if (input?.targetType === "person" && !canViewAdminPeople(currentData.actorGrants)) {
+      throw adminCommandUiError("Your current access no longer allows viewing this person. Refresh Admin to check permissions.");
+    }
+    if (typeof input?.targetId !== "string" || !input.targetId.trim()) {
+      throw adminCommandUiError("Choose a WFH target before adding the override.");
     }
 
     const context = captureCommandContext(target);
@@ -151,21 +137,22 @@ export function createWfhPolicyOverridesRoute({
       },
       targets: {
         office: {
-          result: data.offices,
+          result: { readState: "remote" },
           authorized: hasPermissionGrant(currentGrantRead, "organisation.settings.manage"),
           issue: adminReadIssue(data.offices, "office override targets"),
         },
         organisation_department: {
-          result: data.departments,
+          result: { readState: "remote" },
           authorized: hasPermissionGrant(currentGrantRead, "organisation.settings.manage"),
           issue: adminReadIssue(data.departments, "department override targets"),
         },
         person: {
-          result: data.people,
+          result: { readState: "remote" },
           authorized: canViewAdminPeople(currentGrantRead),
           issue: adminReadIssue(data.people, "person override targets"),
         },
       },
+      onSearchTargets: searchTargets,
       onCreate: (input) => create(input, data),
     };
   }

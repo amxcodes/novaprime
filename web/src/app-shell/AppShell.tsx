@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 import { ContentFrame } from "./ContentFrame";
 import { DesktopSidebar, MobileBottomNavigation, NavigationDrawer } from "./Navigation";
 import type { AppShellProps } from "./contracts";
@@ -19,6 +19,7 @@ export function AppShell({
 }: AppShellProps) {
   const drawerId = `nova-navigation-${useId()}`;
   const [navigationOpen, setNavigationOpen] = useState(false);
+  const navigationTriggerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const expandedViewport = window.matchMedia(EXPANDED_NAVIGATION_MEDIA_QUERY);
@@ -29,7 +30,10 @@ export function AppShell({
     return () => expandedViewport.removeEventListener("change", closeDrawerOnExpand);
   }, []);
 
-  const openNavigation = () => setNavigationOpen(true);
+  const openNavigation = (event: MouseEvent<HTMLButtonElement>) => {
+    navigationTriggerRef.current = event.currentTarget;
+    setNavigationOpen(true);
+  };
   const closeNavigation = () => setNavigationOpen(false);
 
   return (
@@ -65,6 +69,7 @@ export function AppShell({
         groups={navigation}
         onClose={closeNavigation}
         onNavigate={onNavigate}
+        restoreFocus={() => navigationTriggerRef.current}
         sidebarFooter={sidebarFooter}
       />
       <MobileBottomNavigation

@@ -33,6 +33,8 @@ export interface RolePermissionsProjectionInput {
   permissions: CollectionInput;
   targetReads: Readonly<Record<RoleTargetScope, RoleTargetReadInput>>;
   formatError: RolePermissionsEditorProps["formatError"];
+  onSearch: (query: string) => Promise<unknown>;
+  onSearchTargets?: NonNullable<RolePermissionsEditorProps["onSearchTargets"]>;
   onCreate: RolePermissionsEditorProps["onCreate"];
   onUpdate: RolePermissionsEditorProps["onUpdate"];
 }
@@ -114,6 +116,12 @@ function collectionRows<T>(result: unknown, key: string, project: (value: unknow
   return rows.some((row) => row === null) ? null : rows as T[];
 }
 
+function projectRoleSearchResult(value: unknown): RoleRecord[] {
+  const roles = collectionRows(value, "roles", projectRole);
+  if (roles === null) throw new Error("The role search response could not be read. Refresh Admin to try again.");
+  return roles;
+}
+
 function readError(result: unknown): string | null {
   return isRecord(result) && typeof result.readError === "string" ? result.readError : null;
 }
@@ -181,7 +189,16 @@ export function projectRolePermissionsEditorProps(
     roles,
     permissions,
     targetReads,
+    onSearchTargets: input.onSearchTargets ? async (scope, query) => {
+      const result = await input.onSearchTargets!(scope, query);
+      if (!Array.isArray(result) || result.some((target) =>
+        !target || typeof target.id !== "string" || typeof target.name !== "string")) {
+        throw new Error("The authorized scope target response could not be read. Refresh Admin to try again.");
+      }
+      return result.slice(0, 30).map(({ id, name }) => ({ id, name }));
+    } : undefined,
     formatError: input.formatError,
+    onSearch: async (query) => projectRoleSearchResult(await input.onSearch(query)),
     onCreate: input.onCreate,
     onUpdate: input.onUpdate,
   };

@@ -7,11 +7,14 @@
 
 .header {
   display: flex;
+  min-width: 0;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--nova-space-5);
   padding-block: var(--nova-space-4) var(--nova-space-6);
 }
+
+.header > div { min-width: 0; }
 
 .eyebrow,
 .previewOverline {
@@ -25,18 +28,23 @@
 }
 
 .title {
+  min-width: 0;
   margin: 0;
   font-size: var(--nova-type-size-xl);
   font-weight: var(--nova-type-weight-semibold);
   letter-spacing: -0.035em;
   line-height: var(--nova-type-line-tight);
+  overflow-wrap: anywhere;
 }
 
 .intro {
+  min-width: 0;
   max-width: 44rem;
   margin: var(--nova-space-2) 0 0;
   color: var(--nova-color-text-secondary);
   font-size: var(--nova-type-size-sm);
+  line-height: var(--nova-type-line-normal);
+  overflow-wrap: anywhere;
 }
 
 .statusRow {
@@ -51,6 +59,12 @@
   color: var(--nova-color-text-secondary);
   background: var(--nova-color-surface);
   font-size: var(--nova-type-size-sm);
+}
+
+.statusRow > [role="status"] {
+  min-width: 0;
+  flex: 1 1 14rem;
+  overflow-wrap: anywhere;
 }
 
 .statusDot {
@@ -104,6 +118,7 @@
 
 .conflict h3,
 .conflict p { margin: 0; }
+.conflict > div:first-child { min-width: 0; overflow-wrap: anywhere; }
 .conflict h3 { font-size: var(--nova-type-size-md); font-weight: var(--nova-type-weight-semibold); }
 .conflict p { margin-top: var(--nova-space-1); color: var(--nova-color-text-secondary); font-size: var(--nova-type-size-sm); }
 .conflictActions { display: flex; flex: none; flex-wrap: wrap; gap: var(--nova-space-2); }
@@ -319,6 +334,8 @@
 }
 
 .previewCopy { display: grid; min-width: 0; gap: var(--nova-space-1); }
+.previewCopy strong,
+.previewCopy > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .previewCopy strong { font-size: var(--nova-type-size-sm); font-weight: var(--nova-type-weight-semibold); }
 .previewCopy > span:last-child { color: var(--nova-color-text-secondary); font-size: var(--nova-type-size-xs); }
 .previewOverline { margin-bottom: 0; }
@@ -352,6 +369,8 @@
 @container appearance-editor (max-width: 36rem) {
   .header { flex-direction: column; align-items: stretch; }
   .header > button { align-self: flex-start; }
+  .statusRow { align-items: flex-start; }
+  .statusDot { margin-block-start: 0.35em; }
   .choices[data-columns="three"] { grid-template-columns: 1fr; }
   .conflict { flex-direction: column; }
   .conflictActions { width: 100%; }

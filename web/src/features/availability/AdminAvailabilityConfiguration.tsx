@@ -180,11 +180,15 @@ function CalendarConfiguration({
   offices,
   shiftTargets,
   onCreate,
+  searchOffices,
+  searchShifts,
 }: {
   resource: AvailabilityResource<AvailabilityCalendar>;
   offices: AvailabilityReadState<AvailabilityOfficeOption>;
   shiftTargets: AdminAvailabilityConfigurationProps["shiftTargets"];
   onCreate: AdminAvailabilityConfigurationProps["onCreateCalendar"];
+  searchOffices: AdminAvailabilityConfigurationProps["searchOffices"];
+  searchShifts: AdminAvailabilityConfigurationProps["searchShifts"];
 }) {
   const id = useId();
   const [draft, setDraft] = useState<CalendarDraft>(() => ({
@@ -198,15 +202,9 @@ function CalendarConfiguration({
   const [feedback, setFeedback] = useState<{ message: string; error: boolean }>({ message: "", error: false });
   if (!resource.visible) return null;
 
-  const officesReady = offices.status === "ready" && offices.data.length > 0;
-  const shiftsReady = shiftTargets.visible && shiftTargets.read.status === "ready" && shiftTargets.read.data.length > 0;
+  const officesReady = offices.status === "ready";
+  const shiftsReady = shiftTargets.visible && shiftTargets.read.status === "ready";
   const targetsReady = officesReady && shiftsReady;
-  const officeOptions = offices.status === "ready"
-    ? offices.data.map((office) => ({ value: office.id, label: office.name }))
-    : [];
-  const shiftOptions = shiftTargets.read.status === "ready"
-    ? shiftTargets.read.data.map((shift) => ({ value: shift.id, label: shift.name }))
-    : [];
   const update = <K extends keyof CalendarDraft>(key: K, value: CalendarDraft[K]) => {
     setDraft((previous) => ({ ...previous, [key]: value }));
     setFeedback({ message: "", error: false });
@@ -244,14 +242,10 @@ function CalendarConfiguration({
       {resource.canManage ? (
         <div className={styles.calendarContent}>
           <div className={styles.targetStates}>
-            {offices.status !== "ready" ? <ResourceError read={offices} label="Office choices" /> : !offices.data.length ? (
-              <StateMessage kind="warning" title="No office targets available">Create an office before assigning a working calendar.</StateMessage>
-            ) : null}
+            {offices.status !== "ready" ? <ResourceError read={offices} label="Office choices" /> : null}
             {!shiftTargets.visible ? (
               <StateMessage kind="warning" title="Shift choices unavailable">The host did not provide shift targets for calendar setup.</StateMessage>
-            ) : shiftTargets.read.status !== "ready" ? <ResourceError read={shiftTargets.read} label="Shift choices" /> : !shiftTargets.read.data.length ? (
-              <StateMessage kind="warning" title="No shift targets available">Create a shift before assigning working days.</StateMessage>
-            ) : null}
+            ) : shiftTargets.read.status !== "ready" ? <ResourceError read={shiftTargets.read} label="Shift choices" /> : null}
           </div>
           {targetsReady ? (
             <form className={styles.form} onSubmit={submit}>
@@ -261,9 +255,13 @@ function CalendarConfiguration({
                   label="Office"
                   name="officeId"
                   value={draft.officeId}
-                  options={officeOptions}
+                  options={[]}
+                  searchMode="remote"
+                  onSearch={(query) => searchOffices("calendar", query)}
+                  searchErrorMessage="Office choices could not be loaded. Edit the search to try again."
                   placeholder="Choose office"
                   emptyMessage="No available offices match this search."
+                  hint="Search offices available for calendar management."
                   clearLabel="Clear office selection"
                   required
                   onChange={(value) => update("officeId", value)}
@@ -287,9 +285,13 @@ function CalendarConfiguration({
                           id={`${id}-shift-${rule.weekday}`}
                           label={`Shift for ${day}`}
                           value={rule.shiftId}
-                          options={shiftOptions}
+                          options={[]}
+                          searchMode="remote"
+                          onSearch={searchShifts}
+                          searchErrorMessage="Shift choices could not be loaded. Edit the search to try again."
                           placeholder="Choose shift"
                           emptyMessage="No available shifts match this search."
+                          hint="Search active shifts available to this calendar."
                           clearLabel={`Clear shift for ${day}`}
                           disabled={!rule.isWorking}
                           required={rule.isWorking}
@@ -332,10 +334,12 @@ function HolidayConfiguration({
   resource,
   offices,
   onCreate,
+  searchOffices,
 }: {
   resource: AvailabilityResource<AvailabilityHoliday>;
   offices: AvailabilityReadState<AvailabilityOfficeOption>;
   onCreate: AdminAvailabilityConfigurationProps["onCreateHoliday"];
+  searchOffices: AdminAvailabilityConfigurationProps["searchOffices"];
 }) {
   const id = useId();
   const [draft, setDraft] = useState<HolidayDraft>({ name: "", date: "", officeId: "" });
@@ -343,10 +347,7 @@ function HolidayConfiguration({
   const mutationLock = useRef(false);
   const [feedback, setFeedback] = useState<{ message: string; error: boolean }>({ message: "", error: false });
   if (!resource.visible) return null;
-  const officesReady = offices.status === "ready" && offices.data.length > 0;
-  const officeOptions = offices.status === "ready"
-    ? offices.data.map((office) => ({ value: office.id, label: office.name }))
-    : [];
+  const officesReady = offices.status === "ready";
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const request = buildHolidayRequest(draft);
@@ -382,9 +383,13 @@ function HolidayConfiguration({
                 label="Office"
                 name="holiday-office"
                 value={draft.officeId}
-                options={officeOptions}
+                options={[]}
+                searchMode="remote"
+                onSearch={(query) => searchOffices("holiday", query)}
+                searchErrorMessage="Office choices could not be loaded. Edit the search to try again."
                 placeholder="Choose office"
                 emptyMessage="No available offices match this search."
+                hint="Search offices available for holiday management."
                 clearLabel="Clear office selection"
                 required
                 onChange={(value) => { setDraft((current) => ({ ...current, officeId: value })); setFeedback({ message: "", error: false }); }}
@@ -395,8 +400,6 @@ function HolidayConfiguration({
               <Button type="submit" loading={pending} loadingLabel="Adding holiday">Add holiday</Button>
             </div>
           </form>
-        ) : offices.status === "ready" ? (
-          <StateMessage kind="warning" title="No office targets available">Create an office before adding a holiday.</StateMessage>
         ) : <ResourceError read={offices} label="Office choices" />
       ) : null}
 
@@ -473,12 +476,19 @@ export function AdminAvailabilityConfiguration(props: AdminAvailabilityConfigura
       />
       <div className={styles.resourceGrid}>
         <ShiftConfiguration resource={props.shifts} onCreate={props.onCreateShift} />
-        <HolidayConfiguration resource={props.holidays} offices={props.offices} onCreate={props.onCreateHoliday} />
+        <HolidayConfiguration
+          resource={props.holidays}
+          offices={props.offices}
+          onCreate={props.onCreateHoliday}
+          searchOffices={props.searchOffices}
+        />
         <CalendarConfiguration
           resource={props.calendars}
           offices={props.offices}
           shiftTargets={props.shiftTargets}
           onCreate={props.onCreateCalendar}
+          searchOffices={props.searchOffices}
+          searchShifts={props.searchShifts}
         />
       </div>
     </div>

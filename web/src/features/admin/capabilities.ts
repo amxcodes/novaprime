@@ -3,7 +3,7 @@ import {
   hasPermissionGrant,
   type EffectivePermissionGrant,
   type EffectivePermissionRead,
-} from "../../app-shell/permission-grants";
+} from "../../app-shell/permission-grants.ts";
 
 type AdminPermissionRead = EffectivePermissionRead & { isSuperAdmin?: boolean };
 

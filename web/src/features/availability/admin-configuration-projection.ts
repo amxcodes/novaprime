@@ -29,6 +29,8 @@ export interface AvailabilityConfigurationProjectionInput {
   onCreateShift: AdminAvailabilityConfigurationProps["onCreateShift"];
   onCreateCalendar: AdminAvailabilityConfigurationProps["onCreateCalendar"];
   onCreateHoliday: AdminAvailabilityConfigurationProps["onCreateHoliday"];
+  searchOffices: AdminAvailabilityConfigurationProps["searchOffices"];
+  searchShifts: AdminAvailabilityConfigurationProps["searchShifts"];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -103,11 +105,6 @@ function projectShift(value: unknown): AvailabilityShift | null {
   };
 }
 
-function projectShiftOption(value: unknown): AvailabilityShiftOption | null {
-  if (!isRecord(value) || !nonEmptyString(value.id) || !nonEmptyString(value.name)) return null;
-  return { id: value.id, name: value.name };
-}
-
 function projectRule(value: unknown): AvailabilityCalendarRule | null {
   if (!isRecord(value) || !Number.isInteger(value.weekday) || !Number.isInteger(value.ordinal) ||
       typeof value.isWorking !== "boolean" || !(value.shiftId === undefined || value.shiftId === null || typeof value.shiftId === "string")) return null;
@@ -171,8 +168,9 @@ export function projectAvailabilityConfigurationProps(
     shifts: resource("shifts", "availability shifts", input.capabilities.shifts.view, input.capabilities.shifts.manage, projectShift),
     calendars: resource("calendars", "working calendars", input.capabilities.calendars.view, input.capabilities.calendars.manage, projectCalendar),
     holidays: resource("holidays", "office holidays", input.capabilities.holidays.view, input.capabilities.holidays.manage, projectHoliday),
+    // Office target search is on demand. Do not hand the full office directory to the form.
     offices: input.canReadOffices
-      ? projectRows(input.offices, input.officesIssue, "offices", "offices for availability configuration", projectOffice)
+      ? { status: "ready", data: [] }
       : {
         status: "denied",
         message: input.officesIssue?.message || "Office choices are unavailable under your current access.",
@@ -180,11 +178,13 @@ export function projectAvailabilityConfigurationProps(
     shiftTargets: {
       visible: shiftTargetsVisible,
       read: shiftTargetsVisible
-        ? projectRows(availability, input.availabilityIssue, "shiftOptions", "shift targets for working calendar setup", projectShiftOption)
+        ? { status: "ready", data: [] }
         : { status: "ready", data: [] },
     },
     onCreateShift: input.onCreateShift,
     onCreateCalendar: input.onCreateCalendar,
     onCreateHoliday: input.onCreateHoliday,
+    searchOffices: input.searchOffices,
+    searchShifts: input.searchShifts,
   };
 }

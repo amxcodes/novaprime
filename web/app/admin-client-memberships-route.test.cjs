@@ -15,10 +15,7 @@ function canViewPeople(read) {
   return read?.grants?.some((row) => row.permissionKey === "people.view" && row.scope === "organisation") === true;
 }
 
-async function harness({ grants = [], people = { people: [
-  { id: "person-1", displayName: "  Avery Kim  ", email: "avery@example.test" },
-  { id: "person-2", email: "morgan@example.test" },
-] }, pageCurrent = true, identityEpoch = 3 } = {}) {
+async function harness({ grants = [], pageCurrent = true, identityEpoch = 3, searchOptions } = {}) {
   const { createAdminClientMembershipsRoute } = await import("./admin-client-memberships-route.js");
   const events = [];
   const data = {
@@ -27,7 +24,6 @@ async function harness({ grants = [], people = { people: [
       { id: "client-1", name: "Northstar", private: "omit" },
       { id: "client-2", name: "Juniper", private: "omit" },
     ] },
-    people,
   };
   const state = { adminData: data, identityEpoch, identityPersonId: "actor-1", actorGrants: data.actorGrants };
   const target = { isConnected: true };
@@ -48,7 +44,13 @@ async function harness({ grants = [], people = { people: [
       return error?.recover === true;
     },
     api: async (path, options) => { events.push(["api", path, options]); return { saved: true }; },
-    pageApi: async (path, value) => { events.push(["pageApi", path, value]); return { memberships: [] }; },
+    pageApi: async (path, value) => {
+      events.push(["pageApi", path, value]);
+      if (path.includes("membership-options")) return searchOptions || { options: [
+        { id: "person-1", label: "Avery Kim" }, { id: "department-1", label: "Design" },
+      ] };
+      return { memberships: [] };
+    },
     requestOptions: (method, body) => ({ method, body }),
     errorText: (error) => error?.message || "Membership request failed.",
     adminCommandUiError: (message) => Object.assign(new Error(message), { uiMessage: true }),
@@ -75,16 +77,26 @@ test("membership props require a live exact-client grant and keep the People ros
   assert.deepEqual(props.client, { id: "client-1", name: "Northstar" });
   assert.equal(props.canViewMemberships, true);
   assert.equal(props.canManageMemberships, true);
-  assert.equal(props.peopleOptions, null);
+  assert.equal(props.canSearchPeople, false);
+  await assert.rejects(props.onSearchPeople("Avery"), /requires organization-level people viewing access/);
+  assert.deepEqual(restricted.events, []);
   assert.throws(() => restricted.route.createProps(restricted.data, "client-2"), /no longer allows membership management/);
 
   const independentPeople = await harness({ grants: [
     grant("clients.members.manage", "client", "client-1"),
     grant("people.view", "organisation"),
   ] });
-  assert.deepEqual(independentPeople.route.createProps(independentPeople.data, "client-1").peopleOptions, [
-    { id: "person-1", label: "  Avery Kim  " },
-    { id: "person-2", label: "morgan@example.test" },
+  const peopleProps = independentPeople.route.createProps(independentPeople.data, "client-1");
+  assert.equal(peopleProps.canSearchPeople, true);
+  assert.deepEqual(await peopleProps.onSearchPeople("  Avery  "), [
+    { value: "person-1", label: "Avery Kim" }, { value: "department-1", label: "Design" },
+  ]);
+  assert.deepEqual(await peopleProps.onSearchDepartments("Design"), [
+    { value: "person-1", label: "Avery Kim" }, { value: "department-1", label: "Design" },
+  ]);
+  assert.deepEqual(independentPeople.events.filter(([kind]) => kind === "pageApi").map(([, path]) => path), [
+    "/api/clients/client-1/membership-options?kind=person&q=Avery",
+    "/api/clients/client-1/membership-options?kind=department&q=Design",
   ]);
 });
 

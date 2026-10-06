@@ -5,7 +5,9 @@ import type {
   AdminInvitePersonInput,
   AdminOnboardingOfficeOption,
   AdminOnboardingOption,
+  AdminOnboardingPickerKind,
   AdminOnboardingReadState,
+  AdminPeopleDirectoryPage,
   AdminPersonSummary,
   PeopleAdministrationProps,
 } from "./people-contracts";
@@ -30,33 +32,32 @@ export function prepareAuditReason(value: unknown): { reason: string | null; err
     : { reason: null, error: "Enter a reason for this audited access change." };
 }
 
-/** Validate picker IDs against this person's authorized onboarding read before exposing a command. */
+/** Verify that submitted IDs came from the latest server-returned picker results. */
 export function prepareOnboardingSubmission(
-  read: Extract<AdminOnboardingReadState, { status: "ready" }>,
   values: OnboardingFormValues,
+  selectedOptions: {
+    office: AdminOnboardingOfficeOption | null;
+    department: AdminOnboardingOption | null;
+    role: AdminOnboardingOption | null;
+    manager: AdminOnboardingOption | null;
+  },
 ): { input: AdminCompleteOnboardingInput; errors: OnboardingFormErrors } | { input: null; errors: OnboardingFormErrors } {
   const errors: OnboardingFormErrors = {};
   if (!values.designation.trim()) errors.designation = "Enter a designation.";
   if (!values.employmentStartsOn) errors.employmentStartsOn = "Choose an employment start date.";
-  if (!read.offices.some((option) => option.id === values.officeId)) errors.officeId = "Choose an office from the list.";
-  if (!read.departments.some((option) => option.id === values.organisationDepartmentId)) {
+  if (!selectedOptions.office || selectedOptions.office.id !== values.officeId) errors.officeId = "Choose an office from the list.";
+  if (!selectedOptions.department || selectedOptions.department.id !== values.organisationDepartmentId) {
     errors.organisationDepartmentId = "Choose a department from the list.";
   }
-  if (!read.roles.some((option) => option.id === values.roleId)) errors.roleId = "Choose a role from the list.";
+  if (!selectedOptions.role || selectedOptions.role.id !== values.roleId) errors.roleId = "Choose a role from the list.";
+  if (values.managerPersonId && selectedOptions.manager?.id !== values.managerPersonId) {
+    errors.managerPersonId = "Choose a manager from the list or clear the selection.";
+  }
   if (Object.keys(errors).length) return { input: null, errors };
   return {
     input: { ...values, designation: values.designation.trim() },
     errors,
   };
-}
-
-export function projectManagerPickerOptions(
-  managers: ReadonlyArray<AdminOnboardingOption>,
-  personId: string,
-) {
-  return managers
-    .filter((option) => option.id !== personId)
-    .map((option) => ({ value: option.id, label: option.name }));
 }
 
 export function onboardingValidationSummary(errors: OnboardingFormErrors): string | null {
@@ -166,7 +167,9 @@ export function PeopleAdministration(props: PeopleAdministrationProps) {
       {canShowList ? <PeopleList
         id={`${id}-directory`}
         read={props.peopleRead}
-        people={props.people}
+        initialPage={props.peoplePage}
+        searchPeopleDirectory={props.searchPeopleDirectory}
+        formatError={props.formatError}
         pendingAction={pendingAction}
         onRun={run}
         onResendInvitation={props.onResendInvitation}
@@ -174,6 +177,7 @@ export function PeopleAdministration(props: PeopleAdministrationProps) {
         onStartOffboarding={props.onStartOffboarding}
         onCompleteExit={props.onCompleteExit}
         onCompleteOnboarding={props.onCompleteOnboarding}
+        searchOnboardingOptions={props.searchOnboardingOptions}
       /> : null}
     </section>
   );
@@ -182,7 +186,9 @@ export function PeopleAdministration(props: PeopleAdministrationProps) {
 function PeopleList({
   id,
   read,
-  people,
+  initialPage,
+  searchPeopleDirectory,
+  formatError,
   pendingAction,
   onRun,
   onResendInvitation,
@@ -190,10 +196,13 @@ function PeopleList({
   onStartOffboarding,
   onCompleteExit,
   onCompleteOnboarding,
+  searchOnboardingOptions,
 }: {
   id: string;
   read: PeopleAdministrationProps["peopleRead"];
-  people: ReadonlyArray<AdminPersonSummary>;
+  initialPage: AdminPeopleDirectoryPage;
+  searchPeopleDirectory: PeopleAdministrationProps["searchPeopleDirectory"];
+  formatError: PeopleAdministrationProps["formatError"];
   pendingAction: string | null;
   onRun: (action: string, successMessage: string, callback: () => void | Promise<void>) => Promise<void>;
   onResendInvitation: PeopleAdministrationProps["onResendInvitation"];
@@ -201,7 +210,53 @@ function PeopleList({
   onStartOffboarding: PeopleAdministrationProps["onStartOffboarding"];
   onCompleteExit: PeopleAdministrationProps["onCompleteExit"];
   onCompleteOnboarding: PeopleAdministrationProps["onCompleteOnboarding"];
+  searchOnboardingOptions: PeopleAdministrationProps["searchOnboardingOptions"];
 }) {
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(initialPage);
+  const [cursorHistory, setCursorHistory] = useState<Array<string | null>>([null]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const requestSequence = useRef(0);
+
+  async function loadPage(nextQuery: string, cursor: string | null, nextHistory: Array<string | null>, nextIndex: number) {
+    const sequence = ++requestSequence.current;
+    setSearchBusy(true);
+    setSearchError(null);
+    setPage({ people: [], limit: 25, hasMore: false, nextCursor: null });
+    try {
+      const result = await searchPeopleDirectory(nextQuery, cursor);
+      if (sequence !== requestSequence.current) return;
+      setPage(result);
+      setCursorHistory(nextHistory);
+      setPageIndex(nextIndex);
+    } catch (error) {
+      if (sequence !== requestSequence.current) return;
+      setSearchError(safeError(error, formatError));
+    } finally {
+      if (sequence === requestSequence.current) setSearchBusy(false);
+    }
+  }
+
+  function submitSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalized = query.normalize("NFC").trim();
+    setQuery(normalized);
+    void loadPage(normalized, null, [null], 0);
+  }
+
+  function goToNextPage() {
+    if (!page.nextCursor || searchBusy) return;
+    void loadPage(query, page.nextCursor, [...cursorHistory.slice(0, pageIndex + 1), page.nextCursor], pageIndex + 1);
+  }
+
+  function goToPreviousPage() {
+    if (pageIndex <= 0 || searchBusy) return;
+    const nextIndex = pageIndex - 1;
+    void loadPage(query, cursorHistory[nextIndex] ?? null, cursorHistory, nextIndex);
+  }
+
   if (read.status === "loading") {
     return <section className={styles.directory} aria-labelledby={`${id}-title`}>
       <h3 id={`${id}-title`} className={styles.directoryTitle}>People in your scope</h3>
@@ -216,12 +271,7 @@ function PeopleList({
       </StateMessage>
     </section>;
   }
-  if (!people.length) {
-    return <section className={styles.directory} aria-labelledby={`${id}-title`}>
-      <h3 id={`${id}-title`} className={styles.directoryTitle}>People in your scope</h3>
-      <EmptyState role="status" aria-live="polite" aria-atomic="true" title="No people are visible in your current scope" />
-    </section>;
-  }
+  const people = page.people;
 
   return (
     <section className={styles.directory} aria-labelledby={`${id}-title`}>
@@ -229,11 +279,23 @@ function PeopleList({
         <div>
           <h3 id={`${id}-title`} className={styles.directoryTitle}>People in your scope</h3>
           <p className={styles.directoryDescription} role="status" aria-live="polite" aria-atomic="true">
-            {people.length} visible record{people.length === 1 ? "" : "s"}. The list reflects your current access scope.
+            {searchBusy ? "Searching the authorized directory…" : searchError ?? (
+              `${people.length} visible record${people.length === 1 ? "" : "s"} on page ${pageIndex + 1}. Results reflect your current access scope.`
+            )}
           </p>
         </div>
       </div>
-      <ul className={styles.peopleList} aria-label="People in the current access scope">
+      <form className={styles.directorySearch} onSubmit={submitSearch} role="search" aria-label="Search people in your scope">
+        <Field label="Search people you can view" hint="Search runs on the server across your authorized directory.">
+          {(control) => <Input {...control} type="search" value={query} onChange={(event) => setQuery(event.currentTarget.value)} maxLength={100} autoComplete="off" placeholder="Name, email, office, department, or role" disabled={searchBusy} />}
+        </Field>
+        <Button type="submit" variant="secondary" disabled={searchBusy} loading={searchBusy} loadingLabel="Searching people">Search</Button>
+      </form>
+      {searchError ? <StateMessage kind="error" title="People search failed">{searchError}</StateMessage> : null}
+      {!searchBusy && !searchError && people.length === 0 ? (
+        <EmptyState role="status" aria-live="polite" aria-atomic="true" title={query ? "No people match this search in your scope" : "No people are visible in your current scope"} />
+      ) : null}
+      {people.length ? <ul className={styles.peopleList} aria-label="People on this directory page">
         {people.map((person) => (
           <li key={person.id}>
             <PersonRow
@@ -245,10 +307,16 @@ function PeopleList({
               onStartOffboarding={onStartOffboarding}
               onCompleteExit={onCompleteExit}
               onCompleteOnboarding={onCompleteOnboarding}
+              searchOnboardingOptions={searchOnboardingOptions}
             />
           </li>
         ))}
-      </ul>
+      </ul> : null}
+      <nav className={styles.directoryPagination} aria-label="People directory pages">
+        <Button variant="secondary" disabled={pageIndex === 0 || searchBusy} onClick={goToPreviousPage}>Previous</Button>
+        <span aria-live="polite">Page {pageIndex + 1}</span>
+        <Button variant="secondary" disabled={!page.hasMore || searchBusy} onClick={goToNextPage}>Next</Button>
+      </nav>
     </section>
   );
 }
@@ -262,6 +330,7 @@ function PersonRow({
   onStartOffboarding,
   onCompleteExit,
   onCompleteOnboarding,
+  searchOnboardingOptions,
 }: {
   person: AdminPersonSummary;
   pendingAction: string | null;
@@ -271,6 +340,7 @@ function PersonRow({
   onStartOffboarding: PeopleAdministrationProps["onStartOffboarding"];
   onCompleteExit: PeopleAdministrationProps["onCompleteExit"];
   onCompleteOnboarding: PeopleAdministrationProps["onCompleteOnboarding"];
+  searchOnboardingOptions: PeopleAdministrationProps["searchOnboardingOptions"];
 }) {
   const id = useId();
   const personName = person.displayName.trim() || person.email || "Unnamed person";
@@ -329,6 +399,7 @@ function PersonRow({
         pendingAction={pendingAction}
         onRun={onRun}
         onComplete={onCompleteOnboarding}
+        searchOptions={searchOnboardingOptions}
       /> : null}
     </article>
   );
@@ -457,6 +528,7 @@ function OnboardingPanel({
   pendingAction,
   onRun,
   onComplete,
+  searchOptions,
 }: {
   person: AdminPersonSummary;
   read?: AdminOnboardingReadState;
@@ -465,6 +537,7 @@ function OnboardingPanel({
   pendingAction: string | null;
   onRun: (action: string, successMessage: string, callback: () => void | Promise<void>) => Promise<void>;
   onComplete: PeopleAdministrationProps["onCompleteOnboarding"];
+  searchOptions: PeopleAdministrationProps["searchOnboardingOptions"];
 }) {
   const id = useId();
   if (!enabled) {
@@ -476,64 +549,82 @@ function OnboardingPanel({
   if (read.status !== "ready") {
     return <StateMessage kind="warning" title={read.status === "denied" ? "Onboarding is unavailable" : "Onboarding options unavailable"}>{read.message}</StateMessage>;
   }
-  if (!read.offices.length || !read.departments.length || !read.roles.length) {
-    return <StateMessage kind="warning" title="Onboarding cannot be completed yet">Create or authorize an office, department, and role before completing onboarding.</StateMessage>;
-  }
-
   const action = `onboard:${person.id}`;
   const personName = person.displayName.trim() || person.email || "this person";
   return <OnboardingForm
     id={id}
-    personId={person.id}
     personName={personName}
     read={read}
     busy={pending}
     actionPending={pendingAction === action}
     anyActionPending={pendingAction !== null}
     onSubmit={(input) => void onRun(action, "Onboarding completed.", () => onComplete(person.id, input))}
+    searchOptions={(kind, query) => searchOptions(person.id, kind, query)}
   />;
 }
 
 function OnboardingForm({
   id,
-  personId,
   personName,
   read,
   busy,
   actionPending,
   anyActionPending,
   onSubmit,
+  searchOptions,
 }: {
   id: string;
-  personId: string;
   personName: string;
   read: Extract<AdminOnboardingReadState, { status: "ready" }>;
   busy: boolean;
   actionPending: boolean;
   anyActionPending: boolean;
   onSubmit: (input: AdminCompleteOnboardingInput) => void;
+  searchOptions: (kind: AdminOnboardingPickerKind, query: string) => Promise<ReadonlyArray<AdminOnboardingOption>>;
 }) {
   const [officeId, setOfficeId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [roleId, setRoleId] = useState("");
   const [managerPersonId, setManagerPersonId] = useState("");
   const [errors, setErrors] = useState<OnboardingFormErrors>({});
-  const office = read.offices.find((option) => option.id === officeId);
-  const managerOptions = [
-    { value: "", label: "No manager" },
-    ...projectManagerPickerOptions(read.managers, personId),
-  ];
+  const [officeResults, setOfficeResults] = useState<ReadonlyArray<AdminOnboardingOfficeOption>>([]);
+  const [departmentResults, setDepartmentResults] = useState<ReadonlyArray<AdminOnboardingOption>>([]);
+  const [roleResults, setRoleResults] = useState<ReadonlyArray<AdminOnboardingOption>>([]);
+  const [managerResults, setManagerResults] = useState<ReadonlyArray<AdminOnboardingOption>>([]);
+  const [selectedOffice, setSelectedOffice] = useState<AdminOnboardingOfficeOption | null>(null);
+  const [selectedDepartment, setSelectedDepartment] = useState<AdminOnboardingOption | null>(null);
+  const [selectedRole, setSelectedRole] = useState<AdminOnboardingOption | null>(null);
+  const [selectedManager, setSelectedManager] = useState<AdminOnboardingOption | null>(null);
+  const office = selectedOffice?.id === officeId ? selectedOffice : undefined;
+  function remoteSearch(kind: AdminOnboardingPickerKind, query: string) {
+    return searchOptions(kind, query).then((options) => {
+      if (kind === "office") {
+        const offices = options.filter(isOfficeOption);
+        setOfficeResults(offices);
+        return selectOptions(offices);
+      }
+      if (kind === "department") setDepartmentResults(options);
+      else if (kind === "role") setRoleResults(options);
+      else setManagerResults(options);
+      return selectOptions(options);
+    });
+  }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (anyActionPending) return;
     const values = new FormData(event.currentTarget);
-    const result = prepareOnboardingSubmission(read, {
+    const result = prepareOnboardingSubmission({
       designation: String(values.get("designation") || "").trim(),
       officeId: String(values.get("officeId") || ""),
       employmentStartsOn: String(values.get("employmentStartsOn") || ""),
       organisationDepartmentId: String(values.get("organisationDepartmentId") || ""),
       roleId: String(values.get("roleId") || ""),
       managerPersonId: String(values.get("managerPersonId") || ""),
+    }, {
+      office: selectedOffice,
+      department: selectedDepartment,
+      role: selectedRole,
+      manager: selectedManager,
     });
     setErrors(result.errors);
     if (!result.input) return;
@@ -558,13 +649,18 @@ function OnboardingForm({
           label="Office"
           required
           value={officeId}
-          options={read.offices.map((option) => ({ value: option.id, label: option.name }))}
+          options={[]}
+          searchMode="remote"
+          onSearch={(query) => remoteSearch("office", query)}
+          selectedOption={selectOption(selectedOffice)}
+          searchErrorMessage="Offices could not be loaded. Edit the search to try again."
           placeholder="Choose office"
           emptyMessage="No matching offices."
           error={errors.officeId}
           disabled={busy}
           onChange={(value) => {
             setOfficeId(value);
+            setSelectedOffice(officeResults.find((option) => option.id === value && typeof option.timezone === "string") || null);
             setErrors((current) => ({ ...current, officeId: undefined }));
           }}
         />
@@ -577,13 +673,18 @@ function OnboardingForm({
           label="Department"
           required
           value={departmentId}
-          options={read.departments.map((option) => ({ value: option.id, label: option.name }))}
+          options={[]}
+          searchMode="remote"
+          onSearch={(query) => remoteSearch("department", query)}
+          selectedOption={selectOption(selectedDepartment)}
+          searchErrorMessage="Departments could not be loaded. Edit the search to try again."
           placeholder="Choose department"
           emptyMessage="No matching departments."
           error={errors.organisationDepartmentId}
           disabled={busy}
           onChange={(value) => {
             setDepartmentId(value);
+            setSelectedDepartment(departmentResults.find((option) => option.id === value) || null);
             setErrors((current) => ({ ...current, organisationDepartmentId: undefined }));
           }}
         />
@@ -593,13 +694,18 @@ function OnboardingForm({
           label="Role"
           required
           value={roleId}
-          options={read.roles.map((option) => ({ value: option.id, label: option.name }))}
+          options={[]}
+          searchMode="remote"
+          onSearch={(query) => remoteSearch("role", query)}
+          selectedOption={selectOption(selectedRole)}
+          searchErrorMessage="Roles could not be loaded. Edit the search to try again."
           placeholder="Choose role"
           emptyMessage="No matching roles."
           error={errors.roleId}
           disabled={busy}
           onChange={(value) => {
             setRoleId(value);
+            setSelectedRole(roleResults.find((option) => option.id === value) || null);
             setErrors((current) => ({ ...current, roleId: undefined }));
           }}
         />
@@ -608,12 +714,19 @@ function OnboardingForm({
           name="managerPersonId"
           label="Manager (optional)"
           value={managerPersonId}
-          options={managerOptions}
+          options={[]}
+          searchMode="remote"
+          onSearch={(query) => remoteSearch("manager", query)}
+          selectedOption={managerPersonId ? selectOption(selectedManager) : null}
+          searchErrorMessage="Managers could not be loaded. Edit the search to try again."
           placeholder="Choose a manager"
           emptyMessage="No eligible managers match this search."
           clearLabel="Clear manager selection"
           disabled={busy}
-          onChange={setManagerPersonId}
+          onChange={(value) => {
+            setManagerPersonId(value);
+            setSelectedManager(managerResults.find((option) => option.id === value) || null);
+          }}
         />
         <div className={styles.formActions}>
           <Button type="submit" disabled={anyActionPending} loading={actionPending} loadingLabel={`Completing onboarding for ${personName}`}>
@@ -623,4 +736,24 @@ function OnboardingForm({
       </form>
     </section>
   );
+}
+
+function selectOption(option?: AdminOnboardingOption | null) {
+  return option ? {
+    value: option.id,
+    label: option.name,
+    ...(option.timezone ? { description: option.timezone } : {}),
+  } : null;
+}
+
+function isOfficeOption(option: AdminOnboardingOption): option is AdminOnboardingOfficeOption {
+  return typeof option.timezone === "string";
+}
+
+function selectOptions(options: ReadonlyArray<AdminOnboardingOption>) {
+  return options.map(({ id: value, name: label, timezone }) => ({
+    value,
+    label,
+    ...(timezone ? { description: timezone } : {}),
+  }));
 }

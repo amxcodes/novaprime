@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
   assignableRoleScopes,
-  filterRoleRecords,
   roleGrantTargetId,
   roleGrantTargetOptions,
   roleScopeChoices,
@@ -51,22 +50,7 @@ const roleRecord = (overrides: Partial<RoleRecord>): RoleRecord => ({
   ...overrides,
 });
 
-const roleRecords = [
-  roleRecord({ id: "protected", key: "super_admin", name: "Super Admin", isProtected: true }),
-  roleRecord({ id: "active", key: "people_partner", name: "People Partner" }),
-  roleRecord({ id: "archived", key: "ops_viewer", name: "Operations Viewer", archivedAt: "2026-01-01T00:00:00Z" }),
-];
-
 describe("role editor scope availability", () => {
-  it("filters role name, key, protected/custom status, and active/archive status without changing order", () => {
-    expect(filterRoleRecords(roleRecords, "  PEOPLE ").map((role) => role.id)).toEqual(["active"]);
-    expect(filterRoleRecords(roleRecords, "ops_viewer").map((role) => role.id)).toEqual(["archived"]);
-    expect(filterRoleRecords(roleRecords, "archived").map((role) => role.id)).toEqual(["archived"]);
-    expect(filterRoleRecords(roleRecords, "PROTECTED").map((role) => role.id)).toEqual(["protected"]);
-    expect(filterRoleRecords(roleRecords, "").map((role) => role.id)).toEqual(["protected", "active", "archived"]);
-    expect(filterRoleRecords(roleRecords, "missing")).toEqual([]);
-  });
-
   it("keeps non-target scopes active while disabling only unavailable target scopes", () => {
     const choices = roleScopeChoices(permission([
       "organisation", "own_record", "office", "organisation_department", "client",
@@ -80,6 +64,19 @@ describe("role editor scope availability", () => {
     expect(assignableRoleScopes(permission([
       "organisation", "office", "organisation_department", "client",
     ]), targetReads)).toEqual(["organisation", "client"]);
+  });
+
+  it("enables target scopes when a separate permission-checked remote directory is available", () => {
+    const choices = roleScopeChoices(permission([
+      "organisation", "office", "organisation_department", "client", "client_workstream", "group",
+    ]), targetReads, undefined, true);
+
+    expect(choices.every((choice) => !choice.disabled)).toBe(true);
+    expect(assignableRoleScopes(permission([
+      "office", "organisation_department", "client", "client_workstream", "group",
+    ]), targetReads, true)).toEqual([
+      "office", "organisation_department", "client", "client_workstream", "group",
+    ]);
   });
 
   it("disables an empty ready target list without affecting other scope categories", () => {

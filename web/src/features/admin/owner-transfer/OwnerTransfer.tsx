@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { Button, EmptyState, Field, Input, SearchableSelect, StateMessage } from "../../../design-system";
+import { Button, Field, Input, SearchableSelect, StateMessage } from "../../../design-system";
 import type { OwnerTransferChoice, OwnerTransferProps } from "./contracts";
 import styles from "./OwnerTransfer.module.css";
 
@@ -19,6 +19,7 @@ export function OwnerTransfer(props: OwnerTransferProps) {
   const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [eligibleChoices, setEligibleChoices] = useState<ReadonlyArray<OwnerTransferChoice>>([]);
 
   useEffect(() => {
     if (error) feedbackRef.current?.focus();
@@ -47,7 +48,7 @@ export function OwnerTransfer(props: OwnerTransferProps) {
     setError("");
     setSuccess(false);
 
-    const target = selectedChoice && props.read.choices.includes(selectedChoice) ? selectedChoice : null;
+    const target = selectedChoice;
     const nextTargetError = target ? "" : "Choose an eligible person.";
     const nextConfirmationError = confirmation === confirmationPhrase
       ? ""
@@ -78,9 +79,11 @@ export function OwnerTransfer(props: OwnerTransferProps) {
   }
 
   const read = props.read;
-  const choices = read.status === "ready" ? read.choices : [];
-  const selectedValue = choices.findIndex((choice) => choice === selectedChoice);
-  const options = choices.map((choice, index) => ({ value: String(index), label: choice.label }));
+  async function searchEligiblePeople(query: string) {
+    const choices = await props.onSearchEligiblePeople(query);
+    setEligibleChoices(choices);
+    return choices.map(({ value, label }) => ({ value, label }));
+  }
 
   return (
     <section className={styles.root} aria-labelledby={`${id}-title`}>
@@ -118,10 +121,7 @@ export function OwnerTransfer(props: OwnerTransferProps) {
           </Button>
         </div>
       ) : null}
-      {read.status === "ready" && choices.length === 0 ? (
-        <EmptyState title="No eligible person is available" description="An active or notice person who is not already the Super Admin is required." />
-      ) : null}
-      {read.status === "ready" && choices.length > 0 ? (
+      {read.status === "ready" ? (
         <form className={styles.form} noValidate onSubmit={(event) => void submit(event)}>
           <div className={styles.fields}>
             <div className={styles.targetField}>
@@ -129,15 +129,18 @@ export function OwnerTransfer(props: OwnerTransferProps) {
                 id={`${id}-target`}
                 label="New owner"
                 hint="Only active or notice people are listed."
-                value={selectedValue < 0 ? "" : String(selectedValue)}
-                options={options}
+                value={selectedChoice?.value || ""}
+                options={[]}
+                searchMode="remote"
+                onSearch={searchEligiblePeople}
+                selectedOption={selectedChoice ? { value: selectedChoice.value, label: selectedChoice.label } : null}
+                searchErrorMessage="Eligible people could not be loaded. Edit the search to try again."
                 placeholder="Choose a person"
-                emptyMessage="No eligible people match."
+                emptyMessage="No eligible people match this search."
                 error={targetError || undefined}
                 disabled={submitting}
                 onChange={(value) => {
-                  const index = Number(value);
-                  setSelectedChoice(Number.isInteger(index) ? choices[index] || null : null);
+                  setSelectedChoice(eligibleChoices.find((choice) => choice.value === value) || null);
                   setTargetError("");
                   setError("");
                   setSuccess(false);

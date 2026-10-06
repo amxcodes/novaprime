@@ -21,8 +21,7 @@ test("owner choices exist only for the server-reported Super Admin", () => {
   }), null);
 });
 
-test("only other active or notice people are projected and IDs stay in host closures", () => {
-  const submitted = [];
+test("the Admin snapshot provides only picker readiness; the browser never filters its people list", () => {
   const read = projectOwnerTransferRead({
     actorGrants: { actorPersonId: "current-owner", isSuperAdmin: true },
     peopleRead: { people: [
@@ -32,23 +31,24 @@ test("only other active or notice people are projected and IDs stay in host clos
       { id: "frozen-person", status: "frozen", displayName: "Frozen person" },
       { id: 2, status: "active", displayName: "Invalid identifier" },
     ] },
-    onTransfer: (personId) => submitted.push(personId),
+    onTransfer: () => assert.fail("A browser-projected choice must not issue an owner transfer"),
   });
 
-  assert.deepEqual(read.choices.map(({ label }) => label), ["Aman Verma", "notice@example.com"]);
-  assert.ok(read.choices.every((choice) => !Object.hasOwn(choice, "id")));
-  read.choices[1].transfer();
-  assert.deepEqual(submitted, ["notice-person"]);
+  assert.deepEqual(read, { status: "ready", choices: [] });
 });
 
-test("skipped, denied, and failed people reads stay distinct and fail closed", () => {
+test("a legacy roster read does not gate the dedicated owner-search capability", () => {
   const actorGrants = { isSuperAdmin: true };
   const onTransfer = () => {};
-  assert.deepEqual(projectOwnerTransferRead({ actorGrants, onTransfer, peopleRead: { readState: "not-requested" } }), {
-    status: "unavailable",
-    message: "Your current grants do not include the people list needed to choose a new owner.",
-  });
-  assert.equal(projectOwnerTransferRead({ actorGrants, onTransfer, peopleRead: { readError: "PERMISSION_DENIED" } }).status, "unavailable");
-  assert.equal(projectOwnerTransferRead({ actorGrants, onTransfer, peopleRead: { readError: "REQUEST_FAILED" } }).status, "error");
-  assert.equal(projectOwnerTransferRead({ actorGrants, onTransfer, peopleRead: { people: "not-a-list" } }).status, "error");
+  for (const peopleRead of [
+    { readState: "not-requested" },
+    { readError: "PERMISSION_DENIED" },
+    { readError: "REQUEST_FAILED" },
+    { people: "not-a-list" },
+  ]) {
+    assert.deepEqual(projectOwnerTransferRead({ actorGrants, onTransfer, peopleRead }), {
+      status: "ready",
+      choices: [],
+    });
+  }
 });

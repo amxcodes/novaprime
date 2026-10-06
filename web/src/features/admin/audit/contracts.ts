@@ -24,4 +24,5 @@ export type AuditReadState =
 
 export interface AuditEventsProps {
   readState: AuditReadState;
+  onSearch: (filters: { search: string; action: string | null }) => Promise<AuditReadState>;
 }

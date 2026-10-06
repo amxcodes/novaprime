@@ -50,6 +50,14 @@
   border-color: var(--nova-color-danger);
 }
 
+.control:focus-visible {
+  border-color: var(--nova-control-border-focus);
+}
+
+.control[aria-invalid="true"]:focus-visible {
+  border-color: var(--nova-color-danger);
+}
+
 .control:disabled {
   color: var(--nova-color-text-muted);
   background: var(--nova-control-background-disabled);

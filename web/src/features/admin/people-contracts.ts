@@ -11,6 +11,14 @@ export interface AdminPersonSummary {
   onboarding?: AdminOnboardingReadState;
 }
 
+/** One permission-checked server page; the feature never filters the directory locally. */
+export interface AdminPeopleDirectoryPage {
+  people: ReadonlyArray<AdminPersonSummary>;
+  limit: number;
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
 /** These target-scoped flags are evaluated by the host against effective grants and server state. */
 export interface AdminPersonActionVisibility {
   resendInvitation: boolean;
@@ -29,16 +37,15 @@ export interface AdminOnboardingOfficeOption {
 export interface AdminOnboardingOption {
   id: string;
   name: string;
+  timezone?: string;
 }
+
+export type AdminOnboardingPickerKind = "office" | "department" | "role" | "manager";
 
 export type AdminOnboardingReadState =
   | { status: "denied" | "unavailable"; message: string }
   | {
       status: "ready";
-      offices: ReadonlyArray<AdminOnboardingOfficeOption>;
-      departments: ReadonlyArray<AdminOnboardingOption>;
-      roles: ReadonlyArray<AdminOnboardingOption>;
-      managers: ReadonlyArray<AdminOnboardingOption>;
     };
 
 export type AdminPeopleReadState =
@@ -72,14 +79,22 @@ export interface PeopleAdministrationProps {
   /** True only when the host has an effective people.view grant for a supported scope. */
   canViewPeople: boolean;
   peopleRead: AdminPeopleReadState;
-  /** Host-authorized People summaries only; no permission decisions are made here. */
-  people: ReadonlyArray<AdminPersonSummary>;
+  /** Bounded first page projected by the host from the permission-checked directory endpoint. */
+  peoplePage: AdminPeopleDirectoryPage;
+  /** Server-side query and cursor paging; each response is reauthorized by the host and API. */
+  searchPeopleDirectory: (query: string, cursor: string | null) => Promise<AdminPeopleDirectoryPage>;
   onInvite: (input: AdminInvitePersonInput) => AdminInvitePersonResult | Promise<AdminInvitePersonResult>;
   onResendInvitation: (personId: string) => void | Promise<void>;
   onFreeze: (personId: string) => void | Promise<void>;
   onStartOffboarding: (personId: string, reason: string) => void | Promise<void>;
   onCompleteExit: (personId: string, reason: string) => void | Promise<void>;
   onCompleteOnboarding: (personId: string, input: AdminCompleteOnboardingInput) => void | Promise<void>;
+  /** Server-side picker search, authorized again for this person and option family. */
+  searchOnboardingOptions: (
+    personId: string,
+    kind: AdminOnboardingPickerKind,
+    query: string,
+  ) => Promise<ReadonlyArray<AdminOnboardingOption>>;
   /** Host-safe error formatting; raw API error strings stay out of this feature. */
   formatError?: (error: unknown) => string;
 }

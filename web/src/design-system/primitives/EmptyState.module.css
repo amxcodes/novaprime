@@ -10,14 +10,18 @@
 }
 
 .title {
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: var(--nova-type-size-lg);
   font-weight: var(--nova-type-weight-semibold);
 }
 
 .description {
+  min-width: 0;
   max-width: 48ch;
   color: var(--nova-color-text-secondary);
   font-size: var(--nova-type-size-sm);
+  overflow-wrap: anywhere;
 }
 
 .action {

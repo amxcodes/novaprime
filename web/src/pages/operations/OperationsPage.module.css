@@ -11,6 +11,8 @@
   gap: var(--nova-space-7);
 }
 
+.content > * { min-width: 0; }
+
 .header {
   min-width: 0;
   padding-block: 0 var(--nova-space-5);

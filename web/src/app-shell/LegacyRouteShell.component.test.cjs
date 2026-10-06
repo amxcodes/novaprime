@@ -28,6 +28,7 @@ require.extensions[".css"] = (module) => {
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { LegacyRouteShell } = require("./LegacyRouteShell.tsx");
+const { AppShell } = require("./AppShell.tsx");
 const { DesktopSidebar } = require("./Navigation.tsx");
 
 function render(children) {
@@ -101,4 +102,27 @@ test("omits empty navigation groups and preserves authorized destination order a
   assert.doesNotMatch(markup, /Empty group/);
   assert.ok(markup.indexOf("My workspace") < markup.indexOf("Configuration"));
   assert.match(markup, /aria-current="page"[^>]*href="\/work"/);
+});
+
+test("exposes only supplied navigation in quick links and wires More to the complete authorized drawer", () => {
+  const markup = renderToStaticMarkup(React.createElement(AppShell, {
+    brand: "NOVA",
+    navigation: [{ id: "core", label: "Workspace", items: [
+      { id: "home", label: "Home", href: "/", icon: null },
+      { id: "people", label: "People", href: "/people", icon: null },
+    ] }],
+    activeItemId: "people",
+    currentPageLabel: "People",
+    mobilePrimaryIds: ["missing-feature", "people", "home"],
+    children: React.createElement("p", null, "Directory"),
+  }));
+
+  assert.match(markup, /aria-label="Quick navigation"/);
+  assert.match(markup, /aria-current="page" class="bottomLink" href="\/people"/);
+  assert.match(markup, /class="bottomLink" href="\/"/);
+  assert.match(markup, /aria-label="Navigation"/);
+  assert.match(markup, /aria-haspopup="dialog"/);
+  assert.match(markup, /aria-expanded="false"/);
+  assert.match(markup, /More/);
+  assert.doesNotMatch(markup, /missing-feature|secret-feature/);
 });

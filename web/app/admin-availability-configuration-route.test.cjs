@@ -14,6 +14,8 @@ const fallbackSource = fs.readFileSync(path.join(webRoot, "src", "features", "av
 
 test("Admin loads Availability only for its organization grant and composes its typed feature child", () => {
   assert.match(routeSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "availabilityConfiguration"\), \(\) => import\("\.\.\/src\/features\/availability\/AvailabilityConfigurationSection\.tsx"\)\)/);
+  assert.match(routeSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "availabilityConfiguration"\), \(\) => import\("\.\/admin-availability-picker-search-route\.js"\)\)/);
+  assert.match(routeSource, /createAvailabilityPickerSearchRoute\(\{[\s\S]{0,300}pageApi,[\s\S]{0,120}captureCommandContext/);
   assert.match(routeSource, /if \(!target\.isConnected \|\| !isCurrentPageRequest\(lifetime\) \|\| identityEpoch !== state\.identityEpoch \|\| state\.adminData !== data\) return;/);
   assert.match(routeSource, /const AvailabilityConfigurationSection = canShowAdminFeature\(\s*state\.adminData\?\.actorGrants,\s*"availabilityConfiguration",\s*\)/);
   assert.match(routeSource, /AvailabilityConfigurationLoadFailureSection,[\s\S]{0,130}OrganizationStructureLoadFailureSection/);
@@ -33,6 +35,8 @@ test("resource visibility and create commands retain their existing grant and AP
   assert.match(capabilitySource, /availability: hasAnyPermissionGrant\(read, \[[\s\S]{0,280}"availability\.holiday\.manage"[\s\S]{0,90}\], \["organisation"\]\)/);
   assert.match(loaderSource, /read\(plan\.availability, "\/api\/availability\/config"/);
   assert.match(routeSource, /canReadOffices: hasAdminPermission\(data, "organisation\.settings\.manage"\)/);
+  assert.match(routeSource, /searchOffices: availabilityPickerSearchRoute\?\.searchOffices/);
+  assert.match(routeSource, /searchShifts: availabilityPickerSearchRoute\?\.searchShifts/);
   assert.match(routeSource, /shiftTargets:[\s\S]{0,220}hasAdminPermission\(data, "availability\.shift\.view"\)[\s\S]{0,180}hasAdminPermission\(data, "availability\.calendar\.manage"\)/);
   assert.match(routeSource, /const createAvailabilityConfiguration = async \(permission, path, input, successMessage\) => \{[\s\S]{0,850}state\.adminData !== data[\s\S]{0,400}hasAdminPermission\(state\.adminData, permission\)/);
   assert.match(routeSource, /"availability\.shift\.manage",\s*"\/api\/availability\/shifts",\s*input,\s*"Shift created\."/);

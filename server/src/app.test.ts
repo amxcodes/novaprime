@@ -116,6 +116,115 @@ test("does not expose the role command without its required deployment configura
   expect(await response.json()).toEqual({ error: "AUTHENTICATION_CONFIGURATION_REQUIRED" });
 });
 
+test("rejects an oversized or repeated role search before querying role data", async () => {
+  const oversized = await handleRequest(new Request(`http://nova.test/api/roles?q=${"a".repeat(101)}`));
+  const repeated = await handleRequest(new Request("http://nova.test/api/roles?q=active&q=archived"));
+
+  expect(oversized.status).toBe(400);
+  expect(await oversized.json()).toEqual({ error: "ROLE_SEARCH_INPUT_INVALID" });
+  expect(repeated.status).toBe(400);
+  expect(await repeated.json()).toEqual({ error: "ROLE_SEARCH_INPUT_INVALID" });
+});
+
+test("role scope target search validates its scope and query before auth or database reads", async () => {
+  const missingScope = await handleRequest(new Request("http://nova.test/api/roles/scope-targets?q=west"));
+  const repeatedScope = await handleRequest(new Request(
+    "http://nova.test/api/roles/scope-targets?scope=client&scope=group&q=west",
+  ));
+  const unsupportedScope = await handleRequest(new Request(
+    "http://nova.test/api/roles/scope-targets?scope=person&q=west",
+  ));
+  const repeatedQuery = await handleRequest(new Request(
+    "http://nova.test/api/roles/scope-targets?scope=client&q=west&q=east",
+  ));
+  const oversizedQuery = await handleRequest(new Request(
+    `http://nova.test/api/roles/scope-targets?scope=client&q=${"x".repeat(101)}`,
+  ));
+  const validUnauthenticated = await handleRequest(new Request(
+    "http://nova.test/api/roles/scope-targets?scope=client&q=west",
+  ));
+
+  for (const response of [missingScope, repeatedScope, unsupportedScope, repeatedQuery, oversizedQuery]) {
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "ROLE_SCOPE_TARGET_SEARCH_INVALID" });
+  }
+  expect(validUnauthenticated.status).toBe(503);
+  expect(await validUnauthenticated.json()).toEqual({ error: "AUTHENTICATION_CONFIGURATION_REQUIRED" });
+});
+
+test("role scope target searches expose only the exact GET endpoint", async () => {
+  const wrongMethod = await handleRequest(new Request(
+    "http://nova.test/api/roles/scope-targets?scope=client",
+    { method: "POST" },
+  ));
+  const trailingSlash = await handleRequest(new Request(
+    "http://nova.test/api/roles/scope-targets/?scope=client",
+  ));
+  expect(wrongMethod.status).toBe(404);
+  expect(trailingSlash.status).toBe(404);
+  expect(await wrongMethod.json()).toEqual({
+    error: "ROUTE_NOT_FOUND",
+    message: "No NOVA command matches this route.",
+  });
+  expect(await trailingSlash.json()).toEqual({
+    error: "ROUTE_NOT_FOUND",
+    message: "No NOVA command matches this route.",
+  });
+});
+
+test("client membership option search validates kind and bounded query before authentication", async () => {
+  const base = "http://nova.test/api/clients/00000000-0000-4000-8000-000000000001/membership-options";
+  const missingKind = await handleRequest(new Request(`${base}?q=avery`));
+  const repeatedKind = await handleRequest(new Request(`${base}?kind=person&kind=department`));
+  const repeatedQuery = await handleRequest(new Request(`${base}?kind=person&q=avery&q=morgan`));
+  const invalidKind = await handleRequest(new Request(`${base}?kind=client&q=avery`));
+  const oversized = await handleRequest(new Request(`${base}?kind=person&q=${"x".repeat(101)}`));
+  const unauthenticated = await handleRequest(new Request(`${base}?kind=person&q=avery`));
+
+  for (const response of [missingKind, repeatedKind, repeatedQuery, invalidKind, oversized]) {
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "CLIENT_MEMBERSHIP_OPTIONS_QUERY_INVALID" });
+  }
+  expect(unauthenticated.status).toBe(503);
+  expect(await unauthenticated.json()).toEqual({ error: "AUTHENTICATION_CONFIGURATION_REQUIRED" });
+});
+
+test("client membership option search accepts only its exact GET path", async () => {
+  const base = "http://nova.test/api/clients/00000000-0000-4000-8000-000000000001/membership-options";
+  const wrongMethod = await handleRequest(new Request(`${base}?kind=person`, { method: "POST" }));
+  const trailingSlash = await handleRequest(new Request(`${base}/?kind=person`));
+  for (const response of [wrongMethod, trailingSlash]) {
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      error: "ROUTE_NOT_FOUND",
+      message: "No NOVA command matches this route.",
+    });
+  }
+});
+
+test("rejects malformed audit search input before querying protected events", async () => {
+  const oversized = await handleRequest(new Request(`http://nova.test/api/audit-events?q=${"a".repeat(101)}`));
+  const repeated = await handleRequest(new Request("http://nova.test/api/audit-events?q=actor&q=action"));
+  const invalidAction = await handleRequest(new Request("http://nova.test/api/audit-events?action=actor%20email"));
+
+  expect(oversized.status).toBe(400);
+  expect(await oversized.json()).toEqual({ error: "AUDIT_SEARCH_INPUT_INVALID" });
+  expect(repeated.status).toBe(400);
+  expect(await repeated.json()).toEqual({ error: "AUDIT_SEARCH_INPUT_INVALID" });
+  expect(invalidAction.status).toBe(400);
+  expect(await invalidAction.json()).toEqual({ error: "AUDIT_SEARCH_INPUT_INVALID" });
+});
+
+test("rejects repeated or oversized work-context searches before querying protected context", async () => {
+  const oversized = await handleRequest(new Request(`http://nova.test/api/work-context?q=${"a".repeat(121)}`));
+  const repeated = await handleRequest(new Request("http://nova.test/api/work-context?q=client&q=workstream"));
+
+  expect(oversized.status).toBe(400);
+  expect(await oversized.json()).toEqual({ error: "WORK_CONTEXT_SEARCH_INPUT_INVALID" });
+  expect(repeated.status).toBe(400);
+  expect(await repeated.json()).toEqual({ error: "WORK_CONTEXT_SEARCH_INPUT_INVALID" });
+});
+
 test("does not expose the signed-in actor's permission grants without authentication configuration", async () => {
   const response = await handleRequest(new Request("http://nova.test/api/me/permission-grants"));
 
@@ -289,6 +398,11 @@ test("routes task assignment options through the authenticated task command", as
   ));
   expect(valid.status).toBe(503);
   expect(valid.headers.get("cache-control")).toBe("no-store");
+
+  const invalidSearch = await handleRequest(new Request(
+    `http://nova.test/api/tasks/${taskId}/assignment-options?q=one&q=two`,
+  ));
+  expect(invalidSearch.status).toBe(400);
 
   for (const path of [
     "/api/tasks/not-a-uuid/assignment-options",

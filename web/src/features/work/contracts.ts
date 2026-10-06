@@ -73,7 +73,7 @@ export interface WorkMyAssignmentsProps {
   onSubmit: (assignment: WorkAssignment, source: HTMLButtonElement) => void;
   onLoadCandidates: (
     assignment: WorkAssignment,
-    options?: { retry?: boolean },
+    options?: { retry?: boolean; query?: string },
   ) => Promise<AssignmentCandidateRead>;
   onSaveDueDate: (event: FormEvent<HTMLFormElement>, assignment: WorkAssignment) => void;
   onRequestReviewer: (event: FormEvent<HTMLFormElement>, assignment: WorkAssignment) => void;

@@ -51,6 +51,7 @@ function baseInput(overrides: Partial<RolePermissionsProjectionInput> = {}): Rol
       group: { result: { groups: [] }, rows: [], resource: "group scope targets" },
     },
     formatError: () => undefined,
+    onSearch: async () => ({ roles: [] }),
     onCreate() {},
     onUpdate() {},
     ...overrides,
@@ -92,6 +93,55 @@ describe("role permissions feature projection", () => {
     });
     expect(targetReads.client_workstream).toEqual({ status: "error", options: [], message: "Work context could not load." });
     expect(targetReads.group).toEqual({ status: "ready", options: [] });
+  });
+
+  it("exposes only a bounded ID/name projection for role-view-protected remote targets", async () => {
+    const calls: unknown[] = [];
+    const props = projectRolePermissionsEditorProps(baseInput({
+      onSearchTargets: async (scope, query) => {
+        calls.push([scope, query]);
+        return [
+          { id: "client-1", name: "Northstar", internal: "hidden" },
+          { id: "client-2", name: "Juniper", internal: "hidden" },
+        ] as never;
+      },
+    }));
+    expect(await props.onSearchTargets?.("client", "North")).toEqual([
+      { id: "client-1", name: "Northstar" },
+      { id: "client-2", name: "Juniper" },
+    ]);
+    expect(calls).toEqual([["client", "North"]]);
+  });
+
+  it("validates and minimizes role search results returned by the authorized server query", async () => {
+    const props = projectRolePermissionsEditorProps(baseInput({
+      onSearch: async () => ({ roles: [{
+        id: "role-2",
+        key: "project_lead",
+        name: "Project Lead",
+        revision: 2,
+        isProtected: false,
+        archivedAt: null,
+        operationalPolicy: policy,
+        permissionGrants: [],
+        privateNote: "not projected",
+      }] }),
+    }));
+
+    expect(await props.onSearch("project")).toEqual([{
+      id: "role-2",
+      key: "project_lead",
+      name: "Project Lead",
+      revision: 2,
+      isProtected: false,
+      archivedAt: null,
+      operationalPolicy: policy,
+      permissionGrants: [],
+    }]);
+    const malformedSearch = projectRolePermissionsEditorProps(baseInput({
+      onSearch: async () => ({ roles: [{ id: "role-bad", key: "bad" }] }),
+    }));
+    await expect(malformedSearch.onSearch("bad")).rejects.toThrow("role search response could not be read");
   });
 
   it("keeps role and catalogue read failures distinct and fails closed for malformed rows", () => {

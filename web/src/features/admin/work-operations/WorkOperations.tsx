@@ -218,7 +218,7 @@ function AssignmentRow({
       setError(null);
       return;
     }
-    if (mustReview && (!reviewerPersonId || reviewerPersonId === personId || !reviewerOptions.some((option) => option.value === reviewerPersonId))) {
+    if (mustReview && (!reviewerPersonId || reviewerPersonId === personId)) {
       setValidation("reviewer");
       setError(null);
       return;
@@ -267,6 +267,9 @@ function AssignmentRow({
                 options={replacementOptions}
                 placeholder="Choose replacement"
                 emptyMessage="No eligible assignees match this search."
+                searchMode="remote"
+                onSearch={(query) => optionsRead.search(query).then((result) =>
+                  result.assignees.map((person) => ({ value: person.id, label: person.name })))}
                 error={validation === "assignee" ? "Choose an eligible replacement." : undefined}
                 disabled={busy}
                 onChange={(value) => { setPersonId(value); setValidation(null); setError(null); if (value === reviewerPersonId) setReviewerPersonId(""); }}
@@ -282,6 +285,9 @@ function AssignmentRow({
                     options={reviewerOptions}
                     placeholder="Choose reviewer"
                     emptyMessage="No eligible reviewers match this search."
+                    searchMode="remote"
+                    onSearch={(query) => optionsRead.search(query).then((result) =>
+                      result.reviewers.map((person) => ({ value: person.id, label: person.name })))}
                     clearLabel="Clear reviewer"
                     error={validation === "reviewer" ? "Choose an eligible reviewer other than the assignee." : undefined}
                     disabled={busy}
@@ -347,7 +353,7 @@ function AssignmentEditor({
       setError(null);
       return;
     }
-    if (effectiveReviewRequired && (!reviewerPersonId || reviewerPersonId === personId || !reviewerOptions.some((option) => option.value === reviewerPersonId))) {
+    if (effectiveReviewRequired && (!reviewerPersonId || reviewerPersonId === personId)) {
       setValidation("reviewer");
       setError(null);
       return;
@@ -389,6 +395,9 @@ function AssignmentEditor({
                   options={assignableOptions}
                   placeholder="Choose assignee"
                   emptyMessage="No eligible assignees match this search."
+                  searchMode="remote"
+                  onSearch={(query) => optionsRead.search(query).then((result) =>
+                    result.assignees.map((person) => ({ value: person.id, label: person.name })))}
                   error={validation === "assignee" ? "Choose an eligible assignee." : undefined}
                   disabled={busy}
                   onChange={(value) => { setPersonId(value); setValidation(null); setError(null); if (value === reviewerPersonId) setReviewerPersonId(""); }}
@@ -405,6 +414,9 @@ function AssignmentEditor({
                     options={reviewerOptions}
                     placeholder="Choose reviewer"
                     emptyMessage="No eligible reviewers match this search."
+                    searchMode="remote"
+                    onSearch={(query) => optionsRead.search(query).then((result) =>
+                      result.reviewers.map((person) => ({ value: person.id, label: person.name })))}
                     error={validation === "reviewer" ? "Choose an eligible reviewer other than the assignee." : undefined}
                     disabled={busy}
                     onChange={(value) => { setReviewerPersonId(value); setValidation(null); setError(null); }}
@@ -431,6 +443,9 @@ function AssignmentEditor({
                       options={reviewerOptions}
                       placeholder="Choose reviewer"
                       emptyMessage="No eligible reviewers match this search."
+                      searchMode="remote"
+                      onSearch={(query) => optionsRead.search(query).then((result) =>
+                        result.reviewers.map((person) => ({ value: person.id, label: person.name })))}
                       error={validation === "reviewer" ? "Choose an eligible reviewer other than the assignee." : undefined}
                       disabled={busy}
                       onChange={(value) => { setReviewerPersonId(value); setValidation(null); setError(null); }}
@@ -458,9 +473,9 @@ type AssignmentOptionsRead =
   | { status: "error"; message: string };
 
 type AssignmentOptionsController =
-  | { status: "idle" | "loading"; refresh(): Promise<void>; retry(): Promise<void> }
-  | { status: "ready"; options: WorkOperationsAssignmentOptions; refresh(): Promise<void>; retry(): Promise<void> }
-  | { status: "error"; message: string; refresh(): Promise<void>; retry(): Promise<void> };
+  | { status: "idle" | "loading"; refresh(): Promise<void>; retry(): Promise<void>; search(query: string): Promise<WorkOperationsAssignmentOptions> }
+  | { status: "ready"; options: WorkOperationsAssignmentOptions; refresh(): Promise<void>; retry(): Promise<void>; search(query: string): Promise<WorkOperationsAssignmentOptions> }
+  | { status: "error"; message: string; refresh(): Promise<void>; retry(): Promise<void>; search(query: string): Promise<WorkOperationsAssignmentOptions> };
 
 function useAssignmentOptions(taskId: string, loadAssignmentOptions: WorkOperationsProps["loadAssignmentOptions"]) {
   const [read, setRead] = useState<AssignmentOptionsRead>({ status: "idle" });
@@ -492,7 +507,18 @@ function useAssignmentOptions(taskId: string, loadAssignmentOptions: WorkOperati
     }
   }
 
-  return { ...read, refresh: run, retry: run };
+  async function search(query: string) {
+    const options = await loadAssignmentOptions(taskId, { query });
+    if (!Array.isArray(options?.assignees) || !Array.isArray(options?.reviewers)) {
+      throw new Error("Assignment options response was incomplete. Retry to try again.");
+    }
+    return {
+      assignees: cleanOptions(options.assignees),
+      reviewers: cleanOptions(options.reviewers),
+    };
+  }
+
+  return { ...read, refresh: run, retry: run, search };
 }
 
 function cleanOptions(options: WorkOperationsAssignmentOptions["assignees"]): WorkOperationsAssignmentOptions["assignees"] {

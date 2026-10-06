@@ -88,7 +88,7 @@ test("mounts only billing policy for a billing-only role and reports independent
     permissions: { view: false, propose: false, manage: false, review: false },
     onRetry() {},
     createCatalogActions: () => ({}),
-    createBillingActions: () => ({ onLoadRules: async () => ({}) }),
+    createBillingActions: () => ({ onLoadRules: async () => ({}), onSearchWorkstreams: async () => [] }),
   });
 
   assert.equal(state.loads.catalog, 0);

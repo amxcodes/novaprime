@@ -25,7 +25,7 @@ require.extensions[".css"] = (module) => {
 
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
-const { OnboardingValidationFeedback, PeopleAdministration, employmentStartDateHint, onboardingValidationSummary, prepareAuditReason, prepareOnboardingSubmission, projectManagerPickerOptions } = require("./PeopleAdministration.tsx");
+const { OnboardingValidationFeedback, PeopleAdministration, employmentStartDateHint, onboardingValidationSummary, prepareAuditReason, prepareOnboardingSubmission } = require("./PeopleAdministration.tsx");
 
 const activePerson = {
   id: "person-1",
@@ -44,18 +44,24 @@ const activePerson = {
   },
 };
 
+function peoplePage(people = [], overrides = {}) {
+  return { people, limit: 25, hasMore: false, nextCursor: null, ...overrides };
+}
+
 function render(props = {}) {
   return renderToStaticMarkup(React.createElement(PeopleAdministration, {
     canInvite: true,
     canViewPeople: true,
     peopleRead: { status: "ready" },
-    people: [activePerson],
+    peoplePage: peoplePage([activePerson]),
+    searchPeopleDirectory: async () => peoplePage([]),
     onInvite() {},
     onResendInvitation() {},
     onFreeze() {},
     onStartOffboarding() {},
     onCompleteExit() {},
     onCompleteOnboarding() {},
+    searchOnboardingOptions: async () => [],
     ...props,
   }));
 }
@@ -128,7 +134,7 @@ test("invited person gets the resend action only when the host grants it", () =>
     status: "invited",
     actions: { ...activePerson.actions, freeze: false, startOffboarding: false, resendInvitation: true },
   };
-  const html = render({ people: [invited] });
+  const html = render({ peoplePage: peoplePage([invited]) });
   assert.match(html, /Resend invitation/);
   assert.doesNotMatch(html, /Freeze access|Start offboarding/);
 });
@@ -138,18 +144,9 @@ test("onboarding uses authored pickers for required choices and keeps manager op
     ...activePerson,
     status: "onboarding",
     actions: { ...activePerson.actions, freeze: false, startOffboarding: false, completeOnboarding: true },
-    onboarding: {
-      status: "ready",
-      offices: [{ id: "office-2", name: "Remote office", timezone: "Asia/Kolkata" }],
-      departments: [{ id: "department-2", name: "Product" }],
-      roles: [{ id: "role-2", name: "Designer" }],
-      managers: [
-        { id: "person-1", name: "Aman Verma" },
-        { id: "person-2", name: "Sam Lee" },
-      ],
-    },
+    onboarding: { status: "ready" },
   };
-  const html = render({ people: [onboarding] });
+  const html = render({ peoplePage: peoplePage([onboarding]) });
   assert.match(html, /Complete onboarding/);
   assert.match(html, /Employment start \(office local date\)/);
   assert.match(html, /Choose an office; NOVA validates this date using that office&#x27;s timezone\./);
@@ -166,20 +163,18 @@ test("onboarding uses authored pickers for required choices and keeps manager op
 });
 
 test("onboarding submission preserves selected authorized IDs and the optional manager value", () => {
-  const read = {
-    status: "ready",
-    offices: [{ id: "office-2", name: "Remote office", timezone: "Asia/Kolkata" }],
-    departments: [{ id: "department-2", name: "Product" }],
-    roles: [{ id: "role-2", name: "Designer" }],
-    managers: [],
-  };
-  const result = prepareOnboardingSubmission(read, {
+  const result = prepareOnboardingSubmission({
     designation: "  Product designer  ",
     officeId: "office-2",
     employmentStartsOn: "2026-10-03",
     organisationDepartmentId: "department-2",
     roleId: "role-2",
     managerPersonId: "",
+  }, {
+    office: { id: "office-2", name: "Remote office", timezone: "Asia/Kolkata" },
+    department: { id: "department-2", name: "Product" },
+    role: { id: "role-2", name: "Designer" },
+    manager: null,
   });
   assert.deepEqual(result, {
     input: {
@@ -200,21 +195,14 @@ test("employment-date guidance follows the selected office timezone", () => {
 });
 
 test("onboarding rejects blank and typed-but-unselected required values before command submission", () => {
-  const read = {
-    status: "ready",
-    offices: [{ id: "office-2", name: "Remote office", timezone: "Asia/Kolkata" }],
-    departments: [{ id: "department-2", name: "Product" }],
-    roles: [{ id: "role-2", name: "Designer" }],
-    managers: [],
-  };
-  const blank = prepareOnboardingSubmission(read, {
+  const blank = prepareOnboardingSubmission({
     designation: "",
     officeId: "",
     employmentStartsOn: "",
     organisationDepartmentId: "",
     roleId: "",
     managerPersonId: "",
-  });
+  }, { office: null, department: null, role: null, manager: null });
   assert.equal(blank.input, null);
   assert.deepEqual(blank.errors, {
     designation: "Enter a designation.",
@@ -224,14 +212,14 @@ test("onboarding rejects blank and typed-but-unselected required values before c
     roleId: "Choose a role from the list.",
   });
 
-  const typedText = prepareOnboardingSubmission(read, {
+  const typedText = prepareOnboardingSubmission({
     designation: "Designer",
     officeId: "Remote office",
     employmentStartsOn: "2026-10-03",
     organisationDepartmentId: "Product",
     roleId: "role-from-another-scope",
     managerPersonId: "",
-  });
+  }, { office: null, department: null, role: null, manager: null });
   assert.equal(typedText.input, null);
   assert.deepEqual(typedText.errors, {
     officeId: "Choose an office from the list.",
@@ -253,51 +241,58 @@ test("onboarding validation produces a concise announced summary for invalid sub
   assert.equal(renderToStaticMarkup(React.createElement(OnboardingValidationFeedback, { errors: {} })), "");
 });
 
-test("onboarding denied and incomplete reads remain unavailable without rendering pickers", () => {
+test("onboarding denied reads stay unavailable while remote options do not require a preloaded roster", () => {
   const denied = {
     ...activePerson,
     status: "onboarding",
     actions: { ...activePerson.actions, completeOnboarding: true },
     onboarding: { status: "denied", message: "Office and role access are required." },
   };
-  const deniedHtml = render({ people: [denied] });
+  const deniedHtml = render({ peoplePage: peoplePage([denied]) });
   assert.match(deniedHtml, /Onboarding is unavailable/);
   assert.match(deniedHtml, /Office and role access are required\./);
   assert.doesNotMatch(deniedHtml, /role="combobox"/);
 
-  const incomplete = {
+  const emptyLegacyRead = {
     ...denied,
-    onboarding: {
-      status: "ready",
-      offices: [{ id: "office-2", name: "Remote office", timezone: "Asia/Kolkata" }],
-      departments: [],
-      roles: [{ id: "role-2", name: "Designer" }],
-      managers: [],
-    },
+    onboarding: { status: "ready" },
   };
-  const incompleteHtml = render({ people: [incomplete] });
-  assert.match(incompleteHtml, /Onboarding cannot be completed yet/);
-  assert.doesNotMatch(incompleteHtml, /role="combobox"/);
+  const remoteHtml = render({ peoplePage: peoplePage([emptyLegacyRead]) });
+  assert.match(remoteHtml, /role="combobox"/);
+  assert.match(remoteHtml, /name="officeId" value=""/);
 });
 
-test("manager choices preserve authorized options while excluding the onboarding person", () => {
-  assert.deepEqual(projectManagerPickerOptions([
-    { id: "person-1", name: "Aman Verma" },
-    { id: "person-2", name: "Sam Lee" },
-  ], "person-1"), [
-    { value: "person-2", label: "Sam Lee" },
-  ]);
+test("all onboarding business pickers use remote server results and keep selected IDs explicit", () => {
+  const source = fs.readFileSync(require("node:path").join(__dirname, "PeopleAdministration.tsx"), "utf8");
+  assert.equal((source.match(/searchMode="remote"/g) || []).length, 4);
+  assert.match(source, /remoteSearch\("manager", query\)/);
+  assert.match(source, /selectedOptions\.manager\?\.id !== values\.managerPersonId/);
 });
 
 test("People list loading, errors, unavailable state, and empty state remain distinct", () => {
-  assert.match(render({ peopleRead: { status: "loading" }, people: [] }), /Loading people/);
-  assert.match(render({ peopleRead: { status: "error", message: "Directory read failed." }, people: [] }), /Directory read failed\./);
-  assert.match(render({ peopleRead: { status: "unavailable", message: "People access is required." }, people: [] }), /People access is required\./);
-  const emptyHtml = render({ peopleRead: { status: "ready" }, people: [] });
+  assert.match(render({ peopleRead: { status: "loading" }, peoplePage: peoplePage([]) }), /Loading people/);
+  assert.match(render({ peopleRead: { status: "error", message: "Directory read failed." }, peoplePage: peoplePage([]) }), /Directory read failed\./);
+  assert.match(render({ peopleRead: { status: "unavailable", message: "People access is required." }, peoplePage: peoplePage([]) }), /People access is required\./);
+  const emptyHtml = render({ peopleRead: { status: "ready" }, peoplePage: peoplePage([]) });
   assert.match(emptyHtml, /No people are visible in your current scope/);
   assert.match(emptyHtml, /role="status" aria-live="polite" aria-atomic="true"/);
   const populatedHtml = render({ peopleRead: { status: "ready" } });
-  assert.match(populatedHtml, /role="status" aria-live="polite" aria-atomic="true">\s*1 visible record/);
+  assert.match(populatedHtml, /1 visible record on page 1/);
+});
+
+test("People directory exposes bounded server search and paging controls without local filtering", () => {
+  const html = render({ peoplePage: peoplePage([activePerson], { hasMore: true, nextCursor: "opaque-next" }) });
+  assert.match(html, /role="search" aria-label="Search people in your scope"/);
+  assert.match(html, /Search people you can view/);
+  assert.match(html, /Search runs on the server across your authorized directory\./);
+  assert.match(html, /Name, email, office, department, or role/);
+  assert.match(html, /aria-label="People directory pages"/);
+  assert.match(html, />Previous</);
+  assert.match(html, />Next</);
+  assert.match(html, /1 visible record on page 1/);
+  const source = fs.readFileSync(require("node:path").join(__dirname, "PeopleAdministration.tsx"), "utf8");
+  assert.match(source, /searchPeopleDirectory\(nextQuery, cursor\)/);
+  assert.doesNotMatch(source, /people\.filter\(|people\.some\(.*query/i);
 });
 
 test("feature styles reflow the editor and keep product controls touch-sized", () => {
@@ -309,4 +304,12 @@ test("feature styles reflow the editor and keep product controls touch-sized", (
   assert.match(css, /--nova-control-touch-target/);
   assert.match(css, /:focus-visible/);
   assert.match(css, /@media \(forced-colors: active\)/);
+  assert.match(css, /\.directorySearch\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/s);
+  assert.match(css, /@container people-administration \(min-width: 56rem\)[\s\S]*\.personHeader\s*\{\s*grid-column:\s*1;/);
+  assert.match(css, /@container people-administration \(max-width: 36rem\)[\s\S]*\.directorySearch\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\);/);
+  assert.match(css, /\.directoryPagination\s*\{[^}]*flex-wrap:\s*wrap;[^}]*justify-content:\s*space-between;/s);
+  assert.match(css, /\.directoryPagination > span\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
+  assert.match(css, /\.peopleList\s*\{[^}]*max-width:\s*100%;/s);
+  assert.match(css, /\.person\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/s);
+  assert.doesNotMatch(css, /^\s*min-width:\s*(?:[4-9]\d|\d{3,})rem/m);
 });

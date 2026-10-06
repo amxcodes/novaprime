@@ -170,7 +170,7 @@ test("the color boundary catches common literals and allows token references", (
   assert.equal(findRawThemeColors(".control { color: grey; }").length, 1);
   assert.equal(findRawThemeColors(".control { color: fuchsia; }").length, 1);
   assert.equal(findRawThemeColors(".control { background: var(--nova-color-surface); }").length, 0);
-  assert.equal(findRawThemeColors(".control { color: var(--nova-palette-green-800); }").length, 1);
+  assert.equal(findRawThemeColors(".control { color: var(--nova-palette-action-800); }").length, 1);
   assert.equal(findRawThemeColors(".control { background: color-mix(in srgb, var(--token) 10%, transparent); }").length, 0);
   assert.equal(findRawThemeColors("@media (forced-colors: active) { .control { color: CanvasText; background: Canvas; outline-color: Highlight; } }").length, 0);
   assert.equal(findRawThemeColors(".control { color: CanvasText; }").length, 1);
@@ -179,7 +179,7 @@ test("the color boundary catches common literals and allows token references", (
 
 test("React inline style objects cannot bypass the semantic theme-color boundary", () => {
   assert.equal(findRawInlineStyleColors('<div style={{ color: "#ffffff" }} />').length, 1);
-  assert.equal(findRawInlineStyleColors('<div style={{ background: "var(--nova-palette-green-700)" }} />').length, 1);
+  assert.equal(findRawInlineStyleColors('<div style={{ background: "var(--nova-palette-action-700)" }} />').length, 1);
   assert.equal(findRawInlineStyleColors('<div style={{ "--swatch-color": isValid(draft) ? draft : "transparent" }} />').length, 0);
   assert.equal(findRawInlineStyleColors('<div style={{ left: geometry.left, top: geometry.top }} />').length, 0);
 

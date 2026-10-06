@@ -16,8 +16,8 @@
 .skipLink {
   position: fixed;
   z-index: var(--nova-layer-toast);
-  inset-block-start: var(--nova-space-3);
-  inset-inline-start: var(--nova-space-3);
+  inset-block-start: max(var(--nova-space-3), env(safe-area-inset-top));
+  inset-inline-start: max(var(--nova-space-3), env(safe-area-inset-left));
   padding: var(--nova-space-3) var(--nova-space-4);
   transform: translateY(-160%);
   border: 1px solid var(--nova-color-border);

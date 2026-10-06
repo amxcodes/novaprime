@@ -61,6 +61,7 @@ export type WorkContextExplorerReadState =
 
 export interface WorkContextExplorerProps {
   readState: WorkContextExplorerReadState;
+  onSearch: (query: string) => Promise<WorkContextExplorerReadState>;
   /** Omit when the host has no effective department-management capability. */
   departmentCreation?: WorkContextClientDepartmentCreation;
 }

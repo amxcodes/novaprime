@@ -3,7 +3,6 @@ import type {
   ClientMembershipReadState,
   ClientMembershipRecord,
   ClientMembershipClient,
-  ClientMembershipPersonOption,
   CreateClientMembershipInput,
 } from "./contracts";
 
@@ -33,8 +32,8 @@ export interface ClientMembershipControllerDependencies {
   /** Effective capabilities come from the host. They are presentation gates, not API authorization. */
   canViewMemberships: boolean;
   canManageMemberships: boolean;
-  /** `null`/empty prevents adding; the host supplies only a successful authorized read. */
-  peopleOptions: readonly ClientMembershipPersonOption[] | null;
+  /** Presentation gate only; the server rechecks people.view before every write. */
+  canSearchPeople: boolean;
   request: ClientMembershipRequestPort;
   runCommand: ClientMembershipCommandRunner;
   isCurrent: () => boolean;
@@ -124,7 +123,7 @@ export class ClientMembershipsController {
       effectiveOn: input.effectiveOn.trim(),
       ...(input.clientDepartmentId === undefined ? {} : { clientDepartmentId: input.clientDepartmentId || null }),
     };
-    if (!this.dependencies.canManageMemberships || !this.dependencies.peopleOptions?.length ||
+    if (!this.dependencies.canManageMemberships || !this.dependencies.canSearchPeople ||
         !normalized.personId || !normalized.effectiveOn || operationIsPending(this.snapshot.addOperation)) return;
 
     await this.runMutation(

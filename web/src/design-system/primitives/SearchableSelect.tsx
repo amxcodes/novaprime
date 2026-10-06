@@ -12,6 +12,8 @@ import {
   isSearchableSelectPointerOutside,
   isSearchableSelectTouchScroll,
   isSearchableSelectOptionSelectable,
+  isCurrentSearchableSelectRequest,
+  resolveSearchableSelectOptions,
   shouldCommitSearchableSelectSelection,
   shouldUseSearchableSelectBoundaryNavigation,
   stepSearchableSelectActiveIndex,
@@ -25,7 +27,7 @@ export interface SearchableSelectOption {
   disabled?: boolean;
 }
 
-export interface SearchableSelectProps {
+interface SearchableSelectBaseProps {
   id?: string;
   /** When provided, the selected value is included in FormData through a hidden input. */
   name?: string;
@@ -34,12 +36,46 @@ export interface SearchableSelectProps {
   required?: boolean;
   value: string;
   options: readonly SearchableSelectOption[];
+  searchDebounceMs?: number;
+  loadingMessage?: string;
+  searchErrorMessage?: string;
   placeholder: string;
   emptyMessage: string;
   error?: string;
   disabled?: boolean;
   clearLabel?: string;
   onChange(value: string): void;
+}
+
+export type SearchableSelectProps = SearchableSelectBaseProps & (
+  | {
+    /** Local filtering is the default; use remote mode for permission-scoped records. */
+    searchMode?: "local";
+    onSearch?: never;
+    selectedOption?: never;
+  }
+  | {
+    /** Remote mode renders only results returned by the permission-checked server query. */
+    searchMode: "remote";
+    /** The server must authorize and bound every query. */
+    onSearch: (query: string) => Promise<readonly SearchableSelectOption[]>;
+    /** Keeps the selected label available when it is not in the current server result page. */
+    selectedOption?: SearchableSelectOption | null;
+  }
+);
+
+type RemoteSearchState = {
+  query: string;
+  status: "idle" | "loading" | "ready" | "error";
+  options: readonly SearchableSelectOption[];
+};
+
+function isSearchableSelectOptionShape(value: unknown): value is SearchableSelectOption {
+  if (!value || typeof value !== "object") return false;
+  const option = value as Partial<SearchableSelectOption>;
+  return typeof option.value === "string" && typeof option.label === "string" &&
+    (option.description === undefined || typeof option.description === "string") &&
+    (option.disabled === undefined || typeof option.disabled === "boolean");
 }
 
 /** Searchable, keyboard-operable choice list with viewport-aware portal placement. */
@@ -51,6 +87,12 @@ export function SearchableSelect({
   required = false,
   value,
   options,
+  searchMode = "local",
+  onSearch,
+  selectedOption,
+  searchDebounceMs = 180,
+  loadingMessage = "Searching…",
+  searchErrorMessage = "Options could not be loaded. Edit the search to try again.",
   placeholder,
   emptyMessage,
   error,
@@ -61,9 +103,9 @@ export function SearchableSelect({
   const generatedId = useId();
   const id = providedId ?? generatedId;
   const listboxId = `${id}-listbox`;
-  const selected = options.find((option) => option.value === value);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [remoteState, setRemoteState] = useState<RemoteSearchState>({ query: "", status: "idle", options: [] });
   const [activeIndex, setActiveIndex] = useState(0);
   const [popupGeometry, setPopupGeometry] = useState<{ left: number; width: number; top: number; maxHeight: number; placement: "above" | "below" } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -73,14 +115,80 @@ export function SearchableSelect({
   const touchPointerInsidePopup = useRef(false);
   const touchPointerStart = useRef<{ x: number; y: number } | null>(null);
   const touchPointerMoved = useRef(false);
-  const filtered = useMemo(() => filterSearchableSelectOptions(options, query), [options, query]);
+  const requestId = useRef(0);
+  const searchCallback = useRef(onSearch);
+  const selectedOptionCache = useRef<SearchableSelectOption | null>(null);
+  searchCallback.current = onSearch;
+  const normalizedQuery = query.trim();
+  const currentRemoteState = remoteState.query === normalizedQuery ? remoteState : null;
+  const localFiltered = useMemo(
+    () => searchMode === "local" ? filterSearchableSelectOptions(options, query) : [],
+    [options, query, searchMode],
+  );
+  const filtered = resolveSearchableSelectOptions(
+    searchMode === "remote"
+      ? currentRemoteState?.status === "ready" ? currentRemoteState.options : []
+      : localFiltered,
+    query,
+    searchMode,
+  );
   const boundedActiveIndex = activeIndex < 0 ? -1 : Math.min(activeIndex, Math.max(0, filtered.length - 1));
-  const safeActiveIndex = boundedActiveIndex >= 0 && isSearchableSelectOptionSelectable(filtered[boundedActiveIndex])
+  const safeActiveIndex = boundedActiveIndex >= 0 && filtered[boundedActiveIndex] && isSearchableSelectOptionSelectable(filtered[boundedActiveIndex])
     ? boundedActiveIndex
     : findSearchableSelectBoundaryIndex(filtered, "first");
   const activeOption = filtered[safeActiveIndex];
   const ariaState = getSearchableSelectAriaState(listboxId, filtered.length, safeActiveIndex, open);
+  const selected = (searchMode === "remote" && selectedOption?.value === value ? selectedOption : null) ||
+    options.find((option) => option.value === value) ||
+    (selectedOptionCache.current?.value === value ? selectedOptionCache.current : null);
   const displayedValue = open ? query : selected?.label || "";
+
+  useEffect(() => {
+    if (value !== selectedOptionCache.current?.value) selectedOptionCache.current = null;
+  }, [value]);
+
+  useEffect(() => {
+    if (searchMode !== "remote") {
+      requestId.current += 1;
+      return;
+    }
+    if (typeof searchCallback.current !== "function") {
+      requestId.current += 1;
+      setRemoteState({ query: normalizedQuery, status: "error", options: [] });
+      return;
+    }
+    if (!open || disabled) {
+      requestId.current += 1;
+      return;
+    }
+
+    const currentRequestId = ++requestId.current;
+    let active = true;
+    setRemoteState({ query: normalizedQuery, status: "loading", options: [] });
+    const timer = window.setTimeout(() => {
+      Promise.resolve()
+        .then(() => searchCallback.current?.(normalizedQuery))
+        .then((result) => {
+          if (!active || !isCurrentSearchableSelectRequest(requestId.current, currentRequestId, query.trim(), normalizedQuery)) return;
+          if (!Array.isArray(result) || result.some((option) => !isSearchableSelectOptionShape(option))) {
+            throw new Error("Invalid searchable select response");
+          }
+          setRemoteState({ query: normalizedQuery, status: "ready", options: result });
+          setActiveIndex(findSearchableSelectBoundaryIndex(result, "first"));
+        })
+        .catch(() => {
+          if (!active || !isCurrentSearchableSelectRequest(requestId.current, currentRequestId, query.trim(), normalizedQuery)) return;
+          setRemoteState({ query: normalizedQuery, status: "error", options: [] });
+          setActiveIndex(-1);
+        });
+    }, normalizedQuery ? Math.max(0, searchDebounceMs) : 0);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+      if (requestId.current === currentRequestId) requestId.current += 1;
+    };
+  }, [disabled, open, normalizedQuery, searchDebounceMs, searchMode]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -179,6 +287,7 @@ export function SearchableSelect({
   function choose(option: SearchableSelectOption) {
     if (!isSearchableSelectOptionSelectable(option)) return;
     clearCloseTimer();
+    if (searchMode === "remote") selectedOptionCache.current = option;
     onChange(option.value);
     setQuery("");
     setOpen(false);
@@ -233,6 +342,7 @@ export function SearchableSelect({
             className={clearLabel && value ? styles.choiceInputHasClear : undefined}
             role="combobox"
             aria-autocomplete="list"
+            aria-busy={searchMode === "remote" && currentRemoteState?.status === "loading" || undefined}
             aria-expanded={open}
             aria-controls={ariaState.controls}
             aria-activedescendant={ariaState.activeDescendant}
@@ -245,14 +355,16 @@ export function SearchableSelect({
               clearCloseTimer();
               setOpen(true);
               setQuery("");
-              setActiveIndex(findSearchableSelectActiveIndex(options, value));
+              setActiveIndex(searchMode === "remote" ? -1 : findSearchableSelectActiveIndex(options, value));
             }}
             onBlur={() => { if (!touchPointerInsidePopup.current) closeAfterBlur(); }}
             onChange={(event: ChangeEvent<HTMLInputElement>) => {
               const nextQuery = event.currentTarget.value;
               setQuery(nextQuery);
               setOpen(true);
-              setActiveIndex(findSearchableSelectActiveIndex(filterSearchableSelectOptions(options, nextQuery), ""));
+              setActiveIndex(searchMode === "remote"
+                ? -1
+                : findSearchableSelectActiveIndex(filterSearchableSelectOptions(options, nextQuery), ""));
               if (value) onChange("");
             }}
             onKeyDown={onKeyDown}
@@ -277,7 +389,8 @@ export function SearchableSelect({
               onPointerCancelCapture={onPopupPointerCancel}
               ref={popupRef}
             >
-              <div id={listboxId} className={styles.listbox} role="listbox" aria-label={label}>
+              <div id={listboxId} className={styles.listbox} role="listbox" aria-label={label}
+                aria-busy={searchMode === "remote" && currentRemoteState?.status === "loading" || undefined}>
                 {filtered.map((option, index) => (
                   <div
                     key={option.value}
@@ -299,7 +412,18 @@ export function SearchableSelect({
                   </div>
                 ))}
               </div>
-              {!filtered.length ? <div className={styles.noResults} role="status">{emptyMessage}</div> : null}
+              {searchMode === "remote" && currentRemoteState?.status === "loading"
+                ? <div className={styles.noResults} data-state="loading" role="status" aria-live="polite">{loadingMessage}</div>
+                : null}
+              {searchMode === "remote" && currentRemoteState?.status === "error"
+                ? <div className={styles.noResults} data-state="error" role="alert">{searchErrorMessage}</div>
+                : null}
+              {searchMode === "remote" && currentRemoteState?.status === "ready" && !filtered.length
+                ? <div className={styles.noResults} data-state="empty" role="status" aria-live="polite">{emptyMessage}</div>
+                : null}
+              {searchMode === "local" && !filtered.length
+                ? <div className={styles.noResults} data-state="empty" role="status">{emptyMessage}</div>
+                : null}
             </div>, document.body,
           ) : null}
         </div>

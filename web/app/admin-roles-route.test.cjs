@@ -17,6 +17,7 @@ const matrixSource = fs.readFileSync(path.join(webRoot, "src", "features", "admi
 test("Admin wires Roles as a typed lazy child using the existing independent reads", () => {
   assert.match(routeSource, /const \[adminPageSections,[^\]]+\] = await Promise\.all\(/);
   assert.match(routeSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "roles"\), \(\) => import\("\.\.\/src\/features\/admin\/roles\/RolePermissionsSection\.tsx"\)\)/);
+  assert.match(routeSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "roles"\), \(\) => import\("\.\/admin-role-scope-targets-route\.js"\)\)/);
   assert.match(routeSource, /if \(!target\.isConnected \|\| !isCurrentPageRequest\(lifetime\) \|\| identityEpoch !== state\.identityEpoch \|\| state\.adminData !== data\) return;/);
   assert.match(routeSource, /const \{[^}]*buildAuthorizedAdminPageSections[^}]*RolePermissionsLoadFailureSection[^}]*\} = adminPageSections;/);
   assert.match(routeSource, /const RolePermissionsSection = roleSectionModule\?\.RolePermissionsSection;/);
@@ -24,6 +25,8 @@ test("Admin wires Roles as a typed lazy child using the existing independent rea
   assert.match(routeSource, /canView: hasAdminPermission\(data, "roles\.view"\)/);
   assert.match(routeSource, /canCreate: hasAdminPermission\(data, "roles\.create"\)/);
   assert.match(routeSource, /canEdit: hasAdminPermission\(data, "roles\.edit"\)/);
+  assert.match(routeSource, /createAdminRoleScopeTargetsRoute\(\{[\s\S]{0,500}hasAdminPermission,[\s\S]{0,160}pageApi,/);
+  assert.match(routeSource, /onSearchTargets: hasAdminPermission\(data, "roles\.view"\) \? searchRoleScopeTargets : undefined/);
   assert.match(routeSource, /roles: \{ result: data\.roles, issue: adminReadIssue\(data\.roles, "roles"\) \}/);
   assert.match(routeSource, /issue: adminReadIssue\(data\.permissions, "the role permission catalogue"\)/);
   assert.doesNotMatch(routeSource, /renderRolePermissionsEditor|rolePermissionsRoot/);

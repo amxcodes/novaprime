@@ -63,7 +63,7 @@ describe("appearance presentation", () => {
     expect(lightText).not.toBe("#ffffff");
     expect(darkText).not.toBe("#000000");
     expect(colorContrast(lightText, "#ffffff")).toBeGreaterThanOrEqual(4.5);
-    expect(colorContrast(darkText, "#0b100d")).toBeGreaterThanOrEqual(4.5);
+    expect(colorContrast(darkText, "#1a212c")).toBeGreaterThanOrEqual(4.5);
   });
 
   it("keeps the primary-button foreground at WCAG AA on both the accent and its hover fill", () => {
@@ -81,7 +81,7 @@ describe("appearance presentation", () => {
   });
 
   it("keeps normal and hover accent text readable on neutral and accent-subtle surfaces in both themes", () => {
-    const greySelectionSurface = mixHex("#f7faf8", "#777777", 0.1);
+    const greySelectionSurface = mixHex("#f3f6fc", "#777777", 0.1);
     expect(colorContrast("#777777", greySelectionSurface)).toBeLessThan(4.5);
 
     const accents = [
@@ -128,7 +128,7 @@ describe("appearance presentation", () => {
   });
 
   it("uses the selected curated or custom accent for its preview", () => {
-    expect(getSelectedAccent(appearance)).toBe("#176a43");
+    expect(getSelectedAccent(appearance)).toBe("#2b57aa");
     expect(getSelectedAccent({ ...appearance, accent: "custom" })).toBe("#126a52");
   });
 
@@ -198,10 +198,10 @@ function colorContrast(first: string, second: string): number {
 }
 
 function themeSurfaces(theme: "light" | "dark", accent: string): string[] {
-  const canvas = theme === "light" ? "#f7faf8" : "#0b100d";
+  const canvas = theme === "light" ? "#f3f6fc" : "#1a212c";
   const neutralSurfaces = theme === "light"
-    ? ["#ffffff", "#f0f5f1"]
-    : ["#121a15", "#19241d", "#18221b"];
+    ? ["#ffffff", "#eef3fa"]
+    : ["#242d39", "#2a3544", "#202a37"];
   const subtleMix = theme === "light" ? 0.1 : 0.16;
   return [canvas, ...neutralSurfaces, mixHex(canvas, accent, subtleMix)];
 }

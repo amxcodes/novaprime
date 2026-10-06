@@ -13,6 +13,7 @@ function harness(options: {
   commandCurrent?: boolean;
   apiResponse?: (path: string) => unknown;
   rulesResponse?: unknown;
+  pageReadResponse?: (path: string) => unknown;
   can?: (permissionKey: string, target?: { clientId?: unknown; clientWorkstreamId?: unknown }) => boolean;
 } = {}) {
   const source = { isConnected: true } as unknown as Element;
@@ -48,6 +49,7 @@ function harness(options: {
     },
     async pageApi(path, requestLifetime) {
       pageReads.push({ path, lifetime: requestLifetime });
+      if (options.pageReadResponse) return options.pageReadResponse(path);
       if ("rulesResponse" in options) return options.rulesResponse;
       return {
         defaultClass: "billable",
@@ -195,6 +197,46 @@ describe("Work Setup action route", () => {
     expect(state.checks.filter((check) => check.permissionKey === "workstreams.billing_policy.manage")
       .every((check) => check.target?.clientId === "client-1" && check.target.clientWorkstreamId === "stream/1"))
       .toBe(true);
+  });
+
+  it("searches workstreams on the server and returns only billing-manageable summaries", async () => {
+    const state = harness({ pageReadResponse: () => ({
+      clientWorkstreams: [
+        { id: "stream-1", name: "Delivery", client_name: "Northstar", canManageBillingPolicy: true,
+          billingPolicyClass: "billable", billingPolicyRevision: 4 },
+        { id: "stream-2", name: "Restricted", client_name: "Northstar", canManageBillingPolicy: false,
+          billingPolicyClass: "billable", billingPolicyRevision: 1 },
+      ],
+    }) });
+    const actions = state.route.createBillingActions({
+      source: state.source,
+      lifetime: state.lifetime,
+      workContext: { clientWorkstreams: [] },
+    });
+
+    expect(await actions.onSearchWorkstreams("Northstar")).toEqual([{
+      id: "stream-1", name: "Delivery", clientName: "Northstar",
+      policyClass: "billable", policyRevision: 4,
+    }]);
+    expect(state.pageReads).toEqual([{
+      path: "/api/work-context?q=Northstar",
+      lifetime: state.lifetime,
+    }]);
+  });
+
+  it("sends predefined-task searches to the permission-checked server read", async () => {
+    const state = harness();
+    const actions = state.route.createBillingActions({
+      source: state.source,
+      lifetime: state.lifetime,
+      workContext: { clientWorkstreams: [{ id: "stream-1", clientId: "client-1", canManageBillingPolicy: true }] },
+    });
+
+    await actions.onLoadRules("stream-1", "delivery");
+    expect(state.pageReads).toEqual([{
+      path: "/api/workstreams/client/stream-1/billing-policy/definitions?q=delivery",
+      lifetime: state.lifetime,
+    }]);
   });
 
   it("rejects malformed billing mutation revisions instead of coercing them to zero", async () => {

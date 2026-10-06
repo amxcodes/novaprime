@@ -18,7 +18,6 @@ import type {
 } from "./contracts";
 import {
   assignableRoleScopes,
-  filterRoleRecords,
   roleGrantTargetId,
   rolePermissionModules,
 } from "./role-editor-model";
@@ -62,15 +61,21 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
   const errorRef = useRef<HTMLDivElement>(null);
   const submittingRef = useRef(false);
   const mountedRef = useRef(false);
+  const roleSearchGeneration = useRef(0);
   const [draft, setDraft] = useState<EditorDraft | null>(() => props.canCreate ? emptyDraft() : null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [roleQuery, setRoleQuery] = useState("");
+  const [roleSearchState, setRoleSearchState] = useState<{
+    query: string;
+    status: "idle" | "loading" | "ready" | "error";
+    roles: ReadonlyArray<RoleRecord>;
+    message?: string;
+  }>({ query: "", status: "idle", roles: [] });
   const [presetId, setPresetId] = useState("");
   const [presetMessage, setPresetMessage] = useState("");
   const [expandedModules, setExpandedModules] = useState<ReadonlySet<string>>(() => new Set());
   const modules = useMemo(() => rolePermissionModules(props.permissions), [props.permissions]);
-  const filteredRoles = useMemo(() => filterRoleRecords(props.roles, roleQuery), [props.roles, roleQuery]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -78,6 +83,37 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
       mountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    const query = roleQuery.trim();
+    const generation = ++roleSearchGeneration.current;
+    if (!query) {
+      setRoleSearchState({ query: "", status: "idle", roles: [] });
+      return;
+    }
+
+    setRoleSearchState({ query, status: "loading", roles: [] });
+    const timer = window.setTimeout(() => {
+      void props.onSearch(query).then((roles) => {
+        if (!mountedRef.current || generation !== roleSearchGeneration.current) return;
+        setRoleSearchState({ query, status: "ready", roles });
+      }).catch((searchError) => {
+        if (!mountedRef.current || generation !== roleSearchGeneration.current) return;
+        const message = searchError instanceof Error ? searchError.message.trim() : "";
+        setRoleSearchState({
+          query,
+          status: "error",
+          roles: [],
+          message: message || "Role search could not be completed. Try again.",
+        });
+      });
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+      roleSearchGeneration.current += 1;
+    };
+  }, [props.onSearch, roleQuery]);
 
   useEffect(() => {
     if (error) errorRef.current?.focus();
@@ -102,6 +138,11 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
   }
 
   const canEditDraft = draft ? (draft.roleId ? props.canEdit : props.canCreate) : false;
+  const normalizedRoleQuery = roleQuery.trim();
+  const activeRoleSearch = normalizedRoleQuery && roleSearchState.query === normalizedRoleQuery
+    ? roleSearchState
+    : undefined;
+  const visibleRoles = normalizedRoleQuery ? activeRoleSearch?.roles || [] : props.roles;
 
   function resetDraft() {
     setDraft(props.canCreate ? emptyDraft() : null);
@@ -134,7 +175,7 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
       return;
     }
     if (current.length) return;
-    const scopes = assignableRoleScopes(permission, props.targetReads);
+    const scopes = assignableRoleScopes(permission, props.targetReads, Boolean(props.onSearchTargets));
     if (!scopes.length) return;
     const defaultScope = leastPrivilegedRoleScope(scopes);
     updateDraft("grants", { ...draft.grants, [permission.key]: [{ scope: defaultScope, targetId: "" }] });
@@ -145,7 +186,7 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
   function addScope(permission: PermissionCatalogueEntry) {
     if (!draft || !canEditDraft || submitting) return;
     const current = draft.grants[permission.key] || [];
-    const scopes = assignableRoleScopes(permission, props.targetReads);
+    const scopes = assignableRoleScopes(permission, props.targetReads, Boolean(props.onSearchTargets));
     if (!scopes.length) return;
     const previousScope = current.at(-1)?.scope;
     const defaultScope = previousScope && scopes.includes(previousScope)
@@ -252,13 +293,13 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
               <h3 className={styles.sectionTitle}>Configured roles</h3>
               <p className={styles.sectionHint}>Protected roles are read-only. Custom roles include permission scopes and operational policy.</p>
             </div>
-            <Badge tone="neutral">{props.roles.length} roles</Badge>
+            <Badge tone="neutral">{normalizedRoleQuery ? visibleRoles.length : props.roles.length} roles</Badge>
           </div>
             <Field
               id={`${id}-roles-search`}
               className={styles.roleSearch}
               label="Search configured roles"
-              hint="Search by role name, key, or status. This only filters the list."
+              hint="Search authorized roles by name, key, or status."
             >
               {(control) => (
                 <Input
@@ -273,9 +314,19 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
               )}
             </Field>
             <p className={styles.roleSearchSummary} role="status" aria-live="polite" aria-atomic="true">
-              {filteredRoles.length} {filteredRoles.length === 1 ? "role" : "roles"} shown.
+              {activeRoleSearch?.status === "loading" || (normalizedRoleQuery && !activeRoleSearch)
+                ? "Searching roles…"
+                : activeRoleSearch?.status === "error"
+                  ? "Role search could not be completed."
+                  : normalizedRoleQuery
+                    ? `${visibleRoles.length} ${visibleRoles.length === 1 ? "role" : "roles"} found.`
+                    : `${props.roles.length} ${props.roles.length === 1 ? "role" : "roles"} available.`}
             </p>
-            {props.roles.length && filteredRoles.length ? filteredRoles.map((role) => (
+            {activeRoleSearch?.status === "error" ? (
+              <StateMessage kind="error" title="Role search unavailable">{activeRoleSearch.message}</StateMessage>
+            ) : activeRoleSearch?.status === "loading" || (normalizedRoleQuery && !activeRoleSearch) ? (
+              <StateMessage kind="loading" title="Searching roles">Matching role records are being looked up securely.</StateMessage>
+            ) : visibleRoles.length ? visibleRoles.map((role) => (
             <article className={styles.roleCard} key={role.id}>
               <div className={styles.roleCopy}>
                 <strong className={styles.roleName}>{role.name}</strong>
@@ -288,7 +339,7 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
                 <Button variant="secondary" size="compact" onClick={() => editRole(role)}>Edit role</Button>
               ) : null}
             </article>
-            )) : props.roles.length ? (
+            )) : normalizedRoleQuery ? (
               <div className={styles.noRoleMatches}>
                 <StateMessage kind="info" title="No roles match this search">
                   Try a different role name, key, or status.
@@ -415,6 +466,7 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
               modules={modules}
               grants={draft.grants}
               targetReads={props.targetReads}
+              onSearchTargets={props.onSearchTargets}
               canEdit={canEditDraft}
               disabled={submitting}
               expandedModules={expandedModules}

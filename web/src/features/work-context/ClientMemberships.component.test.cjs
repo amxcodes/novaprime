@@ -32,8 +32,10 @@ const baseProps = {
   client: { id: "client-1", name: "Northstar" },
   canViewMemberships: true,
   canManageMemberships: true,
+  canSearchPeople: true,
   read: { status: "idle", memberships: [], hasMore: false, nextCursor: null, loadingMore: false },
-  peopleOptions: [{ id: "person-1", label: "Aman Verma" }],
+  onSearchPeople: async () => [{ value: "person-1", label: "Aman Verma" }],
+  onSearchDepartments: async () => [{ value: "department-1", label: "Design" }],
   onLoadMemberships() {},
   onLoadMore() {},
   onAddMembership() {},
@@ -53,16 +55,16 @@ test("renders an accessible searchable person control with a FormData-backed val
   assert.doesNotMatch(html, /<select\b/);
 });
 
-test("does not expose the custom picker when membership or people-list access is unavailable", () => {
+test("does not expose the custom picker when membership or people-view access is unavailable", () => {
   const denied = render({ canViewMemberships: false });
-  const noPeopleChoices = render({ peopleOptions: null });
+  const noPeopleChoices = render({ canSearchPeople: false });
   assert.doesNotMatch(denied, /role="combobox"|Add client membership/);
-  assert.match(noPeopleChoices, /authorized people list/);
+  assert.match(noPeopleChoices, /organization-level people viewing access/);
   assert.doesNotMatch(noPeopleChoices, /role="combobox"|Add client membership/);
 });
 
-test("renders authorized departments as an optional searchable control with a named value", () => {
-  const html = render({ departmentOptions: [{ id: "department-1", name: "Design" }] });
+test("renders the client-scoped remote department picker as optional with a named value", () => {
+  const html = render();
   assert.match(html, /Client department \(optional\)/);
   assert.match(html, /name="clientDepartmentId" value=""/);
   assert.match(html, /Search client departments/);
@@ -70,17 +72,13 @@ test("renders authorized departments as an optional searchable control with a na
   assert.doesNotMatch(html, /<select\b/);
 });
 
-test("projects a selected authorized person and existing department/date fields into the create DTO", () => {
+test("projects selected IDs and existing department/date fields into the create DTO for server validation", () => {
   const values = new FormData();
   values.set("personId", "person-1");
   values.set("membershipLabel", "  Delivery lead  ");
   values.set("effectiveOn", "2026-04-01");
   values.set("clientDepartmentId", "department-1");
-  assert.deepEqual(buildClientMembershipInput(
-    values,
-    [{ id: "person-1", label: "Aman Verma" }],
-    [{ id: "department-1", name: "Design" }],
-  ), {
+  assert.deepEqual(buildClientMembershipInput(values), {
     status: "ready",
     input: {
       personId: "person-1",
@@ -91,16 +89,12 @@ test("projects a selected authorized person and existing department/date fields 
   });
 });
 
-test("keeps a blank optional department as null and rejects stale department IDs", () => {
+test("keeps a blank optional department as null and delegates target freshness to the server", () => {
   const values = new FormData();
   values.set("personId", "person-1");
   values.set("effectiveOn", "2026-04-01");
   values.set("clientDepartmentId", "");
-  assert.deepEqual(buildClientMembershipInput(
-    values,
-    [{ id: "person-1", label: "Aman Verma" }],
-    [{ id: "department-1", name: "Design" }],
-  ), {
+  assert.deepEqual(buildClientMembershipInput(values), {
     status: "ready",
     input: {
       personId: "person-1",
@@ -111,11 +105,15 @@ test("keeps a blank optional department as null and rejects stale department IDs
   });
 
   values.set("clientDepartmentId", "department-removed");
-  assert.deepEqual(buildClientMembershipInput(
-    values,
-    [{ id: "person-1", label: "Aman Verma" }],
-    [{ id: "department-1", name: "Design" }],
-  ), { status: "department-invalid" });
+  assert.deepEqual(buildClientMembershipInput(values), {
+    status: "ready",
+    input: {
+      personId: "person-1",
+      membershipLabel: null,
+      effectiveOn: "2026-04-01",
+      clientDepartmentId: "department-removed",
+    },
+  });
 });
 
 test("keeps the client heading and long names inside a narrow feature container", () => {
@@ -125,13 +123,18 @@ test("keeps the client heading and long names inside a narrow feature container"
   assert.match(css, /@container client-memberships \(max-width:\s*36rem\)/);
 });
 
-test("rejects stale selections and preserves required effective-date validation", () => {
+test("requires a person selection and preserves required effective-date validation", () => {
   const values = new FormData();
   values.set("personId", "former-person");
   values.set("effectiveOn", "2026-04-01");
-  assert.deepEqual(buildClientMembershipInput(values, [{ id: "person-1", label: "Aman Verma" }], undefined), { status: "person-required" });
+  assert.deepEqual(buildClientMembershipInput(values), {
+    status: "ready",
+    input: { personId: "former-person", membershipLabel: null, effectiveOn: "2026-04-01", clientDepartmentId: null },
+  });
 
+  values.set("personId", "");
+  assert.deepEqual(buildClientMembershipInput(values), { status: "person-required" });
   values.set("personId", "person-1");
   values.delete("effectiveOn");
-  assert.deepEqual(buildClientMembershipInput(values, [{ id: "person-1", label: "Aman Verma" }], undefined), { status: "effective-date-required" });
+  assert.deepEqual(buildClientMembershipInput(values), { status: "effective-date-required" });
 });

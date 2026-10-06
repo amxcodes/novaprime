@@ -1,4 +1,4 @@
-import { hasAnyPermissionGrant, hasPermissionGrant, type EffectivePermissionRead } from "../../app-shell/permission-grants";
+import { hasAnyPermissionGrant, hasPermissionGrant, type EffectivePermissionRead } from "../../app-shell/permission-grants.ts";
 
 type OperationsPermissionRead = EffectivePermissionRead & { isSuperAdmin?: boolean };
 

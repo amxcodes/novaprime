@@ -27,7 +27,7 @@ require.extensions[".css"] = (module) => {
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { WorkContextExplorer } = require("./WorkContextExplorer.tsx");
-const { formatWorkContextSearchSummary, searchWorkContextProjection } = require("./search.ts");
+const { formatWorkContextSearchSummary, summarizeWorkContextProjection } = require("./search.ts");
 
 const projection = {
   clients: [{ id: "client-1", name: "Northstar" }],
@@ -47,7 +47,11 @@ const projection = {
 };
 
 function render(readState, departmentCreation) {
-  return renderToStaticMarkup(React.createElement(WorkContextExplorer, { readState, departmentCreation }));
+  return renderToStaticMarkup(React.createElement(WorkContextExplorer, {
+    readState,
+    departmentCreation,
+    onSearch: async () => ({ status: "ready", projection }),
+  }));
 }
 
 test("renders distinct client and organisation hierarchies from the supplied projection", () => {
@@ -82,7 +86,7 @@ test("provides semantic headings and nested lists for accessible hierarchy", () 
   assert.match(html, /role="search" aria-label="Work context"/);
   assert.match(html, /Search work context/);
   assert.match(html, /Clear search/);
-  assert.match(html, /Search is local to this authorized response/);
+  assert.match(html, /Search runs on NOVA and returns only the work context allowed by your current access/);
   assert.match(html, /not a complete directory/);
 });
 
@@ -133,102 +137,10 @@ test("create-only workstream targets render as non-navigable labels even without
   assert.doesNotMatch(html, /<a\b|href=/);
 });
 
-test("local search finds an authorized create-only workstream by display label only", () => {
-  const targetOnlyProjection = {
-    clients: [],
-    clientWorkstreams: [],
-    organisationWorkstreams: [],
-    workstreamTaskTargets: [
-      { id: "client-hidden", kind: "client", name: "Allowed client target", clientName: "Northstar" },
-      { id: "org-hidden", kind: "organisation", name: "Allowed organisation target" },
-    ],
-    groups: [],
-  };
-  const result = searchWorkContextProjection(targetOnlyProjection, "northstar");
-  const html = render({ status: "ready", projection: result.projection });
-
-  assert.equal(result.hasMatches, true);
-  assert.equal(result.summary.taskTargets, 1);
-  assert.deepEqual(result.projection.clients, []);
-  assert.deepEqual(result.projection.clientWorkstreams, []);
-  assert.deepEqual(result.projection.organisationWorkstreams, []);
-  assert.deepEqual(result.projection.workstreamTaskTargets.map(({ id }) => id), ["client-hidden"]);
-  assert.match(html, /Allowed client target/);
-  assert.doesNotMatch(html, /Allowed organisation target|Visible client contexts/);
-
-  const identifierSearch = searchWorkContextProjection(targetOnlyProjection, "client-hidden");
-  assert.equal(identifierSearch.hasMatches, false);
-});
-
-test("searching a visible group preserves only its authorized parent context", () => {
-  const result = searchWorkContextProjection(projection, "launch team");
-  const html = render({ status: "ready", projection: result.projection });
-
-  assert.equal(result.hasMatches, true);
-  assert.deepEqual(result.projection.clients.map(({ id }) => id), ["client-1"]);
-  assert.deepEqual(result.projection.clientWorkstreams.map(({ id }) => id), ["client-stream-1"]);
-  assert.deepEqual(result.projection.groups.map(({ id }) => id), ["group-1"]);
-  assert.match(html, /Northstar/);
-  assert.match(html, /Delivery/);
-  assert.match(html, /Launch team/);
-  assert.doesNotMatch(html, /Internal operations|Task target group|Hidden group|Restricted client label/);
-});
-
-test("searching a context-only client label retains its visible workstream as context", () => {
-  const result = searchWorkContextProjection(projection, "Restricted client label");
-  const html = render({ status: "ready", projection: result.projection });
-
-  assert.equal(result.hasMatches, true);
-  assert.deepEqual(result.projection.clients, []);
-  assert.deepEqual(result.projection.clientWorkstreams.map(({ id }) => id), ["client-stream-2"]);
-  assert.match(html, /Restricted client label/);
-  assert.match(html, /Context-only stream/);
-  assert.match(html, /Client context from visible workstream/);
-  assert.doesNotMatch(html, /Northstar|Delivery|Hidden group/);
-});
-
-test("eligible create-only labels stay separate and never expose the group as browseable", () => {
-  const result = searchWorkContextProjection(projection, "Task target group");
-  const html = render({ status: "ready", projection: result.projection });
-
-  assert.equal(result.hasMatches, true);
-  assert.deepEqual(result.projection.clients, []);
-  assert.deepEqual(result.projection.clientWorkstreams, []);
-  assert.deepEqual(result.projection.organisationWorkstreams, []);
-  assert.deepEqual(result.projection.groups.map(({ id }) => id), ["group-2"]);
-  assert.match(html, /Eligible task creation targets/);
-  assert.match(html, /Organisation workstream target/);
-  assert.match(html, /Task target group/);
-  assert.doesNotMatch(html, /Internal operations|Hidden group|Groups in Internal operations/);
-});
-
-test("a directly matched visible parent includes eligible create-only targets in the separate list", () => {
-  const result = searchWorkContextProjection(projection, "Delivery");
-  const html = render({ status: "ready", projection: result.projection });
-
-  assert.equal(result.hasMatches, true);
-  assert.deepEqual(result.projection.clientWorkstreams.map(({ id }) => id), ["client-stream-1"]);
-  assert.deepEqual(result.projection.groups.map(({ id }) => id), ["group-1", "group-5"]);
-  assert.deepEqual(result.summary, { clientContexts: 1, workstreams: 1, visibleGroups: 1, taskTargets: 1 });
-  assert.equal(formatWorkContextSearchSummary(result.summary), "Showing 1 client context, 1 workstream, 1 visible group, and 1 eligible task creation target in this response.");
-  assert.match(html, /Northstar/);
-  assert.match(html, /Delivery/);
-  assert.match(html, /Launch team/);
-  assert.match(html, /Eligible task creation targets/);
-  assert.match(html, /Client setup target/);
-  assert.match(html, /Client workstream target/);
-  assert.doesNotMatch(html, /Hidden group|Restricted client label/);
-});
-
-test("search cannot find hidden labels or IDs and returns an honest local no-match result", () => {
-  for (const query of ["Hidden group", "group-3", "client-1"]) {
-    const result = searchWorkContextProjection(projection, query);
-    assert.equal(result.hasMatches, false, `${query} must not match unrendered data`);
-    assert.deepEqual(result.summary, { clientContexts: 0, workstreams: 0, visibleGroups: 0, taskTargets: 0 });
-    assert.deepEqual(result.projection, {
-      clients: [], clientWorkstreams: [], organisationWorkstreams: [], workstreamTaskTargets: [], groups: [],
-    });
-  }
+test("response summaries count projected data without client-side search", () => {
+  const summary = summarizeWorkContextProjection(projection);
+  assert.deepEqual(summary, { clientContexts: 1, workstreams: 3, visibleGroups: 2, taskTargets: 2 });
+  assert.equal(formatWorkContextSearchSummary(summary), "Showing 1 client context, 3 workstreams, 2 visible groups, and 2 eligible task creation targets in this response.");
 });
 
 test("shows department creation only on an explicitly visible client authorized by the host", () => {
@@ -268,23 +180,33 @@ test("uses feature-owned semantic tokens and container-responsive layouts", () =
   assert.doesNotMatch(css, /#[\da-f]{3,8}\b|\brgb\(|\bhsl\(/i);
 });
 
+test("keeps dense work context hierarchy from overflowing narrow cards", () => {
+  const css = fs.readFileSync(path.join(__dirname, "WorkContextExplorer.module.css"), "utf8");
+
+  assert.match(css, /\.branches\s*\{[^}]*min-width:\s*0/s);
+  assert.match(css, /\.explorer\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(css, /\.clientList,\s*\.organisationList,\s*\.workstreamList,\s*\.groupList\s*\{[^}]*min-width:\s*0/s);
+  assert.match(css, /\.groupItem\s*\{[^}]*min-height:\s*var\(--nova-control-touch-target\)/s);
+  assert.match(css, /@container work-context-explorer \(max-width:\s*58rem\)\s*\{\s*\.branches\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\)/);
+  assert.match(css, /@container work-context-explorer \(max-width:\s*38rem\)[\s\S]*?\.workstreamList\s*\{\s*padding-inline-start:\s*var\(--nova-space-2\)/);
+});
+
 test("the component consumes a host projection and owns no API command surface", () => {
   const source = fs.readFileSync(path.join(__dirname, "WorkContextExplorer.tsx"), "utf8");
   const searchSource = fs.readFileSync(path.join(__dirname, "search.ts"), "utf8");
   const departmentAction = fs.readFileSync(path.join(__dirname, "ClientDepartmentCreate.tsx"), "utf8");
   const departmentStyles = fs.readFileSync(path.join(__dirname, "ClientDepartmentCreate.module.css"), "utf8");
 
-  assert.match(source, /function WorkContextExplorer\(\{ readState, departmentCreation \}: WorkContextExplorerProps\)/);
+  assert.match(source, /function WorkContextExplorer\(\{ readState, departmentCreation, onSearch \}: WorkContextExplorerProps\)/);
   assert.doesNotMatch(source, /fetch\(|\bfetch\s*\(/);
   assert.doesNotMatch(source, /\/api\/clients\/|\bonUpdate|\bonDelete/);
   assert.doesNotMatch(searchSource, /fetch\(|\bfetch\s*\(|\/api\//);
-  assert.match(source, /searchWorkContextProjection\(readState\.projection, search\)/);
+  assert.match(source, /onSearch\(query\)/);
   assert.match(source, /role="status" aria-live="polite" aria-atomic="true"/);
   assert.match(source, /setTimeout\(\(\) => \{\s*setAnnouncedSearch\(/);
   assert.match(source, /\}, 250\)/);
   assert.match(source, /announcedSearch\?\.query === search\.trim\(\)/);
-  assert.match(source, /Search is local to this authorized response/);
-  assert.match(source, /does not request or page through other records or change your access/);
+  assert.match(source, /Search runs on NOVA and returns only the work context allowed by your current access/);
   assert.match(source, /No matches in this authorized response/);
   assert.match(source, /setSearch\(""\)/);
   assert.match(source, /!isWorkstreamContextOnly/);

@@ -75,6 +75,7 @@ function render(overrides = {}) {
     permissions,
     targetReads: targetReads(),
     formatError: () => undefined,
+    onSearch: async () => [role],
     onCreate() {},
     onUpdate() {},
     ...overrides,
@@ -105,6 +106,16 @@ test("ready-empty scope targets do not produce an unavailable warning", () => {
   assert.match(html, /Group: No group targets are available/);
   assert.doesNotMatch(html, /Some scope targets are unavailable/);
   assert.doesNotMatch(html, /Group: group targets are unavailable/);
+});
+
+test("remote target search supersedes locally loaded scope target arrays", () => {
+  const html = render({ onSearchTargets: async () => [{ id: "office-1", name: "Central" }] });
+  const matrix = fs.readFileSync(path.join(__dirname, "PermissionGrantMatrix.tsx"), "utf8");
+
+  assert.doesNotMatch(html, /Some scope targets are unavailable|Some scopes have no available targets/);
+  assert.match(matrix, /searchMode: "remote"/);
+  assert.match(matrix, /onSearchTargets\(targetScope, query\)/);
+  assert.match(matrix, /targetOptions = onSearchTargets \? \[\]/);
 });
 
 test("the role section retains its heading and loading state and localizes lazy-feature errors", () => {
@@ -140,12 +151,13 @@ test("scope controls honor modelled target availability and preserve saved selec
   assert.match(matrix, /<Select\s+id=\{`\$\{id\}-scope`\}/);
   assert.match(matrix, /onChange=\{\(scope\) => onChange\(\{ scope, targetId: "" \}\)\}/);
   assert.match(matrix, /options=\{scopeChoices\.map\(\(choice\) => \(\{ value: choice\.value, label: choice\.label, disabled: choice\.disabled \}\)\)\}/);
-  assert.match(matrix, /<SearchableSelect\s+id=\{`\$\{id\}-target`\}/);
-  assert.match(matrix, /options=\{targetOptions\}/);
-  assert.match(matrix, /value=\{grant\.targetId\}/);
-  assert.match(matrix, /disabled=\{targetDisabled\}/);
-  assert.match(matrix, /required\s+hint=\{hint\}/);
-  assert.match(matrix, /onChange=\{\(value\) => onChange\(\{ targetId: value \}\)\}/);
+  assert.match(matrix, /const searchableSelectProps: SearchableSelectProps/);
+  assert.match(matrix, /<SearchableSelect \{\.\.\.searchableSelectProps\} \/>/);
+  assert.match(matrix, /options: targetOptions/);
+  assert.match(matrix, /value: grant\.targetId/);
+  assert.match(matrix, /disabled: targetDisabled/);
+  assert.match(matrix, /required: true/);
+  assert.match(matrix, /onChange: targetChange/);
   assert.match(matrix, /Only scopes that need these targets are disabled/);
   assert.match(source, /onUpdateGrant=\{updateGrant\}/);
   assert.match(source, /onRemoveScope=\{removeScope\}/);
@@ -244,9 +256,11 @@ test("the configured-role list is introduced by its visible heading", () => {
 
   assert.match(html, /<h3[^>]*>Configured roles<\/h3>/);
   assert.match(html, /Search configured roles/);
-  assert.match(html, /Search by role name, key, or status/);
+  assert.match(html, /Search authorized roles by name, key, or status/);
   assert.match(html, /type="search"/);
-  assert.match(html, /1 role shown\./);
+  assert.match(html, /1 role available\./);
+  assert.match(fs.readFileSync(path.join(__dirname, "RolePermissionsEditor.tsx"), "utf8"), /props\.onSearch\(query\)/);
+  assert.doesNotMatch(fs.readFileSync(path.join(__dirname, "RolePermissionsEditor.tsx"), "utf8"), /filterRoleRecords/);
   assert.doesNotMatch(html, /aria-label="Configured roles"/);
 });
 
@@ -261,8 +275,9 @@ test("layout is responsive, tokenized, and provides touch-sized controls", () =>
   assert.match(css, /var\(--nova-color-surface\)/);
   assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i);
   assert.match(matrixCss, /@container role-editor \(max-width: 39\.999rem\)/);
-  assert.match(matrixCss, /@container role-editor \(min-width: 40rem\) and \(max-width: 63\.999rem\)/);
-  assert.match(matrixCss, /@container role-editor \(min-width: 64rem\)/);
+  assert.match(matrixCss, /container: grant-list \/ inline-size/);
+  assert.match(matrixCss, /@container grant-list \(min-width: 27rem\) and \(max-width: 35\.999rem\)/);
+  assert.match(matrixCss, /@container grant-list \(min-width: 36rem\)/);
   assert.match(matrixCss, /var\(--nova-control-touch-target\)/);
   assert.match(matrixCss, /@media \(forced-colors: active\)/);
   assert.match(matrixCss, /border-color: CanvasText/);
@@ -271,6 +286,16 @@ test("layout is responsive, tokenized, and provides touch-sized controls", () =>
   assert.match(matrixCss, /\.permissionModule:not\(\[open\]\)\s*>\s*\.moduleSummary\s*\{[^}]*border-end-start-radius:/s,
     "closed disclosures retain their rounded shape without clipping focus");
   assert.match(css, /\.editor :global\(:focus-visible\)\s*\{[^}]*outline:\s*2px solid var\(--nova-color-focus\)/s);
+  assert.match(css, /\.roleList\s*\{[^}]*max-block-size:\s*min\(72dvh, 52rem\)[^}]*overflow-y:\s*auto/s,
+    "long role catalogues scroll within the desktop list while the editor stays in view");
+  assert.match(css, /@container role-editor \(min-width: 40rem\) and \(max-width: 47\.999rem\)\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,
+    "compact tablets keep identity and policy fields in a readable single column");
+  assert.match(css, /@container role-editor \(min-width: 48rem\) and \(max-width: 63\.999rem\)\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s,
+    "roomier tablets use a two-column form layout");
+  assert.match(matrixCss, /\.grantList\s*\{[^}]*container:\s*grant-list \/ inline-size/s,
+    "grant rows respond to their actual available width inside the permission editor");
+  assert.match(matrixCss, /\.moduleSummary:focus-visible,\s*\.permissionToggle:focus-visible\s*\{[^}]*outline:/s,
+    "disclosure and permission toggles retain a clear keyboard focus indicator");
   assert.doesNotMatch(matrixCss, /#[0-9a-f]{3,8}\b/i);
 });
 

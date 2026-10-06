@@ -10,6 +10,9 @@ const sectionsSource = fs.readFileSync(path.join(__dirname, "../src/pages/admin/
 test("Admin imports and composes WFH Overrides as its own grant-filtered typed feature", () => {
   assert.match(adminPageRouteSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "wfhOverrides"\), \(\) => import\("\.\.\/src\/features\/admin\/WfhPolicyOverridesSection\.tsx"\)\)/);
   assert.match(adminPageRouteSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "wfhOverrides"\), \(\) => import\("\.\/admin-wfh-policy-overrides-route\.js"\)\)/);
+  assert.match(adminPageRouteSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "wfhOverrides"\), \(\) => import\("\.\/admin-wfh-policy-target-search-route\.js"\)\)/);
+  assert.match(adminPageRouteSource, /createWfhPolicyTargetSearchRoute\(\{[\s\S]{0,360}pageApi,[\s\S]{0,180}captureCommandContext/);
+  assert.match(adminPageRouteSource, /searchTargets: wfhPolicyTargetSearchRoute\?\.searchTargets/);
   assert.match(adminPageRouteSource, /state\.adminData !== data\) return;/);
   assert.match(adminPageRouteSource, /canShowAdminFeature\(\s*state\.adminData\?\.actorGrants,\s*"wfhOverrides",\s*\) \? wfhPolicyOverridesModule\?\.WfhPolicyOverridesSection/);
   assert.match(adminPageRouteSource, /"wfh-overrides": WfhPolicyOverridesSection && wfhPolicyOverridesRoute\s*\?\s*createElement\(WfhPolicyOverridesSection, wfhPolicyOverridesRoute\.createProps\(data\)\)\s*:\s*createElement\(WfhPolicyOverridesLoadFailureSection\)/);
@@ -26,16 +29,14 @@ test("WFH target selectors preserve their separate server-supported prerequisite
   assert.doesNotMatch(routeSource, /hasAnyPermissionGrant\([^)]*people\.view/);
 });
 
-test("create keeps the guarded POST and view-only optional readback, with current target membership", () => {
+test("create keeps the guarded POST and leaves target membership validation to the server", () => {
   const helper = routeSource;
-  assert.match(helper, /function currentTargetRows/);
   assert.match(helper, /currentData !== data/);
   assert.match(helper, /isCurrentPageRequest\(lifetime\)/);
   assert.match(helper, /captureCommandContext\(target\)/);
   assert.match(helper, /isCurrentCommand\(context\)/);
   assert.match(helper, /hasPermissionGrant\(currentData\.actorGrants, "availability\.wfh_policy\.manage"\)/);
-  assert.match(helper, /authorizedTargets\.some\(\(row\) => row\.id === input\.targetId\)/);
-  assert.match(helper, /canViewAdminPeople\(adminData\.actorGrants\)/);
+  assert.match(helper, /canViewAdminPeople\(currentData\.actorGrants\)/);
   assert.match(helper, /api\("\/api\/availability\/wfh-policies", requestOptions\("POST", input\)\)/);
   assert.match(helper, /pageApi\("\/api\/availability\/wfh-policies", lifetime\)/);
   assert.match(helper, /hasPermissionGrant\(state\.adminData\?\.actorGrants, "availability\.wfh_policy\.view"\)/);
@@ -72,6 +73,10 @@ async function createAdapterHarness(grants, overrides = {}) {
       events.push(["recover", error?.httpStatus, context?.id]);
       return overrides.recoverResult === true;
     },
+    searchTargets: async (kind, query) => {
+      events.push(["search-targets", kind, query]);
+      return [{ value: "person-1", label: "Jordan Lee" }];
+    },
     api: async (path, request) => {
       events.push(["post", path, request]);
       if (overrides.postError) throw overrides.postError;
@@ -106,7 +111,7 @@ test("adapter derives independent view/manage and target selectors from current 
   assert.equal(props.targets.office.authorized, false);
   assert.equal(props.targets.organisation_department.authorized, false);
   assert.equal(props.targets.person.authorized, false);
-  assert.deepEqual(props.targets.person.result.people.map(({ id }) => id), ["person-1"]);
+  assert.deepEqual(props.targets.person.result, { readState: "remote" });
 });
 
 test("manage-only adapter keeps create available and skips both the view read and policy list exposure", async () => {
@@ -128,18 +133,19 @@ test("manage-only adapter keeps create available and skips both the view read an
   assert.equal(harness.state.pendingAdminCommandFocus, true);
 });
 
-test("adapter rejects a target removed from current authorized options before issuing POST", async () => {
+test("adapter does not filter a selected target through a preloaded list and reports server rejection", async () => {
+  const rejected = Object.assign(new Error("WFH_POLICY_TARGET_NOT_FOUND"), { httpStatus: 409 });
   const harness = await createAdapterHarness([
     { permissionKey: "availability.wfh_policy.manage", scope: "organisation" },
     { permissionKey: "organisation.settings.manage", scope: "organisation" },
-  ]);
+  ], { postError: rejected });
   const props = harness.route.createProps(harness.data);
   harness.data.offices.offices = [];
   await assert.rejects(
-    props.onCreate({ targetType: "office", targetId: "office-1", allowed: true, effectiveOn: "2026-10-01" }),
-    /target is no longer in the currently authorized options/,
+    props.onCreate({ targetType: "office", targetId: "00000000-0000-4000-8000-000000000001", allowed: true, effectiveOn: "2026-10-01" }),
+    /WFH_POLICY_TARGET_NOT_FOUND/,
   );
-  assert.equal(harness.events.some(([kind]) => kind === "post"), false);
+  assert.equal(harness.events.some(([kind]) => kind === "post"), true);
 });
 
 test("adapter preserves exact POST and view-gated GET contracts and warns before permission recovery", async () => {

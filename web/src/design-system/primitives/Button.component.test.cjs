@@ -35,14 +35,36 @@ test("Button keeps native button semantics while IconButton exposes its required
   assert.match(icon, /<button[^>]*aria-label="Close panel"[^>]*data-variant="quiet"[^>]*data-size="default"/);
 });
 
-test("forced-colors keeps disabled button text at the selected system color", () => {
+test("disabled button colors retain their semantic contrast in forced-colors mode", () => {
   const css = fs.readFileSync(require.resolve("./Button.module.css"), "utf8");
   const forcedColorsCss = css.slice(css.indexOf("@media (forced-colors: active)"));
   const disabledRule = forcedColorsCss.match(/\.button:disabled\s*\{([^}]+)\}/)?.[1] ?? "";
 
   assert.match(disabledRule, /color:\s*GrayText/);
   assert.match(disabledRule, /border-color:\s*GrayText/);
-  assert.match(disabledRule, /opacity:\s*1/);
+  assert.doesNotMatch(css, /\.button:disabled\s*\{[^}]*opacity:/s);
+});
+
+test("loading buttons expose busy state and retain an accessible name", () => {
+  const html = renderToStaticMarkup(React.createElement(Button, {
+    loading: true,
+    loadingLabel: "Saving changes",
+    "aria-label": "Save changes",
+  }, "Save"));
+
+  assert.match(html, /disabled=""/);
+  assert.match(html, /aria-busy="true"/);
+  assert.match(html, /aria-label="Saving changes"/);
+  assert.match(html, /<span aria-hidden="true"><\/span>/);
+});
+
+test("danger hover keeps its meaning through themeable colors rather than dimming the text", () => {
+  const css = fs.readFileSync(require.resolve("./Button.module.css"), "utf8");
+  const dangerHover = css.match(/\.button\[data-variant="danger"\]:hover:not\(:disabled\)\s*\{([^}]+)\}/)?.[1] ?? "";
+
+  assert.match(dangerHover, /color:\s*var\(--nova-color-danger\)/);
+  assert.match(dangerHover, /background:\s*var\(--nova-color-danger-surface\)/);
+  assert.doesNotMatch(dangerHover, /filter:/);
 });
 
 test("coarse-pointer sizing keeps compact buttons and icon buttons at the touch target token", () => {

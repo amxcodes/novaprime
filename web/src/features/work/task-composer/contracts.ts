@@ -83,5 +83,11 @@ export interface TaskComposerProps {
   selfAssignment: SelfAssignmentEligibility;
   /** Work defaults self-assignment on when allowed; Admin leaves it opt-in. */
   selfAssignmentDefault?: boolean;
+  /** Admin supplies server-filtered results; work-route callers may keep their existing local options. */
+  onSearchTargets?(query: string): Promise<readonly TaskCreationTargetOption[]>;
+  onSearchGroups?(target: TaskCreationTargetOption, query: string): Promise<readonly TaskGroupOption[]>;
+  onSearchCatalog?(target: TaskCreationTargetOption, query: string): Promise<readonly TaskCatalogOption[]>;
+  onSearchCorrections?(target: TaskCreationTargetOption, query: string): Promise<readonly TaskCorrectionOption[]>;
+  onSearchDepartments?(target: TaskCreationTargetOption, query: string): Promise<readonly TaskDepartmentOption[]>;
   onSubmit(input: TaskCreateInput): Promise<void>;
 }

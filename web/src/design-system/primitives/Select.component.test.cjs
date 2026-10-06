@@ -116,3 +116,18 @@ test("styles custom popup states with NOVA theme, touch, focus, reduced-motion a
   assert.match(source, /react-aria-components/);
   assert.match(source, /isDisabled=\{option\.disabled\}/);
 });
+
+test("the static menu explains unavailable choices and stays inside a narrow viewport", () => {
+  const css = fs.readFileSync(require.resolve("./Select.module.css"), "utf8");
+  const source = fs.readFileSync(require.resolve("./Select.tsx"), "utf8");
+
+  assert.match(source, /emptyMessage = "No options are available\."/);
+  assert.match(source, /!options\.some\(\(option\) => !option\.disabled\)/);
+  assert.match(source, /role="status" aria-live="polite"/);
+  assert.match(css, /-webkit-appearance:\s*none/);
+  assert.match(css, /appearance:\s*none/);
+  assert.match(css, /width:\s*var\(--trigger-width\)/);
+  assert.match(css, /max-width:\s*calc\(100vw - var\(--nova-space-8\)\)/);
+  assert.match(css, /max-width:\s*calc\(100dvw - var\(--nova-space-8\)\)/);
+  assert.match(css, /var\(--nova-control-border-focus\)/);
+});

@@ -2,7 +2,6 @@ import type {
   WfhPolicyCreateInput,
   WfhPolicyDraft,
   WfhPolicyFieldErrors,
-  WfhPolicyTargetOption,
   WfhPolicyTargetType,
 } from "./wfh-policy-contracts";
 
@@ -16,10 +15,6 @@ export function wfhPolicyTargetTypeLabel(type: WfhPolicyTargetType): string {
   return targetTypeLabels[type];
 }
 
-export function wfhPolicyTargetLabel(target: WfhPolicyTargetOption): string {
-  return target.name?.trim() || target.displayName?.trim() || target.email?.trim() || "Unnamed target";
-}
-
 function isValidDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split("-").map(Number);
@@ -31,14 +26,10 @@ export type WfhPolicyDraftResult =
   | { input: WfhPolicyCreateInput; errors: {} }
   | { input: null; errors: WfhPolicyFieldErrors };
 
-/** Validate against the supplied target rows so stale or invented IDs never reach onCreate. */
-export function buildWfhPolicyInput(
-  draft: WfhPolicyDraft,
-  targets: ReadonlyArray<WfhPolicyTargetOption>,
-): WfhPolicyDraftResult {
+/** Validate local syntax; server search and the server write command own target eligibility. */
+export function buildWfhPolicyInput(draft: WfhPolicyDraft): WfhPolicyDraftResult {
   const errors: WfhPolicyFieldErrors = {};
-  const targetExists = targets.some((target) => target.id === draft.targetId);
-  if (!targetExists) errors.targetId = "Choose an available target.";
+  if (typeof draft.targetId !== "string" || !draft.targetId.trim()) errors.targetId = "Choose an available target.";
   if (!isValidDate(draft.effectiveOn)) errors.effectiveOn = "Enter a valid effective start date.";
   if (draft.effectiveUntil && !isValidDate(draft.effectiveUntil)) {
     errors.effectiveUntil = "Enter a valid effective end date.";

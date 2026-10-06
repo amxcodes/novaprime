@@ -6,7 +6,7 @@ import {
   projectPeopleDirectoryPage,
   projectPersonDirectoryRecord,
   peopleDirectoryPermissionReadSql,
-} from "./people-directory.js";
+} from "./people-directory-model.js";
 
 const personId = "00000000-0000-4000-8000-000000000001";
 

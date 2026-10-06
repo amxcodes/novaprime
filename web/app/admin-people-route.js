@@ -1,6 +1,8 @@
 const onboardingPermissions = Object.freeze(["people.edit", "people.activate", "roles.assign"]);
 const manageableStatuses = Object.freeze(["active", "notice"]);
 const freezableStatuses = Object.freeze(["active", "notice", "onboarding"]);
+const peopleDirectoryPageLimit = 25;
+const peopleDirectoryCaches = new WeakMap();
 
 /**
  * Host adapter for the Admin People feature. It projects the legacy roster into
@@ -15,6 +17,7 @@ export function createAdminPeopleRoute({
   isCurrentPageRequest,
   canInviteAdminPeople,
   canViewAdminPeople,
+  pageApi,
   hasPermissionGrant,
   adminReadIssue,
   adminCommandUiError,
@@ -27,6 +30,7 @@ export function createAdminPeopleRoute({
     isCurrentPageRequest,
     canInviteAdminPeople,
     canViewAdminPeople,
+    pageApi,
     hasPermissionGrant,
     adminReadIssue,
     adminCommandUiError,
@@ -42,6 +46,25 @@ export function createAdminPeopleRoute({
 
   const mountedIdentityEpoch = identityEpoch ?? state.identityEpoch;
 
+  function directoryCache(data) {
+    let cache = peopleDirectoryCaches.get(data);
+    if (cache) return cache;
+    const initial = data?.peopleDirectory;
+    const initialRows = isDirectoryPage(initial) ? initial.people : [];
+    cache = {
+      query: "",
+      epoch: 0,
+      requestSequence: 0,
+      allowedCursors: new Set([null]),
+      nextCursor: isDirectoryPage(initial) ? initial.nextCursor : null,
+      peopleById: new Map(initialRows.map((person) => [person.id, person])),
+      managerIdsByTarget: new Map(),
+    };
+    if (cache.nextCursor) cache.allowedCursors.add(cache.nextCursor);
+    peopleDirectoryCaches.set(data, cache);
+    return cache;
+  }
+
   function isCurrent(data, current = state.adminData) {
     return target.isConnected === true &&
       isCurrentPageRequest(lifetime) &&
@@ -54,12 +77,14 @@ export function createAdminPeopleRoute({
     if (!isCurrent(data)) throw adminCommandUiError(message);
   }
 
+  function currentDirectoryPerson(current, personId) {
+    return current === state.adminData ? directoryCache(current).peopleById.get(personId) : undefined;
+  }
+
   function requirePeopleRow(data, personId, allowedStatuses, permission) {
     requireCurrent(data, "The Admin page changed before this People action could start. Refresh and try again.");
     const current = state.adminData;
-    const person = Array.isArray(current?.people?.people) && !current.people.readError
-      ? current.people.people.find((row) => row?.id === personId)
-      : null;
+    const person = directoryCache(current).peopleById.get(personId);
     const actorPersonId = current?.actorGrants?.actorPersonId;
     if (!canViewAdminPeople(current?.actorGrants) || !person ||
         (allowedStatuses && !allowedStatuses.includes(person.status)) ||
@@ -89,25 +114,25 @@ export function createAdminPeopleRoute({
         message: "The Admin directory requires organization-scoped people.view access.",
       };
     }
-    if (data.people?.readState === "not-requested") {
+    if (data.peopleDirectory?.readState === "not-requested") {
       return {
         status: "unavailable",
         message: "The authorized organization people list was not requested for this view.",
       };
     }
-    const issue = adminReadIssue(data.people, "people");
+    const issue = adminReadIssue(data.peopleDirectory, "people");
     if (issue) {
-      return ["PREREQUISITE_PERMISSION_REQUIRED", "PERMISSION_DENIED"].includes(data.people?.readError)
+      return ["PREREQUISITE_PERMISSION_REQUIRED", "PERMISSION_DENIED"].includes(data.peopleDirectory?.readError)
         ? { status: "unavailable", message: issue.message }
         : { status: "error", message: issue.message };
     }
-    if (!Array.isArray(data.people?.people)) {
+    if (!isDirectoryPage(data.peopleDirectory) || data.peopleDirectory.limit !== peopleDirectoryPageLimit) {
       return { status: "error", message: "The people response could not be read. Refresh Admin to try again." };
     }
     return { status: "ready" };
   }
 
-  function projectOnboardingRead(person, data, peopleRead, canCompleteOnboarding) {
+  function projectOnboardingRead(data, canCompleteOnboarding) {
     if (!canCompleteOnboarding) {
       return { status: "denied", message: "You do not have all permissions required to complete onboarding." };
     }
@@ -117,49 +142,10 @@ export function createAdminPeopleRoute({
     if (!hasPermissionGrant(data.actorGrants, "roles.view")) {
       return { status: "denied", message: "roles.view access is required to load onboarding role options." };
     }
-    const reads = [
-      [data.offices, "offices needed to complete onboarding"],
-      [data.departments, "departments needed to complete onboarding"],
-      [data.roles, "roles needed to complete onboarding"],
-    ];
-    const failed = reads.map(([result, resource]) => ({ result, issue: adminReadIssue(result, resource) }))
-      .find((entry) => entry.issue);
-    if (failed) {
-      const denied = ["PERMISSION_DENIED", "PREREQUISITE_PERMISSION_REQUIRED"].includes(failed.result?.readError);
-      return { status: denied ? "denied" : "unavailable", message: failed.issue.message };
-    }
-    if (peopleRead.status !== "ready") {
-      return { status: "unavailable", message: "The authorized people list is needed to load manager choices." };
-    }
-    const offices = data.offices?.offices;
-    const departments = data.departments?.departments;
-    const roles = data.roles?.roles;
-    const managers = data.people?.people;
-    if (![offices, departments, roles, managers].every(Array.isArray)) {
-      return { status: "unavailable", message: "Required office, department, role, or manager options could not be read." };
-    }
-    return {
-      status: "ready",
-      offices: offices.flatMap((office) =>
-        validIdName(office) && typeof office.timezone === "string"
-          ? [{ id: office.id, name: office.name, timezone: office.timezone }]
-          : [],
-      ),
-      departments: departments.flatMap((department) => validIdName(department)
-        ? [{ id: department.id, name: department.name }]
-        : []),
-      roles: roles.flatMap((role) => validIdName(role) && role.isProtected !== true && !role.archivedAt
-        ? [{ id: role.id, name: role.name }]
-        : []),
-      managers: managers.flatMap((manager) =>
-        validId(manager) && manager.id !== person.id && ["active", "notice"].includes(manager.status)
-          ? [{ id: manager.id, name: text(manager.displayName) || text(manager.email) }]
-          : [],
-      ),
-    };
+    return { status: "ready" };
   }
 
-  function projectPerson(person, data, peopleRead) {
+  function projectPerson(person, data) {
     if (!person || typeof person !== "object" || typeof person.id !== "string" || !person.id.trim()) return null;
     const status = typeof person.status === "string" && person.status.trim() ? person.status : "unknown";
     const targetPermission = adminPersonPermissionTarget(person);
@@ -187,7 +173,7 @@ export function createAdminPeopleRoute({
       },
     };
     if (status === "onboarding") {
-      projected.onboarding = projectOnboardingRead(person, data, peopleRead, canCompleteOnboarding);
+      projected.onboarding = projectOnboardingRead(data, canCompleteOnboarding);
     }
     return projected;
   }
@@ -195,6 +181,7 @@ export function createAdminPeopleRoute({
   function currentOnboardingTarget(data, personId, input) {
     requirePeopleRow(data, personId, ["onboarding"], "people.edit");
     const current = state.adminData;
+    const managers = directoryCache(current).managerIdsByTarget.get(personId);
     if (!hasPermissionGrant(current.actorGrants, "organisation.settings.manage") ||
         !hasPermissionGrant(current.actorGrants, "roles.view") ||
         !canViewAdminPeople(current.actorGrants) ||
@@ -204,11 +191,90 @@ export function createAdminPeopleRoute({
         !Array.isArray(current.roles?.roles) || !current.roles.roles.some((row) =>
           row?.id === input.roleId && row.isProtected !== true && !row.archivedAt,
         ) ||
-        (input.managerPersonId && !current.people.people.some((row) =>
-          row?.id === input.managerPersonId && row.id !== personId && ["active", "notice"].includes(row.status),
-        ))) {
+        (input.managerPersonId && !managers?.has(input.managerPersonId))) {
       throw adminCommandUiError("Choose current office, department, role, and manager options before completing onboarding.");
     }
+  }
+
+  async function searchPeopleDirectory(data, query, cursor) {
+    requireCurrent(data, "The Admin page changed before People search could start. Refresh and try again.");
+    const current = state.adminData;
+    if (!canViewAdminPeople(current?.actorGrants)) {
+      throw adminCommandUiError("People access is no longer available. Refresh Admin and check your current permissions.");
+    }
+    if (typeof query !== "string" || query.length > 100 ||
+        (cursor !== null && (typeof cursor !== "string" || cursor.length > 8192))) {
+      throw adminCommandUiError("The People search is invalid. Edit the search and try again.");
+    }
+    const normalizedQuery = query.normalize("NFC").trim().toLowerCase();
+    const cache = directoryCache(data);
+    if (cursor === null) {
+      cache.epoch += 1;
+      cache.query = normalizedQuery;
+      cache.allowedCursors = new Set([null]);
+      cache.nextCursor = null;
+      cache.peopleById.clear();
+    } else if (cache.query !== normalizedQuery || !cache.allowedCursors.has(cursor)) {
+      throw adminCommandUiError("This People page is stale. Search again to refresh the directory.");
+    } else {
+      cache.peopleById.clear();
+    }
+    const epoch = cache.epoch;
+    const requestSequence = ++cache.requestSequence;
+    const params = new URLSearchParams({ q: normalizedQuery, limit: String(peopleDirectoryPageLimit) });
+    if (cursor !== null) params.set("cursor", cursor);
+    const result = await pageApi("/api/people/directory?" + params.toString(), lifetime);
+    requireCurrent(data, "The Admin page changed while People search was loading. Refresh and try again.");
+    if (!canViewAdminPeople(state.adminData?.actorGrants)) {
+      throw adminCommandUiError("People access changed while the directory was loading. Refresh Admin and check your permissions.");
+    }
+    if (cache.epoch !== epoch || cache.requestSequence !== requestSequence || cache.query !== normalizedQuery) {
+      throw adminCommandUiError("This People page is stale. Search again to refresh the directory.");
+    }
+    if (!isDirectoryPage(result) || result.limit !== peopleDirectoryPageLimit) {
+      throw adminCommandUiError("The People directory response could not be read. Try the search again.");
+    }
+    cache.peopleById = new Map(result.people.map((person) => [person.id, person]));
+    cache.nextCursor = result.nextCursor;
+    if (result.nextCursor) cache.allowedCursors.add(result.nextCursor);
+    return projectDirectoryPage(result, data, projectPerson);
+  }
+
+  async function searchOnboardingOptions(data, personId, kind, query) {
+    requirePeopleRow(data, personId, ["onboarding"], "people.edit");
+    if (typeof query !== "string" || query.length > 100 ||
+        !["office", "department", "role", "manager"].includes(kind)) {
+      throw adminCommandUiError("The onboarding search could not be completed. Edit the search and try again.");
+    }
+    const current = state.adminData;
+    const canCompleteOnboarding = onboardingPermissions.every((permission) =>
+      hasPermissionGrant(current.actorGrants, permission),
+    );
+    const allowed = canCompleteOnboarding && hasPermissionGrant(current.actorGrants, "organisation.settings.manage") &&
+      hasPermissionGrant(current.actorGrants, "roles.view") && canViewAdminPeople(current.actorGrants);
+    if (!allowed) {
+      throw adminCommandUiError("Onboarding search access is no longer available. Refresh Admin and try again.");
+    }
+    const params = new URLSearchParams({ kind, q: query });
+    if (kind === "manager") params.set("personId", personId);
+    const result = await pageApi("/api/people/onboarding-options?" + params.toString(), lifetime);
+    requireCurrent(data, "Admin changed while onboarding options were loading. Refresh Admin and try again.");
+    if (!result || !Array.isArray(result.options) || result.options.length > 50 || !result.options.every((option) =>
+      validIdName(option) && (kind !== "office" || typeof option.timezone === "string"),
+    )) {
+      throw adminCommandUiError("The onboarding search response could not be read. Edit the search to try again.");
+    }
+    if (kind === "manager") {
+      const cache = directoryCache(data);
+      const managerIds = cache.managerIdsByTarget.get(personId) || new Set();
+      for (const option of result.options) managerIds.add(option.id);
+      cache.managerIdsByTarget.set(personId, managerIds);
+    }
+    return result.options.map(({ id, name, timezone }) => ({
+      id,
+      name,
+      ...(kind === "office" ? { timezone } : {}),
+    }));
   }
 
   function createProps(data) {
@@ -216,15 +282,18 @@ export function createAdminPeopleRoute({
     const canInvite = canInviteAdminPeople(data.actorGrants);
     const canViewPeople = canViewAdminPeople(data.actorGrants);
     const peopleRead = projectPeopleRead(data, canViewPeople);
-    const people = canViewPeople && peopleRead.status === "ready"
-      ? data.people.people.map((person) => projectPerson(person, data, peopleRead)).filter(Boolean)
-      : [];
+    const peoplePage = canViewPeople && peopleRead.status === "ready"
+      ? projectDirectoryPage(data.peopleDirectory, data, projectPerson)
+      : emptyDirectoryPage();
+    if (canViewPeople && peopleRead.status === "ready") directoryCache(data);
 
     return {
       canInvite,
       canViewPeople,
       peopleRead,
-      people,
+      peoplePage,
+      searchPeopleDirectory: (query, cursor) => searchPeopleDirectory(data, query, cursor),
+      searchOnboardingOptions: (personId, kind, query) => searchOnboardingOptions(data, personId, kind, query),
       formatError: (error) => error?.uiMessage === true && typeof error.message === "string"
         ? error.message
         : errorText(error),
@@ -246,7 +315,7 @@ export function createAdminPeopleRoute({
         return runMutation(
           data,
           (current) => canInviteAdminPeople(current?.actorGrants) && Boolean(
-            current?.people?.people?.some((person) => person.id === personId && person.status === "invited"),
+            currentDirectoryPerson(current, personId)?.status === "invited",
           ),
           "/api/people/" + encodeURIComponent(personId) + "/invitations/resend",
           undefined,
@@ -259,7 +328,7 @@ export function createAdminPeopleRoute({
         return runMutation(
           data,
           (current) => {
-            const row = current?.people?.people?.find((candidate) => candidate.id === person.id);
+            const row = currentDirectoryPerson(current, person.id);
             return Boolean(row && freezableStatuses.includes(row.status) &&
               current.actorGrants?.actorPersonId !== row.id &&
               hasPermissionGrant(current.actorGrants, "people.freeze", adminPersonPermissionTarget(row)));
@@ -274,7 +343,7 @@ export function createAdminPeopleRoute({
         return runMutation(
           data,
           (current) => {
-            const row = current?.people?.people?.find((candidate) => candidate.id === person.id);
+            const row = currentDirectoryPerson(current, person.id);
             return Boolean(row && manageableStatuses.includes(row.status) &&
               current.actorGrants?.actorPersonId !== row.id &&
               hasPermissionGrant(current.actorGrants, "people.offboard", adminPersonPermissionTarget(row)));
@@ -289,7 +358,7 @@ export function createAdminPeopleRoute({
         return runMutation(
           data,
           (current) => {
-            const row = current?.people?.people?.find((candidate) => candidate.id === person.id);
+            const row = currentDirectoryPerson(current, person.id);
             return Boolean(row && row.status === "offboarding" &&
               current.actorGrants?.actorPersonId !== row.id &&
               hasPermissionGrant(current.actorGrants, "people.offboard", adminPersonPermissionTarget(row)));
@@ -304,13 +373,18 @@ export function createAdminPeopleRoute({
         return runMutation(
           data,
           (current) => {
-            const row = current?.people?.people?.find((candidate) => candidate.id === personId);
+            const row = currentDirectoryPerson(current, personId);
             return Boolean(row && row.status === "onboarding" &&
               onboardingPermissions.every((permission) => hasPermissionGrant(current.actorGrants, permission)) &&
               hasPermissionGrant(current.actorGrants, "organisation.settings.manage") &&
               hasPermissionGrant(current.actorGrants, "roles.view") &&
               canViewAdminPeople(current.actorGrants) &&
-              currentOnboardingInputExists(current, personId, input));
+              currentOnboardingInputExists(
+                current,
+                personId,
+                input,
+                directoryCache(current).managerIdsByTarget.get(personId),
+              ));
           },
           "/api/people/" + encodeURIComponent(personId) + "/complete-onboarding",
           { ...input, managerPersonId: input.managerPersonId || null },
@@ -323,14 +397,44 @@ export function createAdminPeopleRoute({
   return { createProps };
 }
 
-function currentOnboardingInputExists(current, personId, input) {
+function currentOnboardingInputExists(current, personId, input, managerIds) {
   return Array.isArray(current.offices?.offices) && current.offices.offices.some((row) => row?.id === input.officeId) &&
     Array.isArray(current.departments?.departments) && current.departments.departments.some((row) => row?.id === input.organisationDepartmentId) &&
     Array.isArray(current.roles?.roles) && current.roles.roles.some((row) =>
       row?.id === input.roleId && row.isProtected !== true && !row.archivedAt,
-    ) && (!input.managerPersonId || (Array.isArray(current.people?.people) && current.people.people.some((row) =>
-      row?.id === input.managerPersonId && row.id !== personId && ["active", "notice"].includes(row.status),
-    )));
+    ) && (!input.managerPersonId || managerIds?.has(input.managerPersonId));
+}
+
+function isDirectoryPerson(value) {
+  const relation = (candidate) => candidate === null || (
+    candidate && typeof candidate === "object" && typeof candidate.id === "string" &&
+    candidate.id.length > 0 && typeof candidate.name === "string"
+  );
+  return value && typeof value === "object" && typeof value.id === "string" && value.id.length > 0 &&
+    (value.displayName === null || typeof value.displayName === "string") && typeof value.email === "string" &&
+    (value.status === null || typeof value.status === "string") && relation(value.office) &&
+    relation(value.department) && relation(value.role);
+}
+
+function isDirectoryPage(value) {
+  return value && typeof value === "object" && Array.isArray(value.people) &&
+    value.people.length <= peopleDirectoryPageLimit && Number.isSafeInteger(value.limit) &&
+    value.limit >= 1 && value.limit <= 50 && typeof value.hasMore === "boolean" &&
+    (value.nextCursor === null || (typeof value.nextCursor === "string" && value.nextCursor.length > 0 && value.nextCursor.length <= 8192)) &&
+    value.hasMore === Boolean(value.nextCursor) && value.people.every(isDirectoryPerson);
+}
+
+function projectDirectoryPage(page, data, projectPerson) {
+  return {
+    people: page.people.map((person) => projectPerson(person, data)).filter(Boolean),
+    limit: page.limit,
+    hasMore: page.hasMore,
+    nextCursor: page.nextCursor,
+  };
+}
+
+function emptyDirectoryPage() {
+  return { people: [], limit: peopleDirectoryPageLimit, hasMore: false, nextCursor: null };
 }
 
 function adminPersonPermissionTarget(person) {
@@ -350,10 +454,6 @@ function projectRelation(value) {
 function validIdName(value) {
   return value && typeof value === "object" && typeof value.id === "string" && value.id.length > 0 &&
     typeof value.name === "string" && value.name.length > 0;
-}
-
-function validId(value) {
-  return value && typeof value === "object" && typeof value.id === "string" && value.id.length > 0;
 }
 
 function text(value) {

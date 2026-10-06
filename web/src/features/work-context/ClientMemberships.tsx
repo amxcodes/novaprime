@@ -1,11 +1,10 @@
 import { useEffect, useId, useState, useSyncExternalStore, type FormEvent } from "react";
-import { SearchableSelect, type SearchableSelectOption } from "../../design-system";
+import { SearchableSelect } from "../../design-system";
 import { Button } from "../../design-system/primitives/Button";
 import { Field, Input } from "../../design-system/primitives/Field";
 import type {
   ClientMembershipClient,
   ClientMembershipOperationState,
-  ClientMembershipPersonOption,
   ClientMembershipReadState,
   ClientMembershipsProps,
   CreateClientMembershipInput,
@@ -20,9 +19,10 @@ import styles from "./ClientMemberships.module.css";
 export type {
   ClientDepartmentOption,
   ClientMembershipClient,
+  ClientMembershipPersonOption,
+  ClientMembershipSearchOption,
   ClientMembershipOperationState,
   ClientMembershipOperationStatus,
-  ClientMembershipPersonOption,
   ClientMembershipReadState,
   ClientMembershipReadStatus,
   ClientMembershipRecord,
@@ -43,21 +43,17 @@ export interface ClientMembershipFeatureProps extends Omit<
 export type ClientMembershipInputBuildResult =
   | { status: "ready"; input: CreateClientMembershipInput }
   | { status: "person-required" }
-  | { status: "department-invalid" }
   | { status: "effective-date-required" };
 
 export function buildClientMembershipInput(
   values: FormData,
-  peopleOptions: readonly ClientMembershipPersonOption[],
-  departmentOptions: ClientMembershipsProps["departmentOptions"],
 ): ClientMembershipInputBuildResult {
-  const personId = String(values.get("personId") || "");
-  const departmentId = String(values.get("clientDepartmentId") || "");
+  const personId = String(values.get("personId") || "").trim();
+  const departmentId = String(values.get("clientDepartmentId") || "").trim();
   const effectiveOn = String(values.get("effectiveOn") || "");
-  if (!peopleOptions.some((person) => person.id === personId)) return { status: "person-required" };
-  if (departmentId && !departmentOptions?.some((department) => department.id === departmentId)) {
-    return { status: "department-invalid" };
-  }
+  // The chosen IDs are claims; the server rechecks people.view, membership
+  // management, client ownership, and department ownership before writing.
+  if (!personId) return { status: "person-required" };
   if (!effectiveOn) return { status: "effective-date-required" };
 
   const input: CreateClientMembershipInput = {
@@ -65,27 +61,21 @@ export function buildClientMembershipInput(
     membershipLabel: String(values.get("membershipLabel") || "").trim() || null,
     effectiveOn,
   };
-  if (departmentOptions?.length) {
-    input.clientDepartmentId = departmentId || null;
-  }
+  input.clientDepartmentId = departmentId || null;
   return { status: "ready", input };
 }
 
 function addMembership(
   event: FormEvent<HTMLFormElement>,
   props: ClientMembershipsProps,
-  onValidationError: (field: "person" | "department" | "effectiveOn", message: string | null) => void,
+  onValidationError: (field: "person" | "effectiveOn", message: string | null) => void,
 ) {
   event.preventDefault();
-  if (!props.canManageMemberships || props.addOperation?.status === "pending" || !props.peopleOptions?.length) return;
+  if (!props.canManageMemberships || !props.canSearchPeople || props.addOperation?.status === "pending") return;
   const values = new FormData(event.currentTarget);
-  const result = buildClientMembershipInput(values, props.peopleOptions, props.departmentOptions);
+  const result = buildClientMembershipInput(values);
   if (result.status === "person-required") {
     onValidationError("person", "Choose a person from the authorized list.");
-    return;
-  }
-  if (result.status === "department-invalid") {
-    onValidationError("department", "Choose a client department from the current authorized list, or clear the selection.");
     return;
   }
   if (result.status === "effective-date-required") {
@@ -93,7 +83,6 @@ function addMembership(
     return;
   }
   onValidationError("person", null);
-  onValidationError("department", null);
   onValidationError("effectiveOn", null);
   props.onAddMembership(result.input);
 }
@@ -116,43 +105,27 @@ export function ClientMembershipsView(props: ClientMembershipsProps) {
   const [personId, setPersonId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [personError, setPersonError] = useState<string | null>(null);
-  const [departmentError, setDepartmentError] = useState<string | null>(null);
   const [effectiveOnError, setEffectiveOnError] = useState<string | null>(null);
   const {
     client,
     canViewMemberships,
     canManageMemberships,
+    canSearchPeople,
     read,
-    peopleOptions,
-    departmentOptions,
+    onSearchPeople,
+    onSearchDepartments,
     addOperation = { status: "idle" },
     endOperations = {},
     onLoadMemberships,
     onLoadMore,
   } = props;
 
-  const peopleChoices: SearchableSelectOption[] = (peopleOptions ?? []).map((person) => ({
-    value: person.id,
-    label: person.label,
-  }));
-  const departmentChoices: SearchableSelectOption[] = (departmentOptions ?? []).map((department) => ({
-    value: department.id,
-    label: department.name,
-  }));
-
   useEffect(() => {
-    if (personId && !peopleOptions?.some((person) => person.id === personId)) {
+    if (personId && !canSearchPeople) {
       setPersonId("");
       setPersonError(null);
     }
-  }, [peopleOptions, personId]);
-
-  useEffect(() => {
-    if (departmentId && !departmentOptions?.some((department) => department.id === departmentId)) {
-      setDepartmentId("");
-      setDepartmentError(null);
-    }
-  }, [departmentOptions, departmentId]);
+  }, [canSearchPeople, personId]);
 
   if (!canViewMemberships) {
     return (
@@ -163,8 +136,7 @@ export function ClientMembershipsView(props: ClientMembershipsProps) {
     );
   }
 
-  const showPeopleNotice = canManageMemberships && peopleOptions === null;
-  const showEmptyPeople = canManageMemberships && peopleOptions !== null && peopleOptions.length === 0;
+  const showPeopleNotice = canManageMemberships && !canSearchPeople;
 
   return (
     <section className={styles.feature} aria-labelledby={`${id}-title`}>
@@ -268,31 +240,18 @@ export function ClientMembershipsView(props: ClientMembershipsProps) {
 
       {showPeopleNotice ? (
         <p className={styles.unavailable} role="status">
-          Adding a person requires an authorized people list. This client manager cannot load one with the current access.
+          Adding a person requires organization-level people viewing access. This client manager cannot search people with the current access.
         </p>
       ) : null}
-      {showEmptyPeople ? <p className={styles.emptyState}>No people are available to add as client members.</p> : null}
 
-      {canManageMemberships && peopleOptions?.length ? (
+      {canManageMemberships && canSearchPeople ? (
         <form className={styles.addForm} noValidate onSubmit={(event) => addMembership(event, props, (field, message) => {
           if (field === "person") {
             setPersonError(message);
-            if (message) {
-              setDepartmentError(null);
-              setEffectiveOnError(null);
-            }
-          } else if (field === "department") {
-            setDepartmentError(message);
-            if (message) {
-              setPersonError(null);
-              setEffectiveOnError(null);
-            }
+            if (message) setEffectiveOnError(null);
           } else {
             setEffectiveOnError(message);
-            if (message) {
-              setPersonError(null);
-              setDepartmentError(null);
-            }
+            if (message) setPersonError(null);
           }
         })}>
           <h3>Add a client membership</h3>
@@ -303,29 +262,31 @@ export function ClientMembershipsView(props: ClientMembershipsProps) {
               label="Person"
               required
               value={personId}
-              options={peopleChoices}
+              options={[]}
+              searchMode="remote"
+              onSearch={onSearchPeople}
               placeholder="Search people"
               emptyMessage="No authorized people match this search."
               error={personError || undefined}
               disabled={addOperation.status === "pending"}
               onChange={(value) => { setPersonId(value); setPersonError(null); }}
             />
-            {departmentOptions?.length ? (
-              <SearchableSelect
-                id={`${id}-department`}
-                name="clientDepartmentId"
-                label="Client department (optional)"
-                hint="Leave blank when this membership is not department-specific."
-                value={departmentId}
-                options={departmentChoices}
-                placeholder="Search client departments"
-                emptyMessage="No authorized client departments match this search."
-                clearLabel="Clear department selection"
-                error={departmentError || undefined}
-                disabled={addOperation.status === "pending"}
-                onChange={(value) => { setDepartmentId(value); setDepartmentError(null); }}
-              />
-            ) : null}
+            <SearchableSelect
+              id={`${id}-department`}
+              name="clientDepartmentId"
+              label="Client department (optional)"
+              hint="Leave blank when this membership is not department-specific."
+              value={departmentId}
+              options={[]}
+              searchMode="remote"
+              onSearch={onSearchDepartments}
+              placeholder="Search client departments"
+              emptyMessage="No authorized client departments match this search."
+              clearLabel="Clear department selection"
+              error={undefined}
+              disabled={addOperation.status === "pending"}
+              onChange={setDepartmentId}
+            />
             <Field className={styles.control} label="Membership label (optional)">
               {(controlProps) => <Input {...controlProps} name="membershipLabel" maxLength={120} disabled={addOperation.status === "pending"} />}
             </Field>
@@ -333,8 +294,8 @@ export function ClientMembershipsView(props: ClientMembershipsProps) {
               {(controlProps) => <Input {...controlProps} name="effectiveOn" type="date" required disabled={addOperation.status === "pending"} onChange={() => setEffectiveOnError(null)} />}
             </Field>
           </div>
-          {personError || departmentError || effectiveOnError ? (
-            <p className={styles.srOnly} role="alert" aria-live="assertive" aria-atomic="true">{personError || departmentError || effectiveOnError}</p>
+          {personError || effectiveOnError ? (
+            <p className={styles.srOnly} role="alert" aria-live="assertive" aria-atomic="true">{personError || effectiveOnError}</p>
           ) : null}
           <div className={styles.formActions}>
             <Button className={styles.action} variant="secondary" type="submit" disabled={addOperation.status === "pending"}>
@@ -354,7 +315,7 @@ export function ClientMemberships(props: ClientMembershipFeatureProps) {
     client: props.client,
     canViewMemberships: props.canViewMemberships,
     canManageMemberships: props.canManageMemberships,
-    peopleOptions: props.peopleOptions,
+    canSearchPeople: props.canSearchPeople,
     request: props.request,
     runCommand: props.runCommand,
     isCurrent: props.isCurrent,
@@ -367,8 +328,9 @@ export function ClientMemberships(props: ClientMembershipFeatureProps) {
     client={props.client}
     canViewMemberships={props.canViewMemberships}
     canManageMemberships={props.canManageMemberships}
-    peopleOptions={props.peopleOptions}
-    departmentOptions={props.departmentOptions}
+    canSearchPeople={props.canSearchPeople}
+    onSearchPeople={props.onSearchPeople}
+    onSearchDepartments={props.onSearchDepartments}
     read={snapshot.read}
     addOperation={snapshot.addOperation}
     endOperations={snapshot.endOperations}

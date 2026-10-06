@@ -15,6 +15,8 @@ export interface WorkOperationsAssignmentOptions {
 export interface WorkOperationsAssignmentOptionsReadOptions {
   /** Refresh choices when an assignment/reassignment panel is opened again. */
   refresh?: boolean;
+  /** Search eligible people through the task-scoped server read. */
+  query?: string;
 }
 
 export interface WorkOperationsAssignment {

@@ -75,7 +75,7 @@ function groupCreateOptions(
 export function projectAdminWorkContextCreation(
   data: AdminWorkContextFeatureData,
   dependencies: AdminWorkContextProjectorDependencies,
-): WorkContextCreationProps {
+): Omit<WorkContextCreationProps, "onSearchClients" | "onSearchGroupWorkstreams"> {
   const { hasPermission, hasAnyPermission, readIssue, runCommand } = dependencies;
   const issue = readIssue(data.workContext, "work context");
   const denied = ["PERMISSION_DENIED", "PREREQUISITE_PERMISSION_REQUIRED"].includes(data.workContext?.readError || "");

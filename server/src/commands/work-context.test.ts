@@ -1,11 +1,18 @@
-import { describe, expect, test } from "bun:test";
-import {
+import { describe, expect, mock, test } from "bun:test";
+
+// These tests exercise pure permission-query and projection contracts. The
+// command module imports the database driver, but the focused suite never
+// opens a database connection.
+mock.module("pg", () => ({ Pool: class Pool {}, Client: class Client {} }));
+
+const {
   ownAssignmentActionCapabilities,
   ownAssignmentActionPermissionSql,
   parseMyAssignmentFilters,
   myAssignmentsReadSql,
   parseVisibleTaskFilters,
   visibleTasksReadSql,
+  parseTaskAssignmentOptionSearch,
   readTaskPermissionHints,
   projectMyAssignmentSummary,
   resolveTaskAssignmentOptions,
@@ -15,7 +22,12 @@ import {
   exactReviewerManagementTarget,
   reviewerExceptionTargetEligible,
   reviewerExceptionGrantTargetSql,
-} from "./work-context.js";
+  workContextClientIsVisible,
+  workContextPermissionSql,
+  workContextWorkstreamIsVisible,
+  readTaskCollection,
+  taskCollectionReadSql,
+} = await import("./work-context.js");
 
 const originalTaskId = "9f7fda96-7352-4e96-9ce0-71c0de51f761";
 
@@ -247,6 +259,152 @@ describe("permission-filtered visible task collection", () => {
   });
 });
 
+describe("Admin task collection batching", () => {
+  function projectedTaskRow(taskIndex: number, assignmentIndex: number | null) {
+    const hasAssignment = assignmentIndex !== null;
+    return {
+      id: `task-${taskIndex}`,
+      title: `Task ${taskIndex}`,
+      description: null,
+      status: "ready",
+      priority: "normal",
+      due_date: null,
+      due_date_revision: 1,
+      billing_class: "non_billable" as const,
+      billing_policy_source: "organisation_workstream",
+      billing_policy_revision: 1,
+      correction_of_task_id: null,
+      task_catalog_entry_id: null,
+      task_catalog_revision: null,
+      correction_reason: null,
+      correction_title: null,
+      correction_source_visible: false,
+      client_id: null,
+      client_name: null,
+      client_workstream_id: null,
+      workstream_name: null,
+      organisation_workstream_id: "stream-1",
+      organisation_workstream_name: "Operations",
+      work_group_id: null,
+      work_group_name: null,
+      department_id: null,
+      department_name: null,
+      can_edit_due_date: true,
+      can_assign: true,
+      can_cancel: true,
+      can_reassign: true,
+      assignment_id: hasAssignment ? `assignment-${taskIndex}-${assignmentIndex}` : null,
+      person_id: hasAssignment ? `person-${assignmentIndex}` : null,
+      person_name: hasAssignment ? `Person ${assignmentIndex}` : null,
+      reviewer_person_id: null,
+      reviewer_name: null,
+      review_required: hasAssignment,
+      review_blocked_reason: null,
+      review_blocked_at: null,
+      resolution_source: null,
+      assignment_status: hasAssignment ? "assigned" : null,
+    };
+  }
+
+  async function readMany(taskCount: number, assignmentsPerTask: number) {
+    const rows = Array.from({ length: taskCount }, (_unused, taskIndex) =>
+      Array.from({ length: assignmentsPerTask }, (_unusedAssignment, assignmentIndex) =>
+        projectedTaskRow(taskIndex, assignmentIndex)),
+    ).flat();
+    let queryCount = 0;
+    const transaction = {
+      query: async () => {
+        queryCount += 1;
+        return { rows };
+      },
+    };
+    const tasks = await readTaskCollection(transaction as never, "actor-id", "organisation-id");
+    return { tasks, queryCount };
+  }
+
+  test("uses one permission-filtered assignment join regardless of task count", async () => {
+    const oneTask = await readMany(1, 2);
+    const twoHundredTasks = await readMany(200, 2);
+
+    expect(oneTask.queryCount).toBe(1);
+    expect(twoHundredTasks.queryCount).toBe(1);
+    expect(twoHundredTasks.tasks).toHaveLength(200);
+    expect(twoHundredTasks.tasks[0]).toMatchObject({
+      id: "task-0",
+      workstream: { id: "stream-1", kind: "organisation" },
+      assignments: [
+        { id: "assignment-0-0", canReassign: true },
+        { id: "assignment-0-1", canReassign: true },
+      ],
+    });
+  });
+
+  test("filters broad task visibility and correction source visibility in the batched SQL", () => {
+    const sql = taskCollectionReadSql().toUpperCase();
+    expect(sql).toContain("CANDIDATE_TASKS AS MATERIALIZED");
+    expect(sql).toContain("LIMIT 200");
+    expect(sql).toContain("TASKS.VIEW");
+    const visibleTasks = sql.indexOf("VISIBLE_TASKS AS MATERIALIZED");
+    const visibleFilter = sql.indexOf("WHERE CAN_VIEW_BROAD", visibleTasks);
+    const otherTaskPermissions = sql.indexOf("TASKS.EDIT", visibleFilter);
+    expect(visibleTasks).toBeGreaterThan(-1);
+    expect(visibleFilter).toBeGreaterThan(visibleTasks);
+    expect(otherTaskPermissions).toBeGreaterThan(visibleFilter);
+    expect(sql).toContain("TASKS.ASSIGN");
+    expect(sql).toContain("TASKS.REASSIGN");
+    expect(sql).toContain("CORRECTION_SOURCE_VISIBLE");
+    expect(sql).toContain("LEFT JOIN NOVA.TASK_ASSIGNMENTS ASSIGNMENTS");
+    expect(sql).not.toMatch(/\b(INSERT|UPDATE|DELETE)\b/);
+  });
+});
+
+describe("permission-projected work-context creation targets", () => {
+  test("includes only clients with the exact client-scoped workstream-create grant", () => {
+    const sql = workContextPermissionSql("workstreams.create", {
+      clientId: "clients.id",
+      allowedScopes: ["client"],
+    }).toUpperCase();
+
+    expect(sql).toContain("GRANTS.PERMISSION_KEY = 'WORKSTREAMS.CREATE'");
+    expect(sql).toContain("GRANTS.SCOPE = ANY(ARRAY['CLIENT']::NOVA.PERMISSION_SCOPE[])");
+    expect(sql).toContain("GRANTS.CLIENT_ID = CLIENTS.ID");
+    expect(workContextClientIsVisible({ can_view: false, can_create_workstream: true })).toBe(true);
+    expect(workContextClientIsVisible({ can_view: false, can_create_workstream: false })).toBe(false);
+  });
+
+  test("includes client workstreams for their exact stream grant or an organization-wide group-create grant", () => {
+    const sql = workContextPermissionSql("groups.create", {
+      clientId: "workstreams.client_id",
+      clientWorkstreamId: "workstreams.id",
+      allowedScopes: ["organisation", "client_workstream"],
+    }).toUpperCase();
+
+    expect(sql).toContain("GRANTS.PERMISSION_KEY = 'GROUPS.CREATE'");
+    expect(sql).toContain("GRANTS.SCOPE = ANY(ARRAY['ORGANISATION', 'CLIENT_WORKSTREAM']::NOVA.PERMISSION_SCOPE[])");
+    expect(sql).toContain("GRANTS.CLIENT_WORKSTREAM_ID = WORKSTREAMS.ID");
+    expect(workContextWorkstreamIsVisible({
+      can_view_workstream: false, can_create_group: true,
+    })).toBe(true);
+    expect(workContextWorkstreamIsVisible({
+      can_view_workstream: false, can_manage_billing_policy: false, can_create_group: false,
+    })).toBe(false);
+  });
+
+  test("projects organization workstreams for the organization-scoped group-create grant", () => {
+    const sql = workContextPermissionSql("groups.create", {
+      allowedScopes: ["organisation"],
+    }).toUpperCase();
+
+    expect(sql).toContain("GRANTS.SCOPE = ANY(ARRAY['ORGANISATION']::NOVA.PERMISSION_SCOPE[])");
+    expect(workContextWorkstreamIsVisible({
+      can_view_workstream: false, can_create_group: true,
+    })).toBe(true);
+    expect(workContextWorkstreamIsVisible({
+      can_view_workstream: false, can_create_group: false,
+    })).toBe(false);
+  });
+});
+
 describe("correction-task input", () => {
   test("keeps correction purpose separate from billing classification", () => {
     expect(taskCorrectionInput({ title: "Task" })).toEqual({
@@ -468,24 +626,24 @@ describe("task assignment option read", () => {
     const client = {
       query: async (text: string, values: unknown[] = []) => {
         queries.push({ text, values });
-        if (text.includes("ORDER BY people.display_name, people.id")) return { rows: people };
         if (text.includes("FROM nova.tasks tasks") && text.includes("WHERE tasks.id = $1 AND tasks.organisation_id = $2")) {
           return { rows: selected.task ? [selected.task] : [] };
         }
-        if (text.includes("AS permitted")) {
-          const permission = String(values[2]);
-          if (permission === "tasks.assign" || permission === "tasks.reassign") {
-            return { rows: [{ permitted: selected.grants.has(permission) }] };
-          }
-          if (permission === "tasks.review") {
-            return { rows: [{ permitted: selected.reviewers.has(String(values[0])) }] };
-          }
+        if (text.includes("AS can_assign") && text.includes("AS can_reassign")) {
+          return { rows: [{
+            can_assign: selected.grants.has("tasks.assign"),
+            can_reassign: selected.grants.has("tasks.reassign"),
+          }] };
         }
-        if (text.includes("AS eligible")) {
-          return { rows: [{ eligible: selected.assignees.has(String(values[0])) }] };
-        }
-        if (text.includes("AS operational")) {
-          return { rows: [{ operational: selected.operational.has(String(values[0])) }] };
+        if (text.includes("FROM candidate_eligibility")) {
+          const query = String(values[5] ?? "").toLowerCase();
+          return { rows: people.flatMap((person) => {
+            if (query && !person.display_name.toLowerCase().includes(query)) return [];
+            return [
+              ...(selected.assignees.has(person.id) ? [{ kind: "assignee", id: person.id, name: person.display_name }] : []),
+              ...(selected.reviewers.has(person.id) ? [{ kind: "reviewer", id: person.id, name: person.display_name }] : []),
+            ];
+          }) };
         }
         throw new Error(`Unexpected assignment-option query: ${text}`);
       },
@@ -497,12 +655,10 @@ describe("task assignment option read", () => {
     const db = transaction({ grants: new Set() });
     await expect(resolveTaskAssignmentOptions(db.client, "actor-1", "org-1", "task-1"))
       .resolves.toBe("PERMISSION_DENIED");
-    expect(db.queries.filter((query) => query.text.includes("ORDER BY people.display_name, people.id"))).toHaveLength(0);
-    expect(db.queries.filter((query) => query.text.includes("AS permitted")).map((query) => query.values))
-      .toEqual([
-        ["actor-1", "org-1", "tasks.assign", "client-1", "workstream-1", "group-1", "task-1"],
-        ["actor-1", "org-1", "tasks.reassign", "client-1", "workstream-1", "group-1", "task-1"],
-      ]);
+    expect(db.queries.filter((query) => query.text.includes("FROM candidate_eligibility"))).toHaveLength(0);
+    expect(db.queries.filter((query) => query.text.includes("AS can_assign"))).toMatchObject([{
+      values: ["actor-1", "org-1", "client-1", "workstream-1", "group-1", "task-1"],
+    }]);
   });
 
   test.each(["tasks.assign", "tasks.reassign"])(
@@ -517,13 +673,29 @@ describe("task assignment option read", () => {
             { id: "person-3", name: "Morgan Reviewer Only" },
           ],
         });
-      const taskReviewQueries = db.queries.filter((query) =>
-        query.text.includes("AS permitted") && query.values[2] === "tasks.review",
-      );
-      expect(taskReviewQueries.every((query) => query.values.slice(3).join("|") === "client-1|workstream-1|group-1|task-1"))
-        .toBe(true);
+      const permissionQuery = db.queries.find((query) => query.text.includes("AS can_assign"));
+      expect(permissionQuery?.values.slice(2)).toEqual(["client-1", "workstream-1", "group-1", "task-1"]);
     },
   );
+
+  test("server candidate search is bounded, scoped and returns names from one permission projection", async () => {
+    const db = transaction();
+    await expect(resolveTaskAssignmentOptions(db.client, "actor-1", "org-1", "task-1", "morgan"))
+      .resolves.toEqual({ assignees: [], reviewers: [{ id: "person-3", name: "Morgan Reviewer Only" }] });
+    const search = db.queries.find((query) => query.text.includes("FROM candidate_eligibility"));
+    expect(search?.values).toEqual(["org-1", "client-1", "workstream-1", "group-1", "task-1", "morgan"]);
+    expect(search?.text).toContain("people.organisation_id = $1");
+    expect(search?.text.match(/LIMIT 100/g)).toHaveLength(2);
+    expect(search?.text).toContain("grants.person_id = candidate_people.id");
+  });
+
+  test("rejects ambiguous or overlong assignment-option queries", () => {
+    const base = "https://nova.test/api/tasks/task-1/assignment-options";
+    expect(parseTaskAssignmentOptionSearch(new Request(base))).toBe("");
+    expect(parseTaskAssignmentOptionSearch(new Request(`${base}?q=%20Avery%20`))).toBe("Avery");
+    expect(parseTaskAssignmentOptionSearch(new Request(`${base}?q=a&q=b`))).toBeUndefined();
+    expect(parseTaskAssignmentOptionSearch(new Request(`${base}?q=${"x".repeat(101)}`))).toBeUndefined();
+  });
 
   test("returns task-not-found before checking permissions or reading candidates", async () => {
     const db = transaction({ task: null });

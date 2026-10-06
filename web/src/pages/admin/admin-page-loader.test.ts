@@ -9,7 +9,7 @@ function createServices(actorGrants: Record<string, unknown>, options: { current
       pageApi: async (path: string) => {
         requests.push(path);
         if (path === "/api/me/permission-grants") return actorGrants;
-        if (path === "/api/people") return { people: [] };
+        if (path === "/api/people/directory?q=&limit=25") return { people: [], limit: 25, hasMore: false, nextCursor: null };
         if (path === "/api/audit-events?limit=50") return { events: [] };
         if (path === "/api/offices/geofence-options") return { offices: [{ id: "office-7", name: "North office" }] };
         return {};
@@ -51,7 +51,7 @@ describe("Admin page route data", () => {
     expect(data?.people.readState).toBe("not-requested");
   });
 
-  it("keeps invite-only and department-scoped viewers off the unpaged People roster read", async () => {
+  it("keeps invite-only and department-scoped viewers off the People directory read", async () => {
     const inviteOnly = createServices({ grants: [
       { permissionKey: "people.invite", scope: "organisation" },
     ] });
@@ -91,7 +91,7 @@ describe("Admin page route data", () => {
     expect(data?.geofenceOptions.offices).toEqual([]);
   });
 
-  it("loads only the People and audit reads for organization-scoped people.view", async () => {
+  it("loads only a bounded People directory page and audit read for organization-scoped people.view", async () => {
     const { requests, services } = createServices({ grants: [
       { permissionKey: "people.view", scope: "organisation" },
     ] });
@@ -99,10 +99,12 @@ describe("Admin page route data", () => {
 
     expect(requests).toEqual([
       "/api/me/permission-grants",
-      "/api/people",
+      "/api/people/directory?q=&limit=25",
       "/api/audit-events?limit=50",
     ]);
     expect(data?.people.people).toEqual([]);
+    expect(data?.people.readState).toBe("not-requested");
+    expect(data?.peopleDirectory).toEqual({ people: [], limit: 25, hasMore: false, nextCursor: null });
   });
 
   it("reads the WFH policy list only for view; manage-only stays on its separate form grant", async () => {

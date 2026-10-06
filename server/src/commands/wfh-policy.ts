@@ -3,6 +3,11 @@ import { authenticationConfiguration } from "../auth-configuration.js";
 import { withDatabaseRequest, type DatabaseRequestContext } from "../db.js";
 import { isNormalOperationalActor, requestActor } from "../request-actor.js";
 import { enqueueNotification } from "./notifications.js";
+import {
+  wfhOrganisationTargetWriteSql,
+  wfhPersonTargetWritePermissionSql,
+  wfhPersonViewAccessSql,
+} from "./availability-picker-search-model.js";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -77,6 +82,7 @@ async function requestBody(request: Request): Promise<unknown> {
 async function hasOrganisationPermission(
   transaction: PoolClient,
   actorId: string,
+  organisationId: string,
   permissionKey: string,
 ): Promise<boolean> {
   const result = await transaction.query<{ permitted: boolean }>(
@@ -86,13 +92,14 @@ async function hasOrganisationPermission(
        JOIN nova.roles roles ON roles.id = assignments.role_id
        JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
        WHERE assignments.person_id = $1
+        AND roles.organisation_id = $3
          AND assignments.effective_on <= nova.person_business_date($1)
          AND (assignments.effective_until IS NULL OR assignments.effective_until >= nova.person_business_date($1))
          AND roles.archived_at IS NULL
          AND grants.permission_key = $2
          AND grants.scope = 'organisation'
      ) AS permitted`,
-    [actorId, permissionKey],
+    [actorId, permissionKey, organisationId],
   );
   return result.rows[0]?.permitted === true;
 }
@@ -108,8 +115,29 @@ export async function createWfhPolicy(request: Request): Promise<Response> {
   if (!input) return json({ error: "WFH_POLICY_INPUT_INVALID" }, 400);
   try {
     const result = await withDatabaseRequest(actor.context, async (transaction) => {
-      if (!await hasOrganisationPermission(transaction, actor.context.userId, "availability.wfh_policy.manage")) {
+      if (!await hasOrganisationPermission(transaction, actor.context.userId, actor.context.organisationId, "availability.wfh_policy.manage")) {
         return "PERMISSION_DENIED" as const;
+      }
+      if (input.targetType === "person") {
+        const peopleView = await transaction.query<{ permitted: boolean }>(
+          wfhPersonViewAccessSql,
+          [actor.context.userId, actor.context.organisationId],
+        );
+        if (peopleView.rows[0]?.permitted !== true) return "PERMISSION_DENIED" as const;
+        const targetPermission = await transaction.query<{ permitted: boolean }>(
+          wfhPersonTargetWritePermissionSql,
+          [actor.context.userId, actor.context.organisationId, input.targetId],
+        );
+        if (targetPermission.rows[0]?.permitted !== true) return "WFH_POLICY_TARGET_NOT_FOUND" as const;
+      } else {
+        if (!await hasOrganisationPermission(transaction, actor.context.userId, actor.context.organisationId, "organisation.settings.manage")) {
+          return "PERMISSION_DENIED" as const;
+        }
+        const target = await transaction.query(
+          wfhOrganisationTargetWriteSql(input.targetType),
+          [input.targetId, actor.context.organisationId],
+        );
+        if (target.rows.length !== 1) return "WFH_POLICY_TARGET_NOT_FOUND" as const;
       }
       const created = await transaction.query<{ id: string }>(
         `INSERT INTO nova.wfh_policy_overrides (
@@ -171,6 +199,7 @@ export async function createWfhPolicy(request: Request): Promise<Response> {
       return id;
     });
     if (result === "PERMISSION_DENIED") return json({ error: result }, 403);
+    if (result === "WFH_POLICY_TARGET_NOT_FOUND") return json({ error: result }, 409);
     return json({ policyId: result }, 201);
   } catch (error) {
     if (duplicateError(error)) return json({ error: "WFH_POLICY_ALREADY_EXISTS" }, 409);
@@ -186,7 +215,7 @@ export async function readWfhPolicies(request: Request): Promise<Response> {
   if ("response" in actor) return actor.response;
   try {
     const result = await withDatabaseRequest(actor.context, async (transaction) => {
-      if (!await hasOrganisationPermission(transaction, actor.context.userId, "availability.wfh_policy.view")) {
+      if (!await hasOrganisationPermission(transaction, actor.context.userId, actor.context.organisationId, "availability.wfh_policy.view")) {
         return "PERMISSION_DENIED" as const;
       }
       const rows = await transaction.query<{

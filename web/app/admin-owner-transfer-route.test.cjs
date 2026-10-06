@@ -13,6 +13,7 @@ test("Owner Transfer UI and host adapter load only behind Super Admin plus organ
   assert.match(capabilitySource, /export function canShowOwnerTransfer[\s\S]*?canViewAdminPeople\(read\)/);
   assert.match(adminPageRouteSource, /loadAdminFeatureModule\(canShowOwnerTransfer\(data\.actorGrants\), \(\) => import\("\.\.\/src\/features\/admin\/owner-transfer\/index\.ts"\)\)/);
   assert.match(adminPageRouteSource, /loadAdminFeatureModule\(canShowOwnerTransfer\(data\.actorGrants\), \(\) => import\("\.\/admin-owner-transfer-route\.js"\)\)/);
+  assert.match(adminPageRouteSource, /canViewAdminPeople,[\s\S]{0,80}pageApi,[\s\S]{0,100}runAdminProtectedCommand/);
   assert.match(adminPageRouteSource, /state\.adminData !== data\) return;[\s\S]*?canShowOwnerTransfer\(state\.adminData\?\.actorGrants\)/);
   assert.match(adminPageRouteSource, /"owner-transfer": OwnerTransfer && ownerTransferRoute[\s\S]*?createElement\(OwnerTransfer, ownerTransferRoute\.createProps\(data\)\)/);
   assert.match(sectionsSource, /\["owner-transfer", canShowOwnerTransfer\(read\)\]/);
@@ -54,6 +55,17 @@ async function createHarness(options = {}) {
     isCurrentPageRequest: (value) => value === lifetime && options.pageCurrent !== false,
     canViewAdminPeople: (read) => read?.grants?.some((grant) =>
       grant.permissionKey === "people.view" && grant.scope === "organisation") === true,
+    pageApi: async (endpoint, pageLifetime) => {
+      events.push(["read", endpoint, pageLifetime]);
+      if (!endpoint.startsWith("/api/organisation/owner-transfer/eligible-people?")) {
+        throw new Error("Unexpected owner-transfer search endpoint");
+      }
+      const query = new URL(endpoint, "http://nova.test").searchParams.get("q")?.toLowerCase() || "";
+      return { people: [
+        { id: "person-active", label: "Alex Rivera" },
+        { id: "person-notice", label: "notice@example.test" },
+      ].filter((person) => person.label.toLowerCase().includes(query)) };
+    },
     runAdminProtectedCommand: (...args) => {
       events.push(["command", ...args]);
       return Promise.resolve(options.commandResult);
@@ -64,14 +76,18 @@ async function createHarness(options = {}) {
   return { data, state, target, lifetime, route, events };
 }
 
-test("only organization people.view supplies safe active or notice choices; raw IDs stay host-owned", async () => {
+test("only organization people.view supplies server-searchable owner choices; raw IDs stay host-owned", async () => {
   const allowed = await createHarness();
   const props = allowed.route.createProps(allowed.data);
   assert.equal(props.canTransfer, true);
   assert.equal(props.read.status, "ready");
-  assert.deepEqual(props.read.choices.map(({ label }) => label), ["Alex Rivera", "notice@example.test"]);
-  assert.ok(props.read.choices.every((choice) => !Object.hasOwn(choice, "id")));
-  assert.doesNotMatch(JSON.stringify(props.read.choices.map(({ label }) => label)), /person-(?:self|active|notice|frozen)/);
+  assert.deepEqual(props.read.choices, []);
+  const choices = await props.onSearchEligiblePeople("Alex");
+  assert.deepEqual(choices.map(({ label }) => label), ["Alex Rivera"]);
+  assert.ok(choices.every((choice) => !Object.hasOwn(choice, "id")));
+  assert.ok(choices.every(({ value }) => !["person-active", "person-notice"].includes(value)));
+  assert.equal(allowed.events[0][1], "/api/organisation/owner-transfer/eligible-people?q=Alex");
+  assert.equal(allowed.events[0][2], allowed.lifetime);
 
   const scopedOnly = await createHarness({ actorGrants: grants({ rosterScope: "office" }) });
   const scopedProps = scopedOnly.route.createProps(scopedOnly.data);
@@ -95,8 +111,10 @@ test("adapter fails closed for an ordinary role and an unrequested roster", asyn
 test("the exact guarded POST contract preserves ambiguous-result messaging", async () => {
   const harness = await createHarness();
   const props = harness.route.createProps(harness.data);
-  await props.read.choices[0].transfer();
-  const [, target, lifetime, livePermission, permissionTarget, method, endpoint, body, success, afterSuccess, headers, ambiguous] = harness.events[0];
+  const choices = await props.onSearchEligiblePeople("");
+  await choices[0].transfer();
+  const commandEvent = harness.events.find(([kind]) => kind === "command");
+  const [, target, lifetime, livePermission, permissionTarget, method, endpoint, body, success, afterSuccess, headers, ambiguous] = commandEvent;
   assert.equal(target, harness.target);
   assert.equal(lifetime, harness.lifetime);
   assert.equal(typeof livePermission, "function");
@@ -113,28 +131,29 @@ test("the exact guarded POST contract preserves ambiguous-result messaging", asy
 
 test("commands stop if the Admin snapshot, live Super Admin status, roster access, or eligible target changes", async () => {
   const snapshotChanged = await createHarness();
-  const snapshotChoice = snapshotChanged.route.createProps(snapshotChanged.data).read.choices[0];
+  const snapshotChoice = (await snapshotChanged.route.createProps(snapshotChanged.data).onSearchEligiblePeople(""))[0];
   snapshotChanged.state.adminData = { ...snapshotChanged.data };
   assert.throws(() => snapshotChoice.transfer(), /page or Super Admin access changed/);
-  assert.equal(snapshotChanged.events.length, 0);
+  assert.equal(snapshotChanged.events.filter(([kind]) => kind === "command").length, 0);
 
   const roleChanged = await createHarness();
-  const roleChoice = roleChanged.route.createProps(roleChanged.data).read.choices[0];
+  const roleChoice = (await roleChanged.route.createProps(roleChanged.data).onSearchEligiblePeople(""))[0];
   roleChanged.data.actorGrants.isSuperAdmin = false;
   assert.throws(() => roleChoice.transfer(), /page or Super Admin access changed/);
-  assert.equal(roleChanged.events.length, 0);
+  assert.equal(roleChanged.events.filter(([kind]) => kind === "command").length, 0);
 
   const rosterChanged = await createHarness();
-  const rosterChoice = rosterChanged.route.createProps(rosterChanged.data).read.choices[0];
+  const rosterChoice = (await rosterChanged.route.createProps(rosterChanged.data).onSearchEligiblePeople(""))[0];
   rosterChanged.data.actorGrants.grants = [];
   assert.throws(() => rosterChoice.transfer(), /grants no longer include the people list/);
-  assert.equal(rosterChanged.events.length, 0);
+  assert.equal(rosterChanged.events.filter(([kind]) => kind === "command").length, 0);
 
   const targetChanged = await createHarness();
-  const targetChoice = targetChanged.route.createProps(targetChanged.data).read.choices[0];
-  targetChanged.data.people.people[1].status = "frozen";
+  const ownerProps = targetChanged.route.createProps(targetChanged.data);
+  const targetChoice = (await ownerProps.onSearchEligiblePeople(""))[0];
+  await ownerProps.onSearchEligiblePeople("Alex");
   assert.throws(() => targetChoice.transfer(), /no longer an eligible owner/);
-  assert.equal(targetChanged.events.length, 0);
+  assert.equal(targetChanged.events.filter(([kind]) => kind === "command").length, 0);
 });
 
 test("page freshness gates transfer and retry uses the current Admin page lifetime", async () => {

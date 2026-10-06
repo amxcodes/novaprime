@@ -127,4 +127,23 @@ describe("Admin Work route composition", () => {
     expect(editor.props.client.id).toBe("client-1");
     expect(editor.props.isCurrent).toBe(isCurrent);
   });
+
+  it("injects the host's server transport into TaskComposer search adapters", () => {
+    const data = adminData([{ permissionKey: "tasks.create", scope: "organisation" }]);
+    function AdminWorkSection() {}
+    function TaskComposer() {}
+    let receivedOptions: Record<string, unknown> | undefined;
+    const routeFactory = (options: Record<string, unknown>) => {
+      receivedOptions = options;
+      return { createProps: () => ({}) };
+    };
+    const composition = harness(data, {
+      AdminWorkSection,
+      TaskComposer,
+      adminTaskComposerRoute: routeFactory,
+    }).compose();
+
+    expect(composition?.props.taskComposer.type).toBe(TaskComposer);
+    expect(receivedOptions?.pageApi).toBeTypeOf("function");
+  });
 });

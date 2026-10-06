@@ -31,6 +31,7 @@
 }
 
 .message[data-kind="info"] {
+  border-color: color-mix(in srgb, var(--nova-color-info) 28%, var(--nova-color-border));
   color: var(--nova-color-info);
   background: var(--nova-color-info-surface);
 }
@@ -42,8 +43,10 @@
 }
 
 .title {
+  min-width: 0;
   color: inherit;
   font-weight: var(--nova-type-weight-semibold);
+  overflow-wrap: anywhere;
 }
 
 .description {

@@ -2,7 +2,7 @@ import {
   hasAnyPermissionGrant,
   hasPermissionGrant,
   type EffectivePermissionRead,
-} from "../../app-shell/permission-grants";
+} from "../../app-shell/permission-grants.ts";
 
 /** Independent data reads consumed by the Work product surface. */
 export interface WorkReadPlan {

@@ -11,7 +11,7 @@ interface NavigationProps {
   activeItemId?: string;
   onNavigate?: (item: AppNavigationItem) => void;
   onClose?: () => void;
-  onOpen?: () => void;
+  onOpen?: (event: MouseEvent<HTMLButtonElement>) => void;
   mobilePrimaryIds?: readonly string[];
   drawerOpen?: boolean;
   drawerId: string;
@@ -106,7 +106,9 @@ export function DesktopSidebar({
   );
 }
 
-interface NavigationDrawerProps extends Pick<NavigationProps, "groups" | "activeItemId" | "onNavigate" | "onClose" | "drawerOpen" | "drawerId" | "brand" | "sidebarFooter"> {}
+interface NavigationDrawerProps extends Pick<NavigationProps, "groups" | "activeItemId" | "onNavigate" | "onClose" | "drawerOpen" | "drawerId" | "brand" | "sidebarFooter"> {
+  restoreFocus?: () => HTMLElement | null;
+}
 
 export function NavigationDrawer({
   groups,
@@ -117,6 +119,7 @@ export function NavigationDrawer({
   drawerId,
   brand,
   sidebarFooter,
+  restoreFocus,
 }: NavigationDrawerProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -136,9 +139,15 @@ export function NavigationDrawer({
           desktopNavigation?.querySelector<HTMLElement>("a") ??
           document.getElementById("nova-main-content");
         focusTarget?.focus({ preventScroll: true });
+      } else {
+        const trigger = restoreFocus?.();
+        const focusTarget = trigger?.getClientRects().length
+          ? trigger
+          : document.querySelector<HTMLElement>(`[aria-controls="${drawerId}"]`);
+        focusTarget?.focus({ preventScroll: true });
       }
     }
-  }, [drawerOpen]);
+  }, [drawerOpen, restoreFocus]);
 
   return (
     <dialog
@@ -209,7 +218,7 @@ export function MobileBottomNavigation({
             aria-expanded={drawerOpen}
             aria-haspopup="dialog"
             className={styles.bottomLink}
-            onClick={onOpen}
+            onClick={(event) => onOpen?.(event)}
             type="button"
           >
             <span aria-hidden="true" className={styles.bottomIcon}><MoreIcon /></span>
@@ -228,7 +237,7 @@ export function NavigationMenuButton({
 }: {
   expanded: boolean;
   controls: string;
-  onClick: () => void;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <IconButton

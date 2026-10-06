@@ -492,6 +492,37 @@ type OnboardingResult =
   | "ONBOARDING_START_DATE_IN_FUTURE"
   | string;
 
+export const completeOnboardingPersonSql = `SELECT id FROM nova.people
+WHERE id = $1 AND organisation_id = $2 FOR UPDATE`;
+
+export const completeOnboardingRelationsSql = `SELECT
+  EXISTS (
+    SELECT 1 FROM nova.offices
+    WHERE id = $1 AND organisation_id = $5 AND archived_at IS NULL
+  ) AS office_valid,
+  EXISTS (
+    SELECT 1 FROM nova.organisation_departments
+    WHERE id = $2 AND organisation_id = $5 AND archived_at IS NULL
+  ) AS department_valid,
+  EXISTS (
+    SELECT 1 FROM nova.roles
+    WHERE id = $3 AND organisation_id = $5 AND archived_at IS NULL AND is_protected = false
+  ) AS role_valid,
+  CASE WHEN $4::uuid IS NULL THEN true ELSE EXISTS (
+    SELECT 1
+    FROM nova.people managers
+    JOIN nova.person_status_periods manager_status
+      ON manager_status.person_id = managers.id
+     AND manager_status.ended_at IS NULL
+    WHERE managers.id = $4
+      AND managers.organisation_id = $5
+      AND manager_status.status IN ('active', 'notice')
+  ) END AS manager_valid`;
+
+export const completeOnboardingOfficeDateSql = `SELECT (now() AT TIME ZONE timezone)::date::text AS business_date
+FROM nova.offices
+WHERE id = $1 AND organisation_id = $2 AND archived_at IS NULL`;
+
 async function completeOnboarding(
   context: DatabaseRequestContext,
   input: CompleteOnboardingInput,
@@ -509,8 +540,8 @@ async function completeOnboarding(
     }
 
     const person = await transaction.query<{ id: string }>(
-      `SELECT id FROM nova.people WHERE id = $1 FOR UPDATE`,
-      [input.personId],
+      completeOnboardingPersonSql,
+      [input.personId, context.organisationId],
     );
     if (!person.rows[0]) {
       return "PERSON_NOT_FOUND";
@@ -560,33 +591,13 @@ async function completeOnboarding(
       office_valid: boolean;
       role_valid: boolean;
     }>(
-      `SELECT
-        EXISTS (
-          SELECT 1 FROM nova.offices
-          WHERE id = $1 AND archived_at IS NULL
-        ) AS office_valid,
-        EXISTS (
-          SELECT 1 FROM nova.organisation_departments
-          WHERE id = $2 AND archived_at IS NULL
-        ) AS department_valid,
-        EXISTS (
-          SELECT 1 FROM nova.roles
-          WHERE id = $3 AND archived_at IS NULL AND is_protected = false
-        ) AS role_valid,
-        CASE WHEN $4::uuid IS NULL THEN true ELSE EXISTS (
-          SELECT 1
-          FROM nova.people managers
-          JOIN nova.person_status_periods manager_status
-            ON manager_status.person_id = managers.id
-           AND manager_status.ended_at IS NULL
-          WHERE managers.id = $4
-            AND manager_status.status IN ('active', 'notice')
-        ) END AS manager_valid`,
+      completeOnboardingRelationsSql,
       [
         input.officeId,
         input.organisationDepartmentId,
         input.roleId,
         input.managerPersonId ?? null,
+        context.organisationId,
       ],
     );
     const valid = related.rows[0];
@@ -595,10 +606,8 @@ async function completeOnboarding(
     }
 
     const officeBusinessDate = await transaction.query<{ business_date: string }>(
-      `SELECT (now() AT TIME ZONE timezone)::date::text AS business_date
-       FROM nova.offices
-       WHERE id = $1 AND archived_at IS NULL`,
-      [input.officeId],
+      completeOnboardingOfficeDateSql,
+      [input.officeId, context.organisationId],
     );
     if (input.employmentStartsOn > (officeBusinessDate.rows[0]?.business_date ?? "")) {
       return "ONBOARDING_START_DATE_IN_FUTURE";

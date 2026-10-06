@@ -197,6 +197,22 @@ test("custom accent input meets the shared touch-target size on coarse pointers"
   assert.match(coarse, /\.textInput\s*\{[^}]*min-height:\s*calc\(var\(--nova-control-touch-target\)\s*-\s*2px\);/);
 });
 
+test("keeps status, color choices, and preview readable at compact container widths", () => {
+  const css = fs.readFileSync(`${__dirname}/AppearanceEditor.module.css`, "utf8");
+  const compact = css.match(/@container appearance-editor \(max-width: 36rem\)\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+
+  assert.match(css, /\.header\s*\{[^}]*min-width:\s*0/s);
+  assert.match(css, /\.header\s*>\s*div\s*\{\s*min-width:\s*0;\s*\}/);
+  assert.match(css, /\.statusRow\s*>\s*\[role="status"\]\s*\{[^}]*flex:\s*1 1 14rem;[^}]*overflow-wrap:\s*anywhere;/s);
+  assert.match(css, /\.choiceCard\s*\{[^}]*min-height:\s*var\(--nova-control-touch-target\)/s);
+  assert.match(css, /\.choiceInput:focus-visible\s*\+\s*\.choiceCard\s*\{[^}]*outline:\s*3px solid var\(--nova-color-focus\)/s);
+  assert.match(css, /\.choices\s*\{[^}]*minmax\(min\(100%,\s*8rem\),\s*1fr\)/s);
+  assert.match(compact, /\.statusRow\s*\{\s*align-items:\s*flex-start;/);
+  assert.match(compact, /\.preview\s*\{\s*align-items:\s*flex-start;\s*flex-direction:\s*column;/);
+  assert.match(css, /@media \(forced-colors: active\)/);
+  assert.doesNotMatch(css, /#[\da-f]{3,8}\b|\brgb\(|\bhsl\(/i);
+});
+
 for (const font of ["inter"]) {
   test(`a previously saved ${font} value stays represented and can be changed to System`, () => {
     const html = render(font);

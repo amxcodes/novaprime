@@ -19,11 +19,16 @@ import { freezePerson } from "./commands/freeze-person.js";
 import { offboardPerson } from "./commands/offboard-person.js";
 import { transferSuperAdmin } from "./commands/owner-transfer.js";
 import {
+  searchAdminOnboardingOptions,
+  searchEligibleOwnerTransferPeople,
+} from "./commands/admin-picker-search.js";
+import {
   createClientDepartment,
   createClientMembership,
   endClientMembership,
   readClientMemberships,
 } from "./commands/client-access.js";
+import { readClientMembershipOptions } from "./commands/client-membership-options.js";
 import { reviewAssignment, submitAssignment } from "./commands/reviews.js";
 import { readPendingReviews } from "./commands/review-queue.js";
 import { readReviewerReviewDetail } from "./commands/review-detail.js";
@@ -52,6 +57,11 @@ import {
   readRoles,
 } from "./commands/admin-read.js";
 import { readPeopleDirectory, readPersonDirectoryRecord } from "./commands/people-directory.js";
+import { readRoleScopeTargets } from "./commands/role-scope-targets.js";
+import {
+  searchAvailabilityConfigurationTargets,
+  searchWfhPolicyTargets,
+} from "./commands/availability-picker-search.js";
 import {
   completePersonOnboarding,
   createOffice,
@@ -123,6 +133,11 @@ import {
   reviewTaskCatalogProposal,
   updateTaskCatalogEntry,
 } from "./commands/task-catalog.js";
+import {
+  readTaskComposerCatalogOptions,
+  readTaskComposerCorrectionSources,
+  readTaskComposerDepartments,
+} from "./commands/task-composer-search.js";
 import {
   readReviewerExceptionCandidates,
   readReviewerManagementAssignment,
@@ -270,6 +285,9 @@ export async function handleRequest(request: Request): Promise<Response> {
   if (request.method === "POST" && commandPath === "/organisation/owner-transfer") {
     return transferSuperAdmin(request);
   }
+  if (request.method === "GET" && commandPath === "/organisation/owner-transfer/eligible-people") {
+    return searchEligibleOwnerTransferPeople(request);
+  }
 
   if (request.method === "POST" && commandPath === "/setup/register") {
     return registerFounder(request);
@@ -309,6 +327,15 @@ export async function handleRequest(request: Request): Promise<Response> {
   }
   if (request.method === "GET" && commandPath === "/tasks") {
     return readTasks(request);
+  }
+  if (request.method === "GET" && commandPath === "/task-composer/catalog") {
+    return readTaskComposerCatalogOptions(request);
+  }
+  if (request.method === "GET" && commandPath === "/task-composer/correction-sources") {
+    return readTaskComposerCorrectionSources(request);
+  }
+  if (request.method === "GET" && commandPath === "/task-composer/departments") {
+    return readTaskComposerDepartments(request);
   }
   if (request.method === "GET" && commandPath === "/task-assignments/reviewer-management") {
     return readReviewerManagementList(request);
@@ -351,6 +378,10 @@ export async function handleRequest(request: Request): Promise<Response> {
   const clientMembershipEndRoute = commandPath.match(/^\/clients\/([0-9a-f-]{36})\/members\/([0-9a-f-]{36})\/end$/i);
   if (request.method === "PATCH" && clientMembershipEndRoute) {
     return endClientMembership(request, clientMembershipEndRoute[1], clientMembershipEndRoute[2]);
+  }
+  const clientMembershipOptionsRoute = commandPath.match(/^\/clients\/([0-9a-f-]{36})\/membership-options$/i);
+  if (request.method === "GET" && clientMembershipOptionsRoute) {
+    return readClientMembershipOptions(request, clientMembershipOptionsRoute[1]);
   }
   const clientMembershipRoute = commandPath.match(/^\/clients\/([0-9a-f-]{36})\/members$/i);
   if (clientMembershipRoute) {
@@ -450,6 +481,9 @@ export async function handleRequest(request: Request): Promise<Response> {
   if (request.method === "GET" && commandPath === "/availability/config") {
     return readAvailabilityConfig(request);
   }
+  if (request.method === "GET" && commandPath === "/availability/configuration-targets") {
+    return searchAvailabilityConfigurationTargets(request);
+  }
   if (request.method === "GET" && commandPath === "/availability/agenda") {
     return readAvailabilityAgenda(request);
   }
@@ -464,6 +498,9 @@ export async function handleRequest(request: Request): Promise<Response> {
   }
   if (request.method === "GET" && commandPath === "/availability/wfh-policies") {
     return readWfhPolicies(request);
+  }
+  if (request.method === "GET" && commandPath === "/availability/wfh-policy-targets") {
+    return searchWfhPolicyTargets(request);
   }
   if (request.method === "POST" && commandPath === "/availability/wfh-policies") {
     return createWfhPolicy(request);
@@ -658,8 +695,14 @@ export async function handleRequest(request: Request): Promise<Response> {
   if (request.method === "GET" && commandPath === "/roles") {
     return readRoles(request);
   }
+  if (request.method === "GET" && commandPath === "/roles/scope-targets") {
+    return readRoleScopeTargets(request);
+  }
   if (request.method === "GET" && commandPath === "/people") {
     return readPeople(request);
+  }
+  if (request.method === "GET" && commandPath === "/people/onboarding-options") {
+    return searchAdminOnboardingOptions(request);
   }
   if (request.method === "GET" && commandPath === "/people/directory") {
     return readPeopleDirectory(request);

@@ -36,6 +36,8 @@ function props(overrides: Partial<AdminAvailabilityConfigurationProps> = {}): Ad
     onCreateShift: async () => {},
     onCreateCalendar: async () => {},
     onCreateHoliday: async () => {},
+    searchOffices: async () => [{ value: "office-1", label: "Central office" }],
+    searchShifts: async () => [{ value: "shift-1", label: "Standard day" }],
     ...overrides,
   };
 }
@@ -114,7 +116,7 @@ describe("Admin availability configuration access and read states", () => {
     expect(html).not.toContain("<select");
   });
 
-  it("uses searchable, required target controls and retains office names in FormData", () => {
+  it("uses searchable, required remote target controls with stable FormData names", () => {
     const html = markup(props({
       shifts: { visible: false, canManage: false, read: { status: "ready", data: [] } },
       calendars: { visible: true, canManage: true, read: { status: "ready", data: [] } },

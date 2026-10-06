@@ -119,6 +119,14 @@ test("appearance contrast backdrops stay aligned with the CSS theme palette", ()
 test("approved and custom accents keep button and selected-text contrast in both themes", () => {
   const approvedSwatches = Object.values(ACCENT_SWATCHES);
   assert.deepEqual(Object.keys(ACCENT_SWATCHES), ["nova", "forest", "teal", "lime"]);
+  assert.equal(ACCENT_SWATCHES.nova, propertyValue(tokenSource, "--nova-palette-action-700"));
+  assert.equal(getAccentHover(ACCENT_SWATCHES.nova), propertyValue(tokenSource, "--nova-palette-action-hover-light"));
+  assert.equal(getAccentHover(ACCENT_SWATCHES.nova), propertyValue(tokenSource, "--nova-palette-action-hover-dark"));
+  assert.equal(getAccentForeground(ACCENT_SWATCHES.nova), propertyValue(tokenSource, "--nova-palette-action-contrast-light"));
+  assert.equal(getAccentForeground(ACCENT_SWATCHES.nova), propertyValue(tokenSource, "--nova-palette-action-contrast-dark"));
+  assert.equal(propertyValue(tokenSource, "--nova-palette-action-dark"), ACCENT_SWATCHES.nova);
+  assert.equal(getReadableAccentText(ACCENT_SWATCHES.nova, "light"), propertyValue(tokenSource, "--nova-palette-focus-light"));
+  assert.equal(getReadableAccentText(ACCENT_SWATCHES.nova, "dark"), propertyValue(tokenSource, "--nova-palette-focus-dark"));
 
   const themes = [
     {
@@ -161,6 +169,24 @@ test("approved and custom accents keep button and selected-text contrast in both
   }
 });
 
+test("focus and subtle border colors follow the active theme", () => {
+  assert.match(cssBlock(':root,\n:root[data-theme="light"]'), /--nova-color-border-subtle:\s*var\(--nova-palette-border-light\)/);
+  assert.match(cssBlock(':root[data-theme="dark"]'), /--nova-color-border-subtle:\s*var\(--nova-palette-border-dark\)/);
+  assert.match(tokenSource, /@media\s*\(prefers-color-scheme:\s*dark\)[\s\S]*?--nova-color-border-subtle:\s*var\(--nova-palette-border-dark\)/);
+  assert.match(
+    cssBlock(':root,\n:root[data-theme="light"]'),
+    /--nova-color-focus:\s*var\(--nova-user-focus-light,\s*var\(--nova-palette-focus-light\)\)/,
+  );
+  assert.match(
+    cssBlock(':root[data-theme="dark"]'),
+    /--nova-color-focus:\s*var\(--nova-user-focus-dark,\s*var\(--nova-palette-focus-dark\)\)/,
+  );
+  assert.match(
+    tokenSource,
+    /@media\s*\(prefers-color-scheme:\s*dark\)[\s\S]*?--nova-color-focus:\s*var\(--nova-user-focus-dark,\s*var\(--nova-palette-focus-dark\)\)/,
+  );
+});
+
 test("appearance changes replace document-root theme and accent tokens instead of leaving a stale custom accent", () => {
   const properties = new Map();
   const root = {
@@ -196,6 +222,8 @@ test("appearance changes replace document-root theme and accent tokens instead o
     });
     assert.equal(properties.get("--nova-user-accent"), "#ff7a00");
     assert.equal(properties.get("--nova-user-accent-hover"), getAccentHover("#ff7a00"));
+    assert.equal(properties.get("--nova-user-focus-light"), getReadableAccentText("#ff7a00", "light"));
+    assert.equal(properties.get("--nova-user-focus-dark"), getReadableAccentText("#ff7a00", "dark"));
 
     applyAppearanceTokens({
       theme: "light",
@@ -213,6 +241,8 @@ test("appearance changes replace document-root theme and accent tokens instead o
     assert.equal(root.dataset.accent, "nova");
     assert.equal(properties.get("--nova-user-accent"), ACCENT_SWATCHES.nova);
     assert.equal(properties.get("--nova-user-accent-contrast"), getAccentForeground(ACCENT_SWATCHES.nova));
+    assert.equal(properties.get("--nova-user-focus-light"), getReadableAccentText(ACCENT_SWATCHES.nova, "light"));
+    assert.equal(properties.get("--nova-user-focus-dark"), getReadableAccentText(ACCENT_SWATCHES.nova, "dark"));
     assert.notEqual(properties.get("--nova-user-accent"), "#ff7a00");
   } finally {
     if (previousDocument === undefined) delete global.document;

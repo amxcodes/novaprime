@@ -26,10 +26,13 @@ require.extensions[".css"] = (module) => {
 
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
-const { AuditEvents, filterAuditEvents } = require("./AuditEvents.tsx");
+const { AuditEvents } = require("./AuditEvents.tsx");
 
 function render(readState) {
-  return renderToStaticMarkup(React.createElement(AuditEvents, { readState }));
+  return renderToStaticMarkup(React.createElement(AuditEvents, {
+    readState,
+    onSearch: async () => ({ status: "empty", requestLimit: 50 }),
+  }));
 }
 
 test("denied read renders an access state without exposing event data", () => {
@@ -48,11 +51,11 @@ test("failed read renders a recoverable error state", () => {
   assert.doesNotMatch(html, /No audit events/);
 });
 
-test("empty results disclose the request bound without claiming full history", () => {
+test("empty results stay honest about the bounded audit response", () => {
   const html = render({ status: "empty", requestLimit: 50 });
 
   assert.match(html, /No audit events/);
-  assert.match(html, /only events returned by the request \(maximum 50\)/);
+  assert.match(html, /50 newest matches/);
 });
 
 test("ready state shows only safe summary fields and labels its loaded bound", () => {
@@ -78,11 +81,9 @@ test("ready state shows only safe summary fields and labels its loaded bound", (
     ],
   });
 
-  assert.match(html, /2 loaded · request limit 50/);
-  assert.match(html, /Search loaded actions and actors/);
-  assert.match(html, /All actions/);
-  assert.match(html, /2 of 2 loaded events shown/);
-  assert.match(html, /Filters apply only to this request’s returned rows/);
+  assert.match(html, /Search runs on the server across organisation events/);
+  assert.match(html, /Search audit actions and actors/);
+  assert.match(html, /2 matching events returned \(maximum 50\)/);
   assert.match(html, /Person invited/);
   assert.match(html, /Aman/);
   assert.match(html, /Role updated/);
@@ -90,21 +91,6 @@ test("ready state shows only safe summary fields and labels its loaded bound", (
   assert.match(html, /System/);
   assert.match(html, /Timestamp unavailable/);
   assert.doesNotMatch(html, /do-not-show-target-id|raw-details-secret|event-secret/);
-});
-
-test("local filters match only the safe projected action and actor fields", () => {
-  const events = [
-    { id: "event-1", action: "person.invited", occurredAt: "2026-10-02T10:00:00.000Z", actorName: "Aman", details: { token: "secret" } },
-    { id: "event-2", action: "role.updated", occurredAt: "2026-10-02T09:00:00.000Z", actorName: null, details: "secret" },
-  ];
-
-  assert.deepEqual(filterAuditEvents(events, { search: "AMAN", action: null }).map(({ id }) => id), ["event-1"]);
-  assert.deepEqual(filterAuditEvents(events, { search: "role updated", action: null }).map(({ id }) => id), ["event-2"]);
-  assert.deepEqual(filterAuditEvents(events, { search: "system", action: null }).map(({ id }) => id), ["event-2"]);
-  assert.deepEqual(filterAuditEvents(events, { search: "secret", action: null }), []);
-  assert.deepEqual(filterAuditEvents(events, { search: "aman", action: "role.updated" }), []);
-  assert.deepEqual(filterAuditEvents(events, { search: "", action: "role.updated" }).map(({ id }) => id), ["event-2"]);
-  assert.equal(events.length, 2, "filtering must not mutate or page the loaded source rows");
 });
 
 test("loading is announced as a status", () => {
@@ -137,12 +123,12 @@ test("the feature contract excludes raw event payloads and grant decisions", () 
   assert.doesNotMatch(source, /people\.view|hasPermission|canView/);
 });
 
-test("the audit feature filters its supplied rows without fetching or broadening the DTO", () => {
+test("the audit feature delegates searches and pagination bounds to its route", () => {
   const source = fs.readFileSync(path.join(__dirname, "AuditEvents.tsx"), "utf8");
 
-  assert.match(source, /filterAuditEvents\(readState\.events/);
-  assert.doesNotMatch(source, /fetch\(|\/api\//);
+  assert.match(source, /onSearch\(\{ search: query, action: null \}\)/);
+  assert.doesNotMatch(source, /filterAuditEvents|readState\.events\.filter|fetch\(|\/api\//);
   assert.match(source, /event\.action/);
   assert.match(source, /event\.actorName/);
-  assert.match(source, /Only returned events are shown/);
+  assert.match(source, /50 newest matches/);
 });

@@ -1,12 +1,17 @@
-import { describe, expect, test } from "bun:test";
-import {
+import { describe, expect, mock, test } from "bun:test";
+
+mock.module("pg", () => ({ Pool: class Pool {}, Client: class Client {} }));
+
+const {
+  assignmentCandidateOptionsSql,
   collaborationRequestNotificationTarget,
   handoverRequestsReadSql,
   handoverRequestActionFlags,
+  parseAssignmentCandidateSearch,
   parseCollaborationRequestIdFilter,
   reviewerRequestsReadSql,
   reviewerRequestActionFlags,
-} from "./task-requests.js";
+} = await import("./task-requests.js");
 
 const requestId = "00000000-0000-4000-8000-000000000001";
 
@@ -58,6 +63,25 @@ test("exact request filters are optional, validated UUIDs, and reject duplicate 
       `https://nova.test/api/task-reviewer-requests${query}`,
     ))).toBeUndefined();
   }
+});
+
+test("assignment candidate search bounds input and rejects ambiguous q parameters", () => {
+  const base = "https://nova.test/api/task-assignments/00000000-0000-4000-8000-000000000001/candidates";
+  expect(parseAssignmentCandidateSearch(new Request(base))).toBe("");
+  expect(parseAssignmentCandidateSearch(new Request(`${base}?q=%20Rae%20`))).toBe("Rae");
+  expect(parseAssignmentCandidateSearch(new Request(`${base}?q=one&q=two`))).toBeUndefined();
+  expect(parseAssignmentCandidateSearch(new Request(`${base}?q=${"x".repeat(101)}`))).toBeUndefined();
+});
+
+test("candidate picker query filters and bounds both lists in one permission-aware database projection", () => {
+  const sql = assignmentCandidateOptionsSql().toLowerCase().replace(/\s+/g, " ");
+  expect(sql).toContain("position($7 in lower(coalesce(people.display_name, ''))) > 0");
+  expect(sql).toContain("candidate_active_grants");
+  expect(sql).toContain("grants.person_id = candidate_people.id");
+  expect(sql).toContain("'tasks.review'");
+  expect(sql).toContain("policies.can_receive_assignments");
+  expect(sql.match(/limit 100/g)).toHaveLength(2);
+  expect(sql).not.toContain("select people.id, people.display_name from nova.people people");
 });
 
 test("exact reads retain organization and participant predicates before the bounded limit", () => {

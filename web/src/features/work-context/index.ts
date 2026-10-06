@@ -7,6 +7,7 @@ export {
   type ClientMembershipOperationState,
   type ClientMembershipOperationStatus,
   type ClientMembershipPersonOption,
+  type ClientMembershipSearchOption,
   type ClientMembershipReadState,
   type ClientMembershipReadStatus,
   type ClientMembershipRecord,

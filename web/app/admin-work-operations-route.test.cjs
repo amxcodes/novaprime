@@ -51,7 +51,7 @@ function task(overrides = {}) {
   };
 }
 
-async function harness({ grants = [], tasks = [task()], optionsResult, pageCurrent = true } = {}) {
+async function harness({ grants = [], tasks = [task()], optionsResult, searchOptionsResult, pageCurrent = true } = {}) {
   const { createAdminWorkOperationsRoute } = await import("./admin-work-operations-route.js");
   const events = [];
   const data = { actorGrants: { actorPersonId: "actor-1", grants }, tasks: { tasks } };
@@ -66,7 +66,7 @@ async function harness({ grants = [], tasks = [task()], optionsResult, pageCurre
     hasAdminPermission: hasPermission,
     pageApi: async (path, pageLifetime) => {
       events.push(["read", path, pageLifetime]);
-      return optionsResult || {
+      return (path.includes("?q=") ? searchOptionsResult : optionsResult) || {
         assignees: [{ id: ids.assignee, name: "  Avery Kim  " }],
         reviewers: [{ id: ids.reviewer, name: "Morgan Lee" }],
       };
@@ -116,6 +116,36 @@ test("assignment options are task-scoped, bounded to safe choices, cached, and r
     ["read", `/api/tasks/${ids.clientTask}/assignment-options`, harnessed.lifetime],
     ["read", `/api/tasks/${ids.clientTask}/assignment-options`, harnessed.lifetime],
   ]);
+});
+
+test("remote assignment searches query the scoped endpoint and retain searched IDs for write validation", async () => {
+  const remoteAssignee = "00000000-0000-4000-8000-000000000008";
+  const remoteReviewer = "00000000-0000-4000-8000-000000000009";
+  const harnessed = await harness({
+    grants: [grant("tasks.assign")],
+    searchOptionsResult: {
+      assignees: [{ id: remoteAssignee, name: "Zoe Remote" }],
+      reviewers: [{ id: remoteReviewer, name: "Mina Remote" }],
+    },
+  });
+  const props = harnessed.route.createProps(harnessed.data);
+  await props.loadAssignmentOptions(ids.clientTask);
+  const searched = await props.loadAssignmentOptions(ids.clientTask, { query: "  Remote person  " });
+  assert.deepEqual(searched, {
+    assignees: [{ id: remoteAssignee, name: "Zoe Remote" }],
+    reviewers: [{ id: remoteReviewer, name: "Mina Remote" }],
+  });
+  assert.equal(harnessed.events.some(([kind, path]) => kind === "read" &&
+    path === `/api/tasks/${ids.clientTask}/assignment-options?q=Remote%20person`), true);
+
+  await props.onAssign(ids.clientTask, {
+    personId: remoteAssignee,
+    reviewerPersonId: remoteReviewer,
+    reviewRequired: true,
+  });
+  assert.equal(harnessed.events.some(([kind, method, path, body]) => kind === "command" &&
+    method === "POST" && path === `/api/tasks/${ids.clientTask}/assignments` &&
+    body.personId === remoteAssignee && body.reviewerPersonId === remoteReviewer), true);
 });
 
 test("assignment validates server choices and sends the exact scoped request body", async () => {

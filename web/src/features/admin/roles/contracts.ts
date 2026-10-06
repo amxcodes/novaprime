@@ -78,7 +78,10 @@ export interface RolePermissionsEditorProps {
   roles: ReadonlyArray<RoleRecord>;
   permissions: ReadonlyArray<PermissionCatalogueEntry>;
   targetReads: RoleScopeTargetReads;
+  /** Optional narrow remote directory; every query is checked server-side with roles.view. */
+  onSearchTargets?: (scope: RoleTargetScope, query: string) => Promise<ReadonlyArray<RoleTargetOption>>;
   formatError: (code: string) => string | undefined;
+  onSearch: (query: string) => Promise<ReadonlyArray<RoleRecord>>;
   onCreate: (payload: RoleMutationPayload) => void | Promise<void>;
   onUpdate: (roleId: string, payload: RoleMutationPayload & { expectedRevision: number }) => void | Promise<void>;
 }

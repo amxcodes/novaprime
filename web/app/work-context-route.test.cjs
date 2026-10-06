@@ -6,7 +6,7 @@ const client = { id: "client-1", name: "Northwind" };
 const Component = function WorkContextExplorer() {};
 
 function makeMount(overrides = {}) {
-  const calls = { mounts: [], featureMessages: [], capabilityInputs: [], readIssues: [] };
+  const calls = { mounts: [], featureMessages: [], capabilityInputs: [], readIssues: [], searches: [] };
   const dependencies = {
     target: { isConnected: true },
     result: {
@@ -30,6 +30,14 @@ function makeMount(overrides = {}) {
       return { message: `${resource}: ${result.readError}` };
     },
     mountIsland: (target, component, props) => calls.mounts.push({ target, component, props }),
+    searchWorkContext: async (query) => {
+      calls.searches.push(query);
+      return {
+        clients: [client],
+        clientWorkstreams: [{ id: "stream-1", client_id: "client-1", client_name: "Northwind", name: "Delivery" }],
+        organisationWorkstreams: [], taskCreationTargets: [], groups: [],
+      };
+    },
     showFeatureMessage: (...args) => calls.featureMessages.push(args),
     ...overrides,
   };
@@ -107,6 +115,18 @@ test("mounts ready Work Context with only the projected department capability", 
     { actorGrants: dependencies.actorGrants }, "clients.departments.manage", { clientId: "client-1" },
   ), true);
   assert.deepEqual(calls.readIssues, [[dependencies.result, "work context"]]);
+});
+
+test("routes explorer searches through the host's authenticated server read", async () => {
+  const { calls, dependencies } = makeMount();
+  mountWorkContextRoute(dependencies);
+
+  const result = await calls.mounts[0].props.onSearch("Delivery");
+
+  assert.deepEqual(calls.searches, ["Delivery"]);
+  assert.equal(result.status, "ready");
+  assert.deepEqual(result.projection.clientWorkstreams.map(({ name }) => name), ["Delivery"]);
+  assert.deepEqual(result.projection.organisationWorkstreams, []);
 });
 
 test("permission-denied and prerequisite-denied reads mount denied presentation without department actions", () => {

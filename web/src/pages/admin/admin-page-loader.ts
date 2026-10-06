@@ -1,5 +1,5 @@
-import type { EffectivePermissionRead } from "../../app-shell/permission-grants";
-import { hasPermissionGrant } from "../../app-shell/permission-grants";
+import type { EffectivePermissionRead } from "../../app-shell/permission-grants.ts";
+import { hasPermissionGrant } from "../../app-shell/permission-grants.ts";
 import { planAdminReads } from "../../features/admin/capabilities";
 
 type AdminRead = {
@@ -20,7 +20,10 @@ export interface AdminPageData {
   departments: AdminRead;
   permissions: AdminRead;
   roles: AdminRead;
+  /** Legacy shell slot retained without loading or exposing an unbounded roster. */
   people: AdminRead;
+  /** Bounded, server-authorized People directory page used by Admin. */
+  peopleDirectory: AdminRead;
   audit: AdminRead;
   availability: AdminRead;
   wfhPolicies: AdminRead;
@@ -67,21 +70,24 @@ export async function loadAdminPageData<TLifetime>(
 
   const organisationSettings = hasPermissionGrant(actorGrants, "organisation.settings.manage");
   const canManageWfhPolicies = hasPermissionGrant(actorGrants, "availability.wfh_policy.manage");
-  // Task assignment candidates use task-scoped options; only WFH policy
-  // controls still depend on the separately authorized People roster.
+  // Keep the legacy shell slot empty: peopleDirectory is the bounded page
+  // source, and feature selectors use purpose-limited remote endpoints.
   const peopleCanBeNeededForChoices = canManageWfhPolicies;
   const selectorPrerequisite = organisationSettings ? "" : "organisation.settings.manage";
   const peoplePrerequisite = plan.people || !peopleCanBeNeededForChoices ? "" : "people.view";
   const rolesPrerequisite = plan.roles || !plan.people ? "" : "roles.view";
 
-  const [organisation, offices, departments, permissions, roles, people, audit, availability, wfhPolicies,
+  const [organisation, offices, departments, permissions, roles, people, peopleDirectory, audit, availability, wfhPolicies,
     leavePending, wfhPending, exceptions, workContext, tasks, taskCatalog, geofenceOptions, notificationDelivery] = await Promise.all([
     read(plan.organisation, "/api/organisation", { organisation: null }, "organisation.settings.manage"),
     read(plan.offices, "/api/offices", { offices: [] }, "organisation.settings.manage"),
     read(plan.departments, "/api/organisation-departments", { departments: [] }, "organisation.settings.manage"),
     read(plan.permissions, "/api/permissions", { permissions: [] }, "roles.view"),
     read(plan.roles, "/api/roles", { roles: [] }, "roles.view"),
-    read(plan.people, "/api/people", { people: [] }, peoplePrerequisite || "people.view"),
+    Promise.resolve<AdminRead>({ people: [], readState: "not-requested" }),
+    read(plan.people, "/api/people/directory?q=&limit=25", {
+      people: [], limit: 25, hasMore: false, nextCursor: null,
+    }, peoplePrerequisite || "people.view"),
     read(plan.audit, "/api/audit-events?limit=50", { events: [] }, "people.view at organisation scope"),
     read(plan.availability, "/api/availability/config", { shifts: [], calendars: [], holidays: [] }, "availability.calendar.view at organisation scope"),
     read(plan.wfhPolicies, "/api/availability/wfh-policies", { policies: [] }, "availability.wfh_policy.view at organisation scope"),
@@ -138,6 +144,7 @@ export async function loadAdminPageData<TLifetime>(
     permissions,
     roles,
     people,
+    peopleDirectory,
     audit,
     availability,
     wfhPolicies,

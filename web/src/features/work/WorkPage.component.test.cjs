@@ -289,8 +289,8 @@ test("the route host keeps API and capability orchestration while React owns tim
     "the Work host invokes the assignment adapter only after the existing plan and route both expose it");
   assert.match(route, /if \(!myAssignmentsUi\?\.MyAssignments\) \{[\s\S]*?showWorkFeatureMessage\(assignmentTarget, "Your assignments are unavailable"/,
     "a failed My Assignments chunk stays local to the already-authorized assignment section");
-  assert.match(app, /readAssignmentCandidates: \(assignmentId, lifetime\) => readOrError\([\s\S]*?pageApi\("\/api\/task-assignments\/" \+ encodeURIComponent\(assignmentId\) \+ "\/candidates", lifetime\)/,
-    "candidate endpoint transport stays in the application host");
+  assert.match(app, /readAssignmentCandidates: \(assignmentId, lifetime, query\) => \{[\s\S]*?const path = "\/api\/task-assignments\/" \+ encodeURIComponent\(assignmentId\) \+ "\/candidates" \+[\s\S]*?typeof query === "string" \? "\?q=" \+ encodeURIComponent\(query\.trim\(\)\) : ""[\s\S]*?pageApi\(path, lifetime\)/,
+    "candidate search remains server filtered and endpoint transport stays in the application host");
   assert.match(assignmentsRoute, /projectMyAssignmentsRead\(result, readIssue\)/);
   assert.match(assignmentsRoute, /if \(authorized !== true \|\| !target \|\| !Component \|\| !isCurrentPageRequest\(lifetime\)\) return false/);
   assert.match(assignmentsRoute, /mountReactIsland\(target, Component, \{/);

@@ -54,14 +54,16 @@
 }
 
 .sectionTitle {
+  min-width: 0;
   font-size: var(--nova-type-size-lg);
+  overflow-wrap: anywhere;
 }
 
 .sectionDescription {
   font-size: var(--nova-type-size-sm);
 }
 
-@media (max-width: 639px) {
+@media (max-width: 47.999rem) {
   .pageHeader {
     align-items: stretch;
     flex-direction: column;

@@ -30,7 +30,6 @@ const {
   WfhPolicyOverrides,
   availableWfhPolicyTargetTypes,
   projectWfhPolicyTargetTypeOptions,
-  projectWfhPolicyTargetOptions,
 } = require("./WfhPolicyOverrides.tsx");
 const { buildWfhPolicyInput } = require("./wfh-policy-model.ts");
 
@@ -45,8 +44,8 @@ const policy = {
   reason: "Seasonal restriction",
 };
 
-function read(status = "unavailable", targets = [], error) {
-  return { status, targets, error };
+function read(status = "unavailable") {
+  return { status };
 }
 
 function render(props = {}) {
@@ -93,10 +92,11 @@ test("a single ready target category produces a usable form without loading any 
   const html = render({
     canManage: true,
     targetReads: {
-      office: read("ready", [{ id: "office-1", name: "Central office" }]),
+      office: read("ready"),
       organisation_department: read(),
       person: read(),
     },
+    onSearchTargets: async () => [{ value: "office-1", label: "Central office" }],
     onCreate() { calls += 1; },
   });
 
@@ -107,19 +107,15 @@ test("a single ready target category produces a usable form without loading any 
   assert.match(html, /<input type="hidden" name="targetId" value=""/);
   assert.match(html, /button id="[^"]+-target-type"[^>]*aria-haspopup="listbox"/);
   assert.match(html, /id="[^"]+-target"[^>]*role="combobox"/);
-  assert.match(html, /Only target options supplied for this authorized form are shown/);
+  assert.match(html, /Search the targets available to your current permissions/);
   assert.doesNotMatch(html, /<select(?! tabindex="-1")/);
   assert.deepEqual(availableWfhPolicyTargetTypes({
-    office: read("ready", [{ id: "office-1", name: "Central office" }]),
+    office: read("ready"),
     organisation_department: read(),
     person: read(),
   }), ["office"]);
   assert.deepEqual(projectWfhPolicyTargetTypeOptions(["office"]), [
     { value: "office", label: "Office" },
-  ]);
-  assert.deepEqual(projectWfhPolicyTargetOptions([{ id: "office-1", name: "Central office" }]), [
-    { value: "", label: "Choose a target" },
-    { value: "office-1", label: "Central office" },
   ]);
   assert.match(html, /Effective from/);
   assert.match(html, /Effective until \(optional\)/);
@@ -134,10 +130,11 @@ test("view and manage surfaces compose independently when both are granted", () 
     canManage: true,
     policyRead: { status: "ready", policies: [policy] },
     targetReads: {
-      office: read("ready", [{ id: "office-2", name: "North office" }]),
-      organisation_department: read("ready", [{ id: "dept-1", name: "People" }]),
-      person: read("ready", [{ id: "person-1", displayName: "Jordan Lee" }]),
+      office: read("ready"),
+      organisation_department: read("ready"),
+      person: read("ready"),
     },
+    onSearchTargets: async () => [{ value: "office-2", label: "North office" }],
   });
 
   assert.match(html, /Existing overrides/);
@@ -145,36 +142,29 @@ test("view and manage surfaces compose independently when both are granted", () 
   assert.match(html, /Add an override/);
   assert.match(html, /<select tabindex="-1" required="" name="targetType">[\s\S]*?<option value="office" selected="">Office/);
   assert.deepEqual(availableWfhPolicyTargetTypes({
-    office: read("ready", [{ id: "office-2", name: "North office" }]),
-    organisation_department: read("ready", [{ id: "dept-1", name: "People" }]),
-    person: read("ready", [{ id: "person-1", displayName: "Jordan Lee" }]),
+    office: read("ready"),
+    organisation_department: read("ready"),
+    person: read("ready"),
   }), ["office", "organisation_department", "person"]);
-  assert.deepEqual(projectWfhPolicyTargetOptions([
-    { id: "office-2", name: "North office" },
-  ]), [
-    { value: "", label: "Choose a target" },
-    { value: "office-2", label: "North office" },
-  ]);
   assert.doesNotMatch(html, /<select(?! tabindex="-1")/);
   assert.doesNotMatch(html, /Jordan Lee/);
 });
 
-test("partial target-list failure reports the failed source and keeps ready categories usable", () => {
+test("only permission-available target categories are offered and no loaded directory rows enter the form", () => {
   const html = render({
     canManage: true,
     targetReads: {
-      office: read("ready", [{ id: "office-1", name: "Central office" }]),
-      organisation_department: read("error", [], "Department lookup is temporarily unavailable."),
+      office: read("ready"),
+      organisation_department: read(),
       person: read(),
     },
+    onSearchTargets: async () => [{ value: "office-1", label: "Central office" }],
   });
 
-  assert.match(html, /Department targets unavailable/);
-  assert.match(html, /Department lookup is temporarily unavailable/);
-  assert.match(html, /Available target categories remain usable/);
+  assert.match(html, /<option value="office" selected="">Office/);
   assert.deepEqual(availableWfhPolicyTargetTypes({
-    office: read("ready", [{ id: "office-1", name: "Central office" }]),
-    organisation_department: read("error", [], "Department lookup is temporarily unavailable."),
+    office: read("ready"),
+    organisation_department: read(),
     person: read(),
   }), ["office"]);
   assert.doesNotMatch(html, /<select(?! tabindex="-1")/);
@@ -186,20 +176,17 @@ test("policy list failure does not remove independently usable create form", () 
     canManage: true,
     policyRead: { status: "error", policies: [], error: "Policy list unavailable." },
     targetReads: {
-      office: read("ready", [{ id: "office-1", name: "Central office" }]),
+      office: read("ready"),
       organisation_department: read(),
       person: read(),
     },
+    onSearchTargets: async () => [{ value: "office-1", label: "Central office" }],
   });
 
   assert.match(html, /WFH overrides could not load/);
   assert.match(html, /Policy list unavailable/);
   assert.match(html, /Add an override/);
   assert.match(html, /id="[^"]+-target"[^>]*role="combobox"/);
-  assert.deepEqual(projectWfhPolicyTargetOptions([{ id: "office-1", name: "Central office" }]), [
-    { value: "", label: "Choose a target" },
-    { value: "office-1", label: "Central office" },
-  ]);
 });
 
 test("create failures render a focusable alert and field errors are associated with controls", () => {
@@ -207,10 +194,11 @@ test("create failures render a focusable alert and field errors are associated w
     canManage: true,
     createError: "The target changed. Review and try again.",
     targetReads: {
-      office: read("ready", [{ id: "office-1", name: "Central office" }]),
+      office: read("ready"),
       organisation_department: read(),
       person: read(),
     },
+    onSearchTargets: async () => [{ value: "office-1", label: "Central office" }],
   });
   const source = fs.readFileSync(path.join(__dirname, "WfhPolicyOverrides.tsx"), "utf8");
 
@@ -222,7 +210,7 @@ test("create failures render a focusable alert and field errors are associated w
   assert.match(source, /error=\{fieldErrors\.targetId\}/);
 });
 
-test("payload matches the API DTO, trims optional reason, and rejects targets outside supplied options", () => {
+test("payload matches the API DTO, trims optional reason, and validates local syntax before server checks", () => {
   const base = {
     targetType: "person",
     targetId: "person-1",
@@ -231,7 +219,7 @@ test("payload matches the API DTO, trims optional reason, and rejects targets ou
     effectiveUntil: "",
     reason: "  Temporary arrangement  ",
   };
-  const valid = buildWfhPolicyInput(base, [{ id: "person-1", displayName: "Jordan Lee" }]);
+  const valid = buildWfhPolicyInput(base);
 
   assert.deepEqual(valid, {
     input: {
@@ -243,12 +231,10 @@ test("payload matches the API DTO, trims optional reason, and rejects targets ou
     },
     errors: {},
   });
-  const invalid = buildWfhPolicyInput({ ...base, targetId: "other-person", effectiveUntil: "2026-09-30" }, [
-    { id: "person-1", displayName: "Jordan Lee" },
-  ]);
+  const invalid = buildWfhPolicyInput({ ...base, effectiveUntil: "2026-09-30" });
   assert.equal(invalid.input, null);
-  assert.equal(invalid.errors.targetId, "Choose an available target.");
   assert.equal(invalid.errors.effectiveUntil, "Effective until must be on or after the start date.");
+  assert.equal(buildWfhPolicyInput({ ...base, targetId: "" }).errors.targetId, "Choose an available target.");
 });
 
 test("layout adapts at compact, medium, and expanded widths using semantic tokens", () => {
@@ -267,7 +253,7 @@ test("feature root does not add a duplicate named landmark under its heading-own
   const source = fs.readFileSync(path.join(__dirname, "WfhPolicyOverrides.tsx"), "utf8");
   assert.doesNotMatch(html, /<section[^>]*aria-label="WFH eligibility overrides"/);
   assert.match(source, /<div className=\{styles\.section\} aria-busy=/);
-  assert.match(source, /role="group" aria-label="Target list status"/);
+  assert.match(source, /searchMode="remote"/);
 });
 
 test("allowed checkbox uses its labeled row as the single focus-ring owner", () => {

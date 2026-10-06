@@ -27,13 +27,14 @@ function input(overrides: Partial<WfhPolicyOverridesProjectionInput> = {}): WfhP
         id: "person-1", displayName: "Jordan Lee", email: "jordan@example.test", status: "private-status", role: { name: "private-role" },
       }] } },
     },
+    onSearchTargets: async () => [{ value: "person-1", label: "Jordan Lee" }],
     onCreate: async () => {},
     ...overrides,
   };
 }
 
 describe("WFH policy feature projection", () => {
-  it("projects only list fields and target-selector labels, dropping target identity and private host rows", () => {
+  it("projects only list fields and leaves target rows for permission-checked server search", () => {
     const props = projectWfhPolicyOverridesProps(input());
     expect(props.policyRead).toEqual({ status: "ready", policies: [{
       id: "policy-1",
@@ -44,11 +45,10 @@ describe("WFH policy feature projection", () => {
       effectiveUntil: null,
       reason: "Temporary arrangement",
     }] });
-    expect(props.targetReads.office).toEqual({ status: "ready", targets: [{ id: "office-1", name: "Central" }] });
-    expect(props.targetReads.organisation_department).toEqual({ status: "ready", targets: [{ id: "department-1", name: "People" }] });
-    expect(props.targetReads.person).toEqual({ status: "ready", targets: [{
-      id: "person-1", displayName: "Jordan Lee", email: "jordan@example.test",
-    }] });
+    expect(props.targetReads.office).toEqual({ status: "ready" });
+    expect(props.targetReads.organisation_department).toEqual({ status: "ready" });
+    expect(props.targetReads.person).toEqual({ status: "ready" });
+    expect(typeof props.onSearchTargets).toBe("function");
     expect(JSON.stringify(props)).not.toContain("private-target-id");
     expect(JSON.stringify(props)).not.toContain("private-actor-id");
     expect(JSON.stringify(props)).not.toContain("private-role");
@@ -77,20 +77,20 @@ describe("WFH policy feature projection", () => {
         person: { authorized: false, result: { people: [{ id: "private-person", displayName: "Private person" }] } },
       },
     }));
-    expect(props.targetReads.office).toEqual({ status: "unavailable", targets: [] });
-    expect(props.targetReads.organisation_department).toEqual({ status: "unavailable", targets: [] });
-    expect(props.targetReads.person).toEqual({ status: "unavailable", targets: [] });
+    expect(props.targetReads.office).toEqual({ status: "unavailable" });
+    expect(props.targetReads.organisation_department).toEqual({ status: "unavailable" });
+    expect(props.targetReads.person).toEqual({ status: "unavailable" });
     expect(JSON.stringify(props.targetReads)).not.toContain("Private");
   });
 
-  it("keeps permission/prerequisite denials unavailable and transport or malformed data as errors", () => {
+  it("keeps target search permission independent of preloaded directory read errors", () => {
     expect(projectWfhPolicyOverridesProps(input({ policies: {
       authorized: true, result: { policies: [], readError: "PREREQUISITE_PERMISSION_REQUIRED" },
     } })).policyRead.status).toBe("unavailable");
     expect(projectWfhPolicyOverridesProps(input({ targets: {
       ...input().targets,
       office: { authorized: true, result: { offices: [], readError: "PERMISSION_DENIED" } },
-    } })).targetReads.office.status).toBe("unavailable");
+    } })).targetReads.office).toEqual({ status: "ready" });
     expect(projectWfhPolicyOverridesProps(input({ policies: {
       authorized: true, result: { policies: [], readError: "REQUEST_FAILED" }, issue: { message: "Policy read failed." },
     } })).policyRead).toEqual({ status: "error", policies: [], error: "Policy read failed." });
@@ -99,8 +99,9 @@ describe("WFH policy feature projection", () => {
     } })).policyRead.status).toBe("error");
     expect(projectWfhPolicyOverridesProps(input({ targets: {
       ...input().targets,
-      person: { authorized: true, result: { people: [{ id: "person-1", displayName: 7 }] } },
-    } })).targetReads.person.status).toBe("error");
+      person: { authorized: true, result: { people: [{ id: "private-person", displayName: 7 }] } },
+    } })).targetReads.person).toEqual({ status: "ready" });
+    expect(JSON.stringify(projectWfhPolicyOverridesProps(input()))).not.toContain("jordan@example.test");
   });
 
   it("preserves the host create callback without exposing host data", () => {

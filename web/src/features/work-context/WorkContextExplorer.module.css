@@ -13,6 +13,7 @@
   color: var(--nova-color-text-primary);
   background: var(--nova-color-surface);
   font-family: var(--nova-type-family-sans);
+  overflow-wrap: anywhere;
 }
 
 .header { display: grid; min-width: 0; gap: var(--nova-space-1); }

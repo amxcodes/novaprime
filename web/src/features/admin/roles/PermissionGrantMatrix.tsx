@@ -1,7 +1,8 @@
-import { Badge, Button, SearchableSelect, Select, StateMessage } from "../../../design-system";
+import { Badge, Button, SearchableSelect, Select, StateMessage, type SearchableSelectProps } from "../../../design-system";
 import type {
   PermissionCatalogueEntry,
   RoleScopeTargetReads,
+  RoleTargetOption,
   RoleTargetScope,
 } from "./contracts";
 import {
@@ -29,6 +30,7 @@ export interface PermissionGrantMatrixProps {
   expandedModules: ReadonlySet<string>;
   onModuleToggle: (moduleName: string, open: boolean) => void;
   onPermissionChange: (permission: PermissionCatalogueEntry, enabled: boolean) => void;
+  onSearchTargets?: (scope: RoleTargetScope, query: string) => Promise<ReadonlyArray<RoleTargetOption>>;
   onAddScope: (permission: PermissionCatalogueEntry) => void;
   onUpdateGrant: (permissionKey: string, index: number, patch: Partial<PermissionGrantDraft>) => void;
   onRemoveScope: (permissionKey: string, index: number) => void;
@@ -52,20 +54,23 @@ export function PermissionGrantMatrix({
   expandedModules,
   onModuleToggle,
   onPermissionChange,
+  onSearchTargets,
   onAddScope,
   onUpdateGrant,
   onRemoveScope,
 }: PermissionGrantMatrixProps) {
-  const targetReadIssues = (Object.entries(targetReads) as Array<[RoleTargetScope, RoleScopeTargetReads[RoleTargetScope]]>)
-    .filter(([, read]) => read.status !== "ready");
-  const emptyTargetScopes = (Object.entries(targetReads) as Array<[RoleTargetScope, RoleScopeTargetReads[RoleTargetScope]]>)
-    .filter(([, read]) => read.status === "ready" && read.options.length === 0);
+  const targetReadIssues = onSearchTargets ? []
+    : (Object.entries(targetReads) as Array<[RoleTargetScope, RoleScopeTargetReads[RoleTargetScope]]>)
+      .filter(([, read]) => read.status !== "ready");
+  const emptyTargetScopes = onSearchTargets ? []
+    : (Object.entries(targetReads) as Array<[RoleTargetScope, RoleScopeTargetReads[RoleTargetScope]]>)
+      .filter(([, read]) => read.status === "ready" && read.options.length === 0);
 
   return (
     <section className={styles.matrix} aria-labelledby={`${id}-permissions-title`}>
       <div className={styles.sectionHeading}>
         <h4 id={`${id}-permissions-title`}>Permission grants</h4>
-        <p>A permission may have multiple independent scopes. Target lists are shown only when the host has already loaded them.</p>
+        <p>A permission may have multiple independent scopes. Target results are loaded from the authorized directory as you search.</p>
       </div>
       {targetReadIssues.length ? (
         <StateMessage kind="warning" title="Some scope targets are unavailable">
@@ -113,6 +118,7 @@ export function PermissionGrantMatrix({
                     permission={permission}
                     grants={grants[permission.key] || []}
                     targetReads={targetReads}
+              onSearchTargets={onSearchTargets}
                     canEdit={canEdit}
                     disabled={disabled}
                     onPermissionChange={(enabled) => onPermissionChange(permission, enabled)}
@@ -135,6 +141,7 @@ function PermissionEditor({
   permission,
   grants,
   targetReads,
+  onSearchTargets,
   canEdit,
   disabled,
   onPermissionChange,
@@ -146,6 +153,7 @@ function PermissionEditor({
   permission: PermissionCatalogueEntry;
   grants: ReadonlyArray<PermissionGrantDraft>;
   targetReads: RoleScopeTargetReads;
+  onSearchTargets?: (scope: RoleTargetScope, query: string) => Promise<ReadonlyArray<RoleTargetOption>>;
   canEdit: boolean;
   disabled: boolean;
   onPermissionChange: (enabled: boolean) => void;
@@ -153,7 +161,7 @@ function PermissionEditor({
   onUpdateGrant: (index: number, patch: Partial<PermissionGrantDraft>) => void;
   onRemoveScope: (index: number) => void;
 }) {
-  const availableScopes = assignableRoleScopes(permission, targetReads);
+  const availableScopes = assignableRoleScopes(permission, targetReads, Boolean(onSearchTargets));
   const checkboxDisabled = disabled || !canEdit || (!grants.length && availableScopes.length === 0);
   const checked = grants.length > 0;
 
@@ -181,6 +189,7 @@ function PermissionEditor({
               permission={permission}
               grant={grant}
               targetReads={targetReads}
+              onSearchTargets={onSearchTargets}
               disabled={disabled || !canEdit}
               onChange={(patch) => onUpdateGrant(index, patch)}
               onRemove={() => onRemoveScope(index)}
@@ -209,6 +218,7 @@ function GrantEditor({
   permission,
   grant,
   targetReads,
+  onSearchTargets,
   disabled,
   onChange,
   onRemove,
@@ -217,24 +227,63 @@ function GrantEditor({
   permission: PermissionCatalogueEntry;
   grant: PermissionGrantDraft;
   targetReads: RoleScopeTargetReads;
+  onSearchTargets?: (scope: RoleTargetScope, query: string) => Promise<ReadonlyArray<RoleTargetOption>>;
   disabled: boolean;
   onChange: (patch: Partial<PermissionGrantDraft>) => void;
   onRemove: () => void;
 }) {
   const targetScope = targetScopeFor(grant.scope);
-  const scopeChoices = roleScopeChoices(permission, targetReads, grant.scope);
+  const scopeChoices = roleScopeChoices(permission, targetReads, grant.scope, Boolean(onSearchTargets));
   const targetRead = targetScope ? targetReads[targetScope] : undefined;
   const options = targetRead?.status === "ready" ? targetRead.options : [];
   const savedTargetUnavailable = Boolean(grant.targetId && !options.some((option) => option.id === grant.targetId));
-  const targetOptions = roleGrantTargetOptions(options, grant.targetId);
-  const targetDisabled = disabled || !targetRead || targetRead.status !== "ready" || options.length === 0;
-  const hint = targetRead && targetRead.status !== "ready"
+  const targetOptions = onSearchTargets ? [] : roleGrantTargetOptions(options, grant.targetId);
+  const savedTarget = grant.targetId ? options.find((option) => option.id === grant.targetId) : undefined;
+  const selectedOption = grant.targetId
+    ? { value: grant.targetId, label: savedTarget?.name || "Previously saved target — unavailable" }
+    : null;
+  const targetDisabled = disabled || (!onSearchTargets && (!targetRead || targetRead.status !== "ready" || options.length === 0));
+  const hint = !onSearchTargets && targetRead && targetRead.status !== "ready"
     ? targetRead.message || `${targetScopeLabels[targetScope as RoleTargetScope]} options are unavailable. The saved target is kept.`
-    : savedTargetUnavailable
+    : !onSearchTargets && savedTargetUnavailable
       ? "This saved target is not in the current selector list. It is preserved unless you choose another target."
-      : targetRead && options.length === 0
+      : !onSearchTargets && targetRead && options.length === 0
         ? `No ${targetScopeLabels[targetScope as RoleTargetScope].toLowerCase()} targets are available.`
+        : onSearchTargets && grant.targetId
+          ? "The saved target remains selected until you choose another result."
         : undefined;
+  const targetLabel = targetScope ? `${targetScopeLabels[targetScope]} target` : "Target";
+  const targetPlaceholder = targetScope ? `Choose ${targetScopeLabels[targetScope].toLowerCase()}` : "Choose target";
+  const targetEmptyMessage = targetScope ? `No matching ${targetScopeLabels[targetScope].toLowerCase()} targets.` : "No matching targets.";
+  const targetChange = (value: string) => onChange({ targetId: value });
+  const searchableSelectProps: SearchableSelectProps = onSearchTargets && targetScope ? {
+    id: `${id}-target`,
+    label: targetLabel,
+    value: grant.targetId,
+    options: [],
+    searchMode: "remote",
+    onSearch: async (query) => (await onSearchTargets(targetScope, query))
+      .map((option) => ({ value: option.id, label: option.name })),
+    selectedOption,
+    placeholder: targetPlaceholder,
+    emptyMessage: targetEmptyMessage,
+    disabled: targetDisabled,
+    required: true,
+    hint,
+    onChange: targetChange,
+  } : {
+    id: `${id}-target`,
+    label: targetLabel,
+    value: grant.targetId,
+    options: targetOptions,
+    searchMode: "local",
+    placeholder: targetPlaceholder,
+    emptyMessage: targetEmptyMessage,
+    disabled: targetDisabled,
+    required: true,
+    hint,
+    onChange: targetChange,
+  };
 
   return (
     <div className={styles.grantRow}>
@@ -247,18 +296,7 @@ function GrantEditor({
         options={scopeChoices.map((choice) => ({ value: choice.value, label: choice.label, disabled: choice.disabled }))}
       />
       {targetScope ? (
-        <SearchableSelect
-          id={`${id}-target`}
-          label={`${targetScopeLabels[targetScope]} target`}
-          value={grant.targetId}
-          options={targetOptions}
-          placeholder={`Choose ${targetScopeLabels[targetScope].toLowerCase()}`}
-          emptyMessage={`No matching ${targetScopeLabels[targetScope].toLowerCase()} targets.`}
-          disabled={targetDisabled}
-          required
-          hint={hint}
-          onChange={(value) => onChange({ targetId: value })}
-        />
+        <SearchableSelect {...searchableSelectProps} />
       ) : null}
       <Button variant="quiet" size="compact" type="button" disabled={disabled} onClick={onRemove}>
         Remove scope

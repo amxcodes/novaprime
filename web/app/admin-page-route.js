@@ -94,9 +94,10 @@ export function createAdminPageRoute(host) {
     { role: "alert" },
     feature + " could not load. Reload Admin to try again.",
   );
-  const [adminPageSections, roleSectionModule, organizationStructureModule, availabilityConfigurationModule,
+  const [adminPageSections, roleSectionModule, roleScopeTargetsRouteModule, organizationStructureModule, availabilityConfigurationModule,
+    availabilityPickerSearchModule,
     officeGeofenceModule, attendancePolicyModule,
-    wfhPolicyOverridesModule, wfhPolicyOverridesRouteModule, peopleModule, peopleRouteModule,
+    wfhPolicyOverridesModule, wfhPolicyOverridesRouteModule, wfhPolicyTargetSearchModule, peopleModule, peopleRouteModule,
     ownerTransferModule, ownerTransferRouteModule,
     leaveReviewModule, wfhReviewModule, adminWorkModule, adminWorkCompositionModule,
     historicalExceptionsModule, auditModule, notificationDeliveryModule,
@@ -106,12 +107,15 @@ export function createAdminPageRoute(host) {
     adminMembershipTargetsModule, adminClientMembershipsRouteModule] = await Promise.all([
     import("../src/pages/admin/admin-page-sections.ts"),
     loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "roles"), () => import("../src/features/admin/roles/RolePermissionsSection.tsx")),
+    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "roles"), () => import("./admin-role-scope-targets-route.js")),
     loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "organisationStructure"), () => import("../src/features/admin/organization/OrganizationStructureSection.tsx")),
     loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "availabilityConfiguration"), () => import("../src/features/availability/AvailabilityConfigurationSection.tsx")),
+    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "availabilityConfiguration"), () => import("./admin-availability-picker-search-route.js")),
     loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "geofence"), () => import("../src/features/admin/OfficeGeofenceSettingsSection.tsx")),
     loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "attendancePolicy"), () => import("../src/features/admin/attendance-policy/AttendancePolicySettingsSection.tsx")),
     loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "wfhOverrides"), () => import("../src/features/admin/WfhPolicyOverridesSection.tsx")),
     loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "wfhOverrides"), () => import("./admin-wfh-policy-overrides-route.js")),
+    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "wfhOverrides"), () => import("./admin-wfh-policy-target-search-route.js")),
     loadAdminFeatureModule(canInviteAdminPeople(data.actorGrants) || canViewAdminPeople(data.actorGrants), () => import("../src/features/admin/PeopleAdministrationSection.tsx")),
     loadAdminFeatureModule(canInviteAdminPeople(data.actorGrants) || canViewAdminPeople(data.actorGrants), () => import("./admin-people-route.js")),
     loadAdminFeatureModule(canShowOwnerTransfer(data.actorGrants), () => import("../src/features/admin/owner-transfer/index.ts")),
@@ -146,6 +150,24 @@ export function createAdminPageRoute(host) {
     AdminWorkLoadFailureSection,
   } = adminPageSections;
   const RolePermissionsSection = roleSectionModule?.RolePermissionsSection;
+  const roleScopeTargetsRoute = RolePermissionsSection && hasAdminPermission(data, "roles.view")
+    ? roleScopeTargetsRouteModule?.createAdminRoleScopeTargetsRoute({
+      state,
+      target,
+      lifetime,
+      identityEpoch,
+      isCurrentPageRequest,
+      hasAdminPermission,
+      pageApi,
+      captureCommandContext,
+      isCurrentCommand,
+      recoverProtectedCommandFailure,
+      adminCommandUiError,
+    })
+    : undefined;
+  const searchRoleScopeTargets = roleScopeTargetsRoute?.searchTargets ?? (async () => {
+    throw adminCommandUiError("Role scope search could not load. Reload Admin and try again.");
+  });
   const OrganizationStructureSection = organizationStructureModule?.OrganizationStructureSection;
   const OfficeGeofenceSettings = canShowAdminFeature(state.adminData?.actorGrants, "geofence")
     ? officeGeofenceModule?.OfficeGeofenceSettingsSection
@@ -161,6 +183,40 @@ export function createAdminPageRoute(host) {
     state.adminData?.actorGrants,
     "wfhOverrides",
   ) ? wfhPolicyOverridesModule?.WfhPolicyOverridesSection : undefined;
+  const availabilityPickerSearchRoute = AvailabilityConfigurationSection
+    ? availabilityPickerSearchModule?.createAvailabilityPickerSearchRoute({
+      state,
+      target,
+      lifetime,
+      isCurrentPageRequest,
+      hasPermissionGrant,
+      pageApi,
+      captureCommandContext,
+      isCurrentCommand,
+      isCurrentCommandIdentity,
+      recoverProtectedCommandFailure,
+      errorText,
+      adminCommandUiError,
+    })
+    : undefined;
+  const wfhPolicyTargetSearchRoute = WfhPolicyOverridesSection
+    ? wfhPolicyTargetSearchModule?.createWfhPolicyTargetSearchRoute({
+      state,
+      target,
+      lifetime,
+      isCurrentPageRequest,
+      canShowAdminFeature,
+      hasPermissionGrant,
+      canViewAdminPeople,
+      pageApi,
+      captureCommandContext,
+      isCurrentCommand,
+      isCurrentCommandIdentity,
+      errorText,
+      adminCommandUiError,
+      recoverProtectedCommandFailure,
+    })
+    : undefined;
   const wfhPolicyOverridesRoute = WfhPolicyOverridesSection && canShowAdminFeature(
     state.adminData?.actorGrants,
     "wfhOverrides",
@@ -172,6 +228,9 @@ export function createAdminPageRoute(host) {
     canShowAdminFeature,
     hasPermissionGrant,
     canViewAdminPeople,
+    searchTargets: wfhPolicyTargetSearchRoute?.searchTargets ?? (async () => {
+      throw adminCommandUiError("WFH target search could not load. Reload Admin and try again.");
+    }),
     captureCommandContext,
     isCurrentCommand,
     isCurrentCommandIdentity,
@@ -200,6 +259,7 @@ export function createAdminPageRoute(host) {
       isCurrentPageRequest,
       canInviteAdminPeople,
       canViewAdminPeople,
+      pageApi,
       hasPermissionGrant,
       adminReadIssue,
       adminCommandUiError,
@@ -247,6 +307,7 @@ export function createAdminPageRoute(host) {
       lifetime,
       isCurrentPageRequest,
       canViewAdminPeople,
+      pageApi,
       runAdminProtectedCommand,
       renderAdmin,
       adminCommandUiError,
@@ -357,6 +418,12 @@ export function createAdminPageRoute(host) {
     offices: data.offices,
     officesIssue: adminReadIssue(data.offices, "offices for availability configuration"),
     canReadOffices: hasAdminPermission(data, "organisation.settings.manage"),
+    searchOffices: availabilityPickerSearchRoute?.searchOffices ?? (async () => {
+      throw adminCommandUiError("Availability target search could not load. Reload Admin and try again.");
+    }),
+    searchShifts: availabilityPickerSearchRoute?.searchShifts ?? (async () => {
+      throw adminCommandUiError("Availability target search could not load. Reload Admin and try again.");
+    }),
     capabilities: {
       shifts: {
         view: hasAdminPermission(data, "availability.shift.view"),
@@ -552,7 +619,21 @@ export function createAdminPageRoute(host) {
         },
       },
       formatError: (code) => errorMessages[code],
+      onSearch: async (query) => {
+        if (!isCurrentPageRequest(lifetime) || state.adminData !== data) {
+          throw new Error("The Admin page changed before the role search could start. Refresh Admin and try again.");
+        }
+        try {
+          return await pageApi("/api/roles?q=" + encodeURIComponent(query), lifetime);
+        } catch (error) {
+          if (error?.httpStatus === 403) {
+            recoverProtectedCommandFailure(error, captureCommandContext(target), "Your role access changed. Admin is refreshing your permissions.");
+          }
+          throw new Error(errorText(error));
+        }
+      },
       onCreate: (payload) => saveAdminRole(target, lifetime, data, "create", undefined, payload),
+      onSearchTargets: hasAdminPermission(data, "roles.view") ? searchRoleScopeTargets : undefined,
       onUpdate: (roleId, payload) => saveAdminRole(target, lifetime, data, "update", roleId, payload),
     }) : createElement(RolePermissionsLoadFailureSection),
     work: adminWorkContent ?? createElement(AdminWorkLoadFailureSection),
@@ -598,6 +679,24 @@ export function createAdminPageRoute(host) {
         data.audit,
         adminFeatureReadError(data.audit, "audit history"),
       ),
+      onSearch: async ({ search }) => {
+        if (!isCurrentPageRequest(lifetime) || state.adminData !== data) {
+          throw adminCommandUiError("The Admin page changed before audit search could start. Refresh Admin and try again.");
+        }
+        const params = new URLSearchParams({ limit: "50", q: search.trim() });
+        try {
+          const result = await pageApi("/api/audit-events?" + params.toString(), lifetime);
+          if (!isCurrentPageRequest(lifetime) || state.adminData !== data) {
+            throw adminCommandUiError("The Admin page changed during audit search. Refresh Admin and try again.");
+          }
+          return projectAuditEventsReadState(result, adminFeatureReadError(result, "matching audit history"));
+        } catch (error) {
+          if (error?.httpStatus === 403) {
+            recoverProtectedCommandFailure(error, captureCommandContext(target), "Your audit access changed. Admin is refreshing your permissions.");
+          }
+          throw adminCommandUiError(errorText(error));
+        }
+      },
     }) : featureLoadFailure("Audit history"),
     "notification-delivery": NotificationDeliveryOperations ? createElement(NotificationDeliveryOperations, {
       readState: projectNotificationDeliveryReadState(

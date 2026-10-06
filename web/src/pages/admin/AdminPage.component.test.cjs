@@ -111,6 +111,9 @@ test("keeps the host feedback target and uses a single-scroll responsive page co
   assert.match(css, /container: admin-page \/ inline-size/);
   assert.match(css, /@container admin-page \(max-width: 60rem\)/);
   assert.match(css, /@container admin-page \(max-width: 40rem\)/);
+  assert.match(css, /\.content\s*>\s*\*\s*\{\s*min-width:\s*0;\s*\}/);
+  assert.match(css, /\.routeState\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(css, /\.emptyState\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /\.sections\s*\{[^}]*display:\s*grid;/s);
   assert.match(css, /\.sections\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s);
   assert.doesNotMatch(css, /grid-template-columns:\s*repeat\(|overflow-(?:x|y):\s*(?:auto|scroll)/);

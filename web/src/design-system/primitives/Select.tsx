@@ -33,6 +33,7 @@ export interface SelectProps {
   defaultValue?: string | null;
   placeholder?: string;
   options: readonly SelectOption[];
+  emptyMessage?: ReactNode;
   onChange?: (value: string) => void;
 }
 
@@ -52,6 +53,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
     defaultValue,
     placeholder = "Choose an option",
     options,
+    emptyMessage = "No options are available.",
     onChange,
   },
   ref,
@@ -110,6 +112,9 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
             </ListBoxItem>
           ))}
         </ListBox>
+        {!options.some((option) => !option.disabled) ? (
+          <div className={styles.empty} role="status" aria-live="polite">{emptyMessage}</div>
+        ) : null}
       </Popover>
     </AriaSelect>
   );

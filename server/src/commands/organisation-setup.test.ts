@@ -1,10 +1,27 @@
 import { expect, test } from "bun:test";
 import {
+  completeOnboardingOfficeDateSql,
+  completeOnboardingPersonSql,
+  completeOnboardingRelationsSql,
   completeOnboardingInput,
   departmentInput,
   attendancePolicyInput,
   officeInput,
 } from "./organisation-setup";
+
+test("onboarding revalidates the person and every selected relationship inside the actor organization", () => {
+  expect(completeOnboardingPersonSql.toUpperCase()).toContain("WHERE ID = $1 AND ORGANISATION_ID = $2 FOR UPDATE");
+
+  const relations = completeOnboardingRelationsSql.toUpperCase();
+  expect(relations).toContain("FROM NOVA.OFFICES\n    WHERE ID = $1 AND ORGANISATION_ID = $5 AND ARCHIVED_AT IS NULL");
+  expect(relations).toContain("FROM NOVA.ORGANISATION_DEPARTMENTS\n    WHERE ID = $2 AND ORGANISATION_ID = $5 AND ARCHIVED_AT IS NULL");
+  expect(relations).toContain("FROM NOVA.ROLES\n    WHERE ID = $3 AND ORGANISATION_ID = $5 AND ARCHIVED_AT IS NULL AND IS_PROTECTED = FALSE");
+  expect(relations).toContain("MANAGERS.ORGANISATION_ID = $5");
+  expect(relations).toContain("MANAGER_STATUS.STATUS IN ('ACTIVE', 'NOTICE')");
+  expect(completeOnboardingOfficeDateSql.toUpperCase()).toContain(
+    "WHERE ID = $1 AND ORGANISATION_ID = $2 AND ARCHIVED_AT IS NULL",
+  );
+});
 
 test("accepts bounded office and organisation-department setup input", () => {
   expect(officeInput({

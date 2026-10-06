@@ -59,4 +59,24 @@ describe("responsive navigation focus", () => {
     expect(extremeCompactRule).toContain("min-width: var(--nova-control-touch-target)");
     expect(source).toContain('<span className={styles.bottomLabel}>More</span>');
   });
+
+  test("returns keyboard focus to the control that opened the drawer on compact viewports", () => {
+    expect(appShellSource).toContain("navigationTriggerRef.current = event.currentTarget");
+    expect(appShellSource).toContain("restoreFocus={() => navigationTriggerRef.current}");
+    expect(source).toContain("trigger?.getClientRects().length");
+    expect(source).toContain("focusTarget?.focus({ preventScroll: true })");
+    expect(source).toContain("onClick={(event) => onOpen?.(event)}");
+  });
+
+  test("keeps the mobile header, drawer, and content clear of device safe areas", () => {
+    expect(topBarStyles).toContain("grid-template-columns: minmax(0, 1fr) auto");
+    expect(topBarStyles).toContain("env(safe-area-inset-left)");
+    expect(topBarStyles).toContain("env(safe-area-inset-top)");
+    expect(topBarStyles).toContain("overflow-x: auto");
+    expect(navigationStyles).toContain("env(safe-area-inset-bottom)");
+    expect(navigationStyles).toContain("env(safe-area-inset-right)");
+    expect(appShellStyles).toContain("env(safe-area-inset-top)");
+    expect(readFileSync(new URL("./ContentFrame.module.css", import.meta.url), "utf8"))
+      .toContain("env(safe-area-inset-left)");
+  });
 });

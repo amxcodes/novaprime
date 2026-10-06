@@ -133,7 +133,7 @@ export function createMyAssignmentsRoute(host) {
 
     const read = projectMyAssignmentsRead(result, readIssue);
     const candidateReads = new Map();
-    const onLoadCandidates = (assignment, { retry = false } = {}) => {
+    const onLoadCandidates = (assignment, { retry = false, query } = {}) => {
       if (!isCurrentPageRequest(lifetime)) {
         return Promise.resolve({ reviewers: [], handoverTargets: [], readError: "STALE_PAGE_REQUEST" });
       }
@@ -141,12 +141,24 @@ export function createMyAssignmentsRoute(host) {
       if (typeof assignmentId !== "string" || !assignmentId) {
         return Promise.resolve({ reviewers: [], handoverTargets: [], readError: "ASSIGNMENT_UNAVAILABLE" });
       }
+      if (typeof query === "string") {
+        return Promise.resolve()
+          .then(() => readAssignmentCandidates(assignmentId, lifetime, query))
+          .then((result) => isCurrentPageRequest(lifetime)
+            ? projectAssignmentCandidateRead(result)
+            : { reviewers: [], handoverTargets: [], readError: "STALE_PAGE_REQUEST" })
+          .catch((error) => isCurrentPageRequest(lifetime)
+            ? { ...fallbackCandidates, readError: error?.code || "REQUEST_FAILED" }
+            : { ...fallbackCandidates, readError: "STALE_PAGE_REQUEST" });
+      }
       if (retry) candidateReads.delete(assignmentId);
       if (!candidateReads.has(assignmentId)) {
         candidateReads.set(assignmentId,
           Promise.resolve().then(() => readAssignmentCandidates(assignmentId, lifetime))
             .catch((error) => ({ ...fallbackCandidates, readError: error?.code || "REQUEST_FAILED" }))
-            .then(projectAssignmentCandidateRead));
+            .then((result) => isCurrentPageRequest(lifetime)
+              ? projectAssignmentCandidateRead(result)
+              : { reviewers: [], handoverTargets: [], readError: "STALE_PAGE_REQUEST" }));
       }
       return candidateReads.get(assignmentId);
     };

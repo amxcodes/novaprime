@@ -19,8 +19,10 @@ const baseProps: ClientMembershipsProps = {
   client: { id: "client-1", name: "Northstar" },
   canViewMemberships: true,
   canManageMemberships: true,
+  canSearchPeople: true,
   read: { status: "idle", memberships: [], hasMore: false, nextCursor: null, loadingMore: false },
-  peopleOptions: [{ id: "person-1", label: "Aman Verma" }],
+  onSearchPeople: async () => [{ value: "person-1", label: "Aman Verma" }],
+  onSearchDepartments: async () => [{ value: "department-1", label: "Design" }],
   onLoadMemberships: () => {},
   onLoadMore: () => {},
   onAddMembership: () => {},
@@ -90,41 +92,42 @@ describe("ClientMemberships", () => {
     expect(loadingMore).toMatch(/<button[^>]*disabled=\"\"[^>]*>.*Loading older memberships…/);
   });
 
-  it("does not invent a client-department picker when no authorized list is supplied", () => {
+  it("renders remote person and client-department pickers without embedding business rows", () => {
     const markup = render();
 
     expect(markup).toContain('role="combobox"');
     expect(markup).toContain('name="personId"');
     expect(markup).toContain("Search people");
+    expect(markup).toContain("Client department (optional)");
+    expect(markup).toContain("Search client departments");
     expect(markup).not.toContain("<select");
     expect(markup).toContain("Membership label (optional)");
     expect(markup).toContain("Effective from");
-    expect(markup).not.toContain("Client department (optional)");
-    expect(markup).not.toContain("clientDepartmentId");
+    expect(markup).toContain("search-mode=\"remote\"");
   });
 
-  it("does not fetch people or render an add form when the authorized people read is missing", () => {
+  it("does not expose the person picker or add command without organization people.view", () => {
     let loads = 0;
     const markup = render({
-      peopleOptions: null,
+      canSearchPeople: false,
       onLoadMemberships: () => { loads += 1; },
     });
 
-    expect(markup).toContain("Adding a person requires an authorized people list.");
+    expect(markup).toContain("organization-level people viewing access");
     expect(markup).not.toContain('role="combobox"');
     expect(markup).not.toContain("Add client membership");
     expect(loads).toBe(0);
   });
 
-  it("renders only supplied department options when the host has a supported source", () => {
-    const markup = render({
-      departmentOptions: [{ id: "department-1", name: "Design" }],
-    });
+  it("keeps department search scoped through its feature-owned callback", () => {
+    let requested = "";
+    const markup = render({ onSearchDepartments: async (query) => { requested = query; return []; } });
 
     expect(markup).toContain("Client department (optional)");
     expect(markup).toContain("Search client departments");
     expect(markup).toContain('name="clientDepartmentId" value=""');
     expect(markup).not.toContain("<select");
+    expect(requested).toBe("");
   });
 
   it("keeps records readable without management capability and hides add/end forms", () => {

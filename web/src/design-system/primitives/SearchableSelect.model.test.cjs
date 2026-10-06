@@ -21,6 +21,8 @@ const {
   isSearchableSelectPointerOutside,
   isSearchableSelectTouchScroll,
   isSearchableSelectOptionSelectable,
+  isCurrentSearchableSelectRequest,
+  resolveSearchableSelectOptions,
   shouldCommitSearchableSelectSelection,
   shouldUseSearchableSelectBoundaryNavigation,
   stepSearchableSelectActiveIndex,
@@ -41,6 +43,21 @@ test("filters by visible labels and descriptions and keeps keyboard indices boun
   assert.equal(stepSearchableSelectActiveIndex(options.length, options.length, "next"), 2);
   assert.equal(stepSearchableSelectActiveIndex(0, options.length, "previous"), 0);
   assert.equal(stepSearchableSelectActiveIndex(2, 0, "previous"), -1);
+});
+
+test("remote mode trusts the server result set while local mode keeps its existing label filtering", () => {
+  const serverResults = [
+    { value: "one", label: "Server-ranked result" },
+    { value: "two", label: "Another server result" },
+  ];
+  assert.equal(resolveSearchableSelectOptions(serverResults, "no local match", "remote"), serverResults);
+  assert.deepEqual(resolveSearchableSelectOptions(options, "review").map((option) => option.value), ["two"]);
+});
+
+test("remote responses are current only while both request identity and query match", () => {
+  assert.equal(isCurrentSearchableSelectRequest(4, 4, "Ada", "Ada"), true);
+  assert.equal(isCurrentSearchableSelectRequest(5, 4, "Ada", "Ada"), false);
+  assert.equal(isCurrentSearchableSelectRequest(4, 4, "Grace", "Ada"), false);
 });
 
 test("keyboard movement skips disabled choices without making them selectable", () => {
@@ -96,6 +113,19 @@ test("Enter commits a choice only after input-method composition has finished", 
   assert.equal(shouldCommitSearchableSelectSelection("Enter", false, 229), false);
   assert.equal(shouldCommitSearchableSelectSelection("Enter", false, 13), true);
   assert.equal(shouldCommitSearchableSelectSelection("ArrowDown", false, 40), false);
+});
+
+test("Arrow navigation selects the first enabled result and Enter can commit that exact option", () => {
+  const choices = [
+    { value: "closed", label: "Closed", disabled: true },
+    { value: "open", label: "Open" },
+  ];
+  const index = stepSearchableSelectActiveIndex(-1, choices.length, "next", choices.map((choice) => choice.disabled));
+  const active = choices[index];
+
+  assert.equal(active.value, "open");
+  assert.equal(isSearchableSelectOptionSelectable(active), true);
+  assert.equal(shouldCommitSearchableSelectSelection("Enter", false, 13), true);
 });
 
 test("recognizes a touch scroll after a small movement threshold", () => {

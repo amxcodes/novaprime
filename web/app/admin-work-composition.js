@@ -85,6 +85,16 @@ export function createAdminWorkComposition({
         hasAdminPermission,
         hasAnyPermissionGrant,
         adminReadIssue,
+        searchWorkContext: async (query) => {
+          try {
+            return await pageApi("/api/work-context?q=" + encodeURIComponent(query.trim()), lifetime);
+          } catch (error) {
+            if (error?.httpStatus === 403) {
+              recoverProtectedCommandFailure(error, captureCommandContext(target), "Your work-context access changed. Admin is refreshing your permissions.");
+            }
+            throw error;
+          }
+        },
         runProtectedCommand: routeCommand,
         adminCommandUiError,
       });
@@ -107,6 +117,7 @@ export function createAdminWorkComposition({
         hasAnyPermissionGrant,
         planAdminReads,
         projectTaskComposerOptions,
+        pageApi,
         runProtectedCommand: routeCommand,
         adminCommandUiError,
         taskCreateIdempotencyHeaders,

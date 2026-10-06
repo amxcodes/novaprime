@@ -46,6 +46,21 @@ function render(value = "assignment-1") {
   })));
 }
 
+function renderRemoteSelectedOption() {
+  return renderToStaticMarkup(React.createElement(SearchableSelect, {
+    id: "remote-person",
+    label: "Person",
+    value: "person-1",
+    options: [],
+    searchMode: "remote",
+    onSearch: async () => [],
+    selectedOption: { value: "person-1", label: "Aman Lee" },
+    placeholder: "Search people",
+    emptyMessage: "No people match.",
+    onChange() {},
+  }));
+}
+
 test("renders an accessible labeled combobox and submits the selected ID through a hidden named value", () => {
   const html = render();
   assert.match(html, /<label[^>]*for="assignment"[^>]*><span>Assignment<\/span>/);
@@ -63,6 +78,11 @@ test("preserves an empty named value so hosts can validate against their authori
   assert.match(html, /aria-required="true"/);
 });
 
+test("remote mode keeps its selected label from the explicit selected option", () => {
+  const html = renderRemoteSelectedOption();
+  assert.match(html, /id="remote-person"[^>]*value="Aman Lee"/);
+});
+
 test("the shared popup owns tokenized responsive and forced-colors styling", () => {
   const css = fs.readFileSync(require.resolve("./SearchableSelect.module.css"), "utf8");
   assert.match(css, /position:\s*fixed/);
@@ -72,6 +92,11 @@ test("the shared popup owns tokenized responsive and forced-colors styling", () 
   assert.match(css, /@media\s*\(any-pointer:\s*coarse\)[\s\S]*?\.option\s*\{\s*min-height:\s*var\(--nova-control-touch-target\)/);
   assert.match(css, /@media\s*\(forced-colors:\s*active\)/);
   assert.match(css, /Highlight/);
+  assert.match(css, /-webkit-appearance:\s*none/);
+  assert.match(css, /appearance:\s*none/);
+  assert.match(css, /border-radius:\s*calc\(var\(--nova-radius-control\) - var\(--nova-space-1\)\)/);
+  assert.match(css, /@media\s*\(any-pointer:\s*coarse\)[\s\S]*?min-height:\s*var\(--nova-control-touch-target\)/);
+  assert.match(css, /scrollbar-gutter:\s*stable/);
 });
 
 test("the clear action stays inside the select control at pointer and touch sizes", () => {
@@ -105,4 +130,26 @@ test("Home and End navigate options only when they cannot steal a nonempty query
   assert.match(source, /const canNavigateBoundary = shouldUseSearchableSelectBoundaryNavigation\([\s\S]*?event\.key,[\s\S]*?query,[\s\S]*?event\.nativeEvent\.isComposing/);
   assert.match(source, /canNavigateBoundary && event\.key === "Home"/);
   assert.match(source, /canNavigateBoundary && event\.key === "End"/);
+});
+
+test("remote search is opt-in, debounced, race guarded, and displays server results without local filtering", () => {
+  const source = fs.readFileSync(require.resolve("./SearchableSelect.tsx"), "utf8");
+  assert.match(source, /searchMode: "remote"/);
+  assert.match(source, /onSearch: \(query: string\) => Promise<readonly SearchableSelectOption\[\]>/);
+  assert.match(source, /searchMode === "remote"\s*\? currentRemoteState\?\.status === "ready" \? currentRemoteState\.options : \[\]/);
+  assert.match(source, /window\.setTimeout\(\(\) =>/);
+  assert.match(source, /isCurrentSearchableSelectRequest\(requestId\.current, currentRequestId/);
+  assert.match(source, /setRemoteState\(\{ query: normalizedQuery, status: "loading", options: \[\] \}\)/);
+  assert.match(source, /role="alert">\{searchErrorMessage\}/);
+  assert.match(source, /currentRemoteState\?\.status === "ready" && !filtered\.length/);
+  assert.match(source, /role="status" aria-live="polite">\{loadingMessage\}/);
+  assert.match(source, /data-state="loading" role="status"/);
+  assert.match(source, /data-state="error" role="alert"/);
+  assert.match(source, /data-state="empty" role="status"/);
+});
+
+test("Enter commits the active enabled result and keeps the combobox linked to the listbox option", () => {
+  const source = fs.readFileSync(require.resolve("./SearchableSelect.tsx"), "utf8");
+  assert.match(source, /aria-activedescendant=\{ariaState\.activeDescendant\}/);
+  assert.match(source, /shouldCommitSearchableSelectSelection\([\s\S]*?\) && open && activeOption\)\s*\{\s*event\.preventDefault\(\);\s*choose\(activeOption\);/);
 });

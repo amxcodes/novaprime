@@ -74,6 +74,24 @@ export function filterSearchableSelectOptions<T extends SearchableSelectModelOpt
     : options;
 }
 
+/** Remote results are already filtered by the server and must be rendered as received. */
+export function resolveSearchableSelectOptions<T extends SearchableSelectModelOption>(
+  options: readonly T[],
+  query: string,
+  mode: "local" | "remote" = "local",
+): readonly T[] {
+  return mode === "remote" ? options : filterSearchableSelectOptions(options, query);
+}
+
+export function isCurrentSearchableSelectRequest(
+  currentRequestId: number,
+  requestId: number,
+  currentQuery: string,
+  requestQuery: string,
+): boolean {
+  return currentRequestId === requestId && currentQuery === requestQuery;
+}
+
 export function findSearchableSelectActiveIndex(
   options: readonly SearchableSelectModelOption[],
   selectedValue: string,

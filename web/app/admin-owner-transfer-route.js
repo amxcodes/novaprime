@@ -10,6 +10,7 @@ export function createOwnerTransferRoute({
   lifetime,
   isCurrentPageRequest,
   canViewAdminPeople,
+  pageApi,
   runAdminProtectedCommand,
   renderAdmin,
   adminCommandUiError,
@@ -17,6 +18,7 @@ export function createOwnerTransferRoute({
   const callbacks = {
     isCurrentPageRequest,
     canViewAdminPeople,
+    pageApi,
     runAdminProtectedCommand,
     renderAdmin,
     adminCommandUiError,
@@ -26,6 +28,9 @@ export function createOwnerTransferRoute({
   }
   if (!state || !target || !lifetime) throw new TypeError("state, target, and lifetime are required");
 
+  const targetsByToken = new Map();
+  let nextChoiceToken = 0;
+
   function isCurrentOwnerTransferData(data) {
     const current = state.adminData;
     return target.isConnected && isCurrentPageRequest(lifetime) && current === data &&
@@ -33,7 +38,7 @@ export function createOwnerTransferRoute({
       Array.isArray(current.actorGrants.grants);
   }
 
-  function transfer(data, personId) {
+  function transfer(data, choiceToken) {
     const current = state.adminData;
     if (!isCurrentOwnerTransferData(data)) {
       throw adminCommandUiError("The Admin page or Super Admin access changed. Refresh Admin before trying again.");
@@ -41,10 +46,8 @@ export function createOwnerTransferRoute({
     if (!canViewAdminPeople(current.actorGrants)) {
       throw adminCommandUiError("Your current grants no longer include the people list needed to choose a new owner.");
     }
-    const eligibleTarget = Array.isArray(data.people?.people) && data.people.people.some((person) =>
-      person?.id === personId && personId !== current.actorGrants.actorPersonId &&
-      ["active", "notice"].includes(person.status));
-    if (!eligibleTarget) {
+    const personId = targetsByToken.get(choiceToken);
+    if (typeof personId !== "string" || personId === current.actorGrants.actorPersonId) {
       throw adminCommandUiError("This person is no longer an eligible owner. Refresh Admin and choose again.");
     }
 
@@ -62,6 +65,34 @@ export function createOwnerTransferRoute({
       undefined,
       "NOVA could not confirm whether ownership transferred. Your session may have been revoked. Refresh and verify the current Super Admin before retrying.",
     );
+  }
+
+  async function searchEligiblePeople(data, query) {
+    if (!isCurrentOwnerTransferData(data)) {
+      throw adminCommandUiError("The Admin page or Super Admin access changed. Refresh Admin before searching.");
+    }
+    if (!canViewAdminPeople(state.adminData.actorGrants)) {
+      throw adminCommandUiError("Your current grants no longer include the people list needed to choose a new owner.");
+    }
+    if (typeof query !== "string" || query.length > 100) {
+      throw adminCommandUiError("The owner search is too long. Edit the search and try again.");
+    }
+    const result = await pageApi("/api/organisation/owner-transfer/eligible-people?q=" + encodeURIComponent(query), lifetime);
+    if (!isCurrentOwnerTransferData(data) || state.adminData !== data) {
+      throw adminCommandUiError("Admin changed while eligible people were loading. Refresh and try again.");
+    }
+    if (!Array.isArray(result?.people) || result.people.length > 50 || !result.people.every((person) =>
+      typeof person?.id === "string" && person.id.length > 0 && typeof person.label === "string" && person.label.trim(),
+    )) {
+      throw adminCommandUiError("The eligible people response could not be read. Edit the search to try again.");
+    }
+
+    targetsByToken.clear();
+    return result.people.map((person) => {
+      const value = "owner-choice-" + (++nextChoiceToken);
+      targetsByToken.set(value, person.id);
+      return { value, label: person.label.trim(), transfer: () => transfer(data, value) };
+    });
   }
 
   function createProps(data) {
@@ -84,6 +115,7 @@ export function createOwnerTransferRoute({
       canTransfer,
       read: read || { status: "unavailable", message: "Super Admin access is no longer available." },
       onRetry: () => renderAdmin(lifetime),
+      onSearchEligiblePeople: (query) => searchEligiblePeople(data, query),
     };
   }
 

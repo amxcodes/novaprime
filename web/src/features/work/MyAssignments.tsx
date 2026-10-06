@@ -122,6 +122,10 @@ function CandidateForms({
   const [loadStarted, setLoadStarted] = useState(false);
   const [reviewerId, setReviewerId] = useState("");
   const [handoverTargetId, setHandoverTargetId] = useState("");
+  const [reviewerSearchResults, setReviewerSearchResults] = useState<ReadonlyArray<AssignmentCandidate>>([]);
+  const [handoverSearchResults, setHandoverSearchResults] = useState<ReadonlyArray<AssignmentCandidate>>([]);
+  const [selectedReviewer, setSelectedReviewer] = useState<AssignmentCandidate | null>(null);
+  const [selectedHandoverTarget, setSelectedHandoverTarget] = useState<AssignmentCandidate | null>(null);
   const [reviewerError, setReviewerError] = useState<string | null>(null);
   const [reviewerReasonError, setReviewerReasonError] = useState<string | null>(null);
   const [handoverError, setHandoverError] = useState<string | null>(null);
@@ -154,11 +158,18 @@ function CandidateForms({
   const reviewerOptions: SearchableSelectOption[] = reviewers.map((person) => ({ value: person.id, label: person.displayName }));
   const handoverOptions: SearchableSelectOption[] = handoverTargets.map((person) => ({ value: person.id, label: person.displayName }));
 
+  const searchCandidates = async (query: string) => {
+    if (!query.trim() && candidateRead) return candidateRead;
+    const result = await onLoadCandidates(assignment, { query });
+    if (result.readError) throw new Error("Eligible teammates could not be loaded");
+    return result;
+  };
+
   function submitReviewer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const validationError = validateAssignmentCandidateRequest(
       reviewerId,
-      reviewers,
+      selectedReviewer && reviewerId === selectedReviewer.id ? [selectedReviewer] : reviewers,
       String(new FormData(event.currentTarget).get("reason") ?? ""),
     );
     if (validationError === "candidate") {
@@ -180,7 +191,7 @@ function CandidateForms({
     event.preventDefault();
     const validationError = validateAssignmentCandidateRequest(
       handoverTargetId,
-      handoverTargets,
+      selectedHandoverTarget && handoverTargetId === selectedHandoverTarget.id ? [selectedHandoverTarget] : handoverTargets,
       String(new FormData(event.currentTarget).get("reason") ?? ""),
     );
     if (validationError === "candidate") {
@@ -221,7 +232,20 @@ function CandidateForms({
         <form className={styles.requestForm} noValidate onSubmit={submitReviewer}>
           <SearchableSelect label="Reviewer" name="candidateReviewerPersonId" value={reviewerId}
             options={reviewerOptions} placeholder="Choose a reviewer" emptyMessage="No eligible reviewers match this search."
-            required error={reviewerError || undefined} onChange={(value) => { setReviewerId(value); setReviewerError(null); }} />
+            searchMode="remote"
+            onSearch={async (query) => {
+              const result = await searchCandidates(query);
+              setReviewerSearchResults(result.reviewers);
+              return result.reviewers.map((person) => ({ value: person.id, label: person.displayName }));
+            }}
+            selectedOption={selectedReviewer ? { value: selectedReviewer.id, label: selectedReviewer.displayName } : null}
+            required error={reviewerError || undefined} onChange={(value) => {
+              setReviewerId(value);
+              setSelectedReviewer(value
+                ? reviewerSearchResults.find((person) => person.id === value) ?? reviewers.find((person) => person.id === value) ?? null
+                : null);
+              setReviewerError(null);
+            }} />
           <Field label="Why is a reviewer needed?" required error={reviewerReasonError}>
             {(controlProps) => <Input {...controlProps} name="reason" maxLength={2000} required onChange={() => setReviewerReasonError(null)} />}
           </Field>
@@ -232,7 +256,20 @@ function CandidateForms({
         <form className={styles.requestForm} noValidate onSubmit={submitHandover}>
           <SearchableSelect label="Teammate" name="targetPersonId" value={handoverTargetId}
             options={handoverOptions} placeholder="Choose a teammate" emptyMessage="No eligible teammates match this search."
-            required error={handoverError || undefined} onChange={(value) => { setHandoverTargetId(value); setHandoverError(null); }} />
+            searchMode="remote"
+            onSearch={async (query) => {
+              const result = await searchCandidates(query);
+              setHandoverSearchResults(result.handoverTargets);
+              return result.handoverTargets.map((person) => ({ value: person.id, label: person.displayName }));
+            }}
+            selectedOption={selectedHandoverTarget ? { value: selectedHandoverTarget.id, label: selectedHandoverTarget.displayName } : null}
+            required error={handoverError || undefined} onChange={(value) => {
+              setHandoverTargetId(value);
+              setSelectedHandoverTarget(value
+                ? handoverSearchResults.find((person) => person.id === value) ?? handoverTargets.find((person) => person.id === value) ?? null
+                : null);
+              setHandoverError(null);
+            }} />
           <Field label="Why should this be handed over?" required error={handoverReasonError}>
             {(controlProps) => <Input {...controlProps} name="reason" maxLength={2000} required onChange={() => setHandoverReasonError(null)} />}
           </Field>

@@ -34,8 +34,9 @@ function render(props = {}) {
   const privateTargetId = "person-secret-id";
   return renderToStaticMarkup(React.createElement(OwnerTransfer, {
     canTransfer: true,
-    read: { status: "ready", choices: [{ label: "Aman Verma", transfer() { void privateTargetId; } }] },
+    read: { status: "ready", choices: [{ value: "owner-choice-test", label: "Aman Verma", transfer() { void privateTargetId; } }] },
     onRetry() {},
+    async onSearchEligiblePeople() { return [{ value: "owner-choice-test", label: "Aman Verma", transfer() {} }]; },
     ...props,
   }));
 }
@@ -72,9 +73,8 @@ test("loading, unavailable, read failure, and empty choices remain distinct", ()
   assert.match(failed, /People could not load\./);
   assert.match(failed, /Retry people list/);
 
-  const empty = render({ read: { status: "ready", choices: [] } });
-  assert.match(empty, /No eligible person is available/);
-  assert.doesNotMatch(empty, /<form/);
+  const ready = render({ read: { status: "ready", choices: [] } });
+  assert.match(ready, /<form/);
 });
 
 test("submission guards, exact confirmation, pending, and recovery stay feature-owned", () => {
@@ -84,6 +84,8 @@ test("submission guards, exact confirmation, pending, and recovery stay feature-
   assert.match(source, /confirmation === confirmationPhrase/);
   assert.match(source, /await target!\.transfer\(\)/);
   assert.match(source, /setSubmitting\(true\)/);
+  assert.match(source, /searchMode="remote"/);
+  assert.match(source, /props\.onSearchEligiblePeople\(query\)/);
   assert.match(source, /setSuccess\(true\)/);
   assert.match(source, /setError\(messageFrom\(transferError/);
   assert.match(source, /NOVA did not confirm the transfer/);

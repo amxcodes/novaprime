@@ -1,4 +1,4 @@
-import type { EffectivePermissionRead } from "../../app-shell/permission-grants";
+import type { EffectivePermissionRead } from "../../app-shell/permission-grants.ts";
 import type { ReactElement } from "react";
 import { RolePermissionsLoadFailureSection } from "../../features/admin/roles/RolePermissionsLoadFailureSection";
 import { OrganizationStructureLoadFailureSection } from "../../features/admin/organization/OrganizationStructureFallback";

@@ -11,6 +11,11 @@ export interface ClientMembershipPersonOption {
   label: string;
 }
 
+export interface ClientMembershipSearchOption {
+  value: string;
+  label: string;
+}
+
 export interface ClientDepartmentOption {
   id: string;
   name: string;
@@ -60,6 +65,11 @@ export interface WorkContextCreationWorkstreamOption {
   kind: "client" | "organisation";
 }
 
+export interface WorkContextCreationSearchOption {
+  value: string;
+  label: string;
+}
+
 export type WorkContextCreationReadState =
   | { status: "ready" }
   | { status: "unavailable" | "error"; message: string };
@@ -72,6 +82,8 @@ export interface WorkContextCreationProps {
   canCreateGroup: boolean;
   clientOptions: readonly WorkContextCreationClientOption[];
   groupWorkstreamOptions: readonly WorkContextCreationWorkstreamOption[];
+  onSearchClients(query: string): Promise<readonly WorkContextCreationSearchOption[]>;
+  onSearchGroupWorkstreams(query: string): Promise<readonly WorkContextCreationSearchOption[]>;
   onCreateClient(name: string): Promise<void>;
   onCreateClientWorkstream(input: { name: string; clientId: string }): Promise<void>;
   onCreateOrganisationWorkstream(name: string): Promise<void>;
@@ -85,10 +97,11 @@ export interface ClientMembershipsProps {
   canViewMemberships: boolean;
   canManageMemberships: boolean;
   read: ClientMembershipReadState;
-  /** `null` means no authorized successful people read; `[]` means a successful empty read. */
-  peopleOptions: readonly ClientMembershipPersonOption[] | null;
-  /** Supply only from a real, authorized department-list source. The current API has no list route. */
-  departmentOptions?: readonly ClientDepartmentOption[];
+  /** People search is separately authorized by organization-scoped people.view. */
+  canSearchPeople: boolean;
+  onSearchPeople: (query: string) => Promise<readonly ClientMembershipSearchOption[]>;
+  /** Department search is scoped to this client and requires its membership-management grant. */
+  onSearchDepartments: (query: string) => Promise<readonly ClientMembershipSearchOption[]>;
   addOperation?: ClientMembershipOperationState;
   endOperations?: Readonly<Record<string, ClientMembershipOperationState | undefined>>;
   onLoadMemberships: () => void;

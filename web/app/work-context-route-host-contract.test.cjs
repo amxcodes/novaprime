@@ -4,6 +4,7 @@ const path = require("node:path");
 const { test } = require("node:test");
 
 const appSource = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+const workRoutePlanSource = fs.readFileSync(path.join(__dirname, "work-route.js"), "utf8");
 const readsSource = fs.readFileSync(path.join(__dirname, "work-read-route.js"), "utf8");
 const featureLoaderSource = fs.readFileSync(path.join(__dirname, "work-route-features.js"), "utf8");
 const departmentProjectionSource = fs.readFileSync(
@@ -26,8 +27,8 @@ test("Work Context data fetch and explorer presentation keep their independent c
   assert.equal(workContextFetches.length, 1, "the host should keep one existing authenticated read");
   assert.match(readsSource, /read\(nonFocusedFeatureReads && readPlan\.workContext,[\s\S]*?"\/api\/work-context"/,
     "the shared context fetch must follow its read plan and the active route");
-  assert.match(route, /workContext: readPlan\.workContextView && !taskDetailRoute && !hasReviewRoute && !hasFocusedCollaborationRoute/,
-    "the host selects the explorer only for its visible capability and route");
+  assert.match(workRoutePlanSource, /workContext: canLoadFeature\(readPlan\.workContextView && standardFeatureRoute\)/,
+    "the route planner loads the explorer only for its visible capability and standard route");
   assert.match(featureLoaderSource, /workContext: \(\) => Promise\.all\(\[\s*import\("\.\.\/src\/features\/work-context\/WorkContextExplorer\.tsx"\),\s*import\("\.\.\/src\/features\/work-context\/client-department-projection\.ts"\),/,
     "the explorer and its department projector load together behind the host selection");
   assert.match(route, /if \(readPlan\.workContextView && !hasReviewRoute && !hasFocusedCollaborationRoute\) \{\s*const workContextHost = workSlot\("context"\);\s*mountWorkContextRoute\(/,

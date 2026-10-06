@@ -71,6 +71,18 @@ async function createHarness(options = {}) {
     hasAnyPermissionGrant,
     planAdminReads,
     projectTaskComposerOptions,
+    pageApi: async (path, pageLifetime) => {
+      events.push({ kind: "read", path, pageLifetime });
+      if (options.pageApi) return options.pageApi(path, pageLifetime);
+      if (path.startsWith("/api/work-context")) return options.workContextSearchResult || data.workContext;
+      if (path.startsWith("/api/task-composer/catalog")) return options.catalogSearchResult || {
+        entries: data.taskCatalog.entries,
+        permissions: data.taskCatalog.permissions,
+      };
+      if (path.startsWith("/api/task-composer/correction-sources")) return options.correctionSearchResult || data.tasks;
+      if (path.startsWith("/api/task-composer/departments")) return options.departmentSearchResult || data.departments;
+      throw new Error(`Unexpected task-composer search path: ${path}`);
+    },
     adminCommandUiError: (message) => Object.assign(new Error(message), { uiMessage: true }),
     runProtectedCommand: (permission, permissionTarget, method, path, payload, successMessage, afterSuccess, requestHeaders) => {
       events.push({ kind: "attempt", permissionTarget, method, path, payload, successMessage, requestHeaders });
@@ -254,4 +266,83 @@ test("grants changing between validation and protected dispatch are rejected by 
   const props = harness.route.createProps(harness.data);
   await assert.rejects(props.onSubmit(validInput()), /Current task-creation access changed/);
   assert.equal(harness.events.some(({ kind }) => kind === "post"), false);
+});
+
+test("task-composer dynamic choices are fetched through bounded permission-checked search routes and stay target-scoped", async () => {
+  const remoteTarget = {
+    id: "stream-remote", kind: "client", name: "Research delivery", clientName: "Northstar",
+    billingPolicyClass: "billable",
+  };
+  const searchResult = {
+    workContextSearchResult: {
+      taskCreationTargets: [remoteTarget],
+      groups: [
+        { id: "group-remote", name: "Northstar team", clientWorkstreamId: "stream-remote", organisationWorkstreamId: null, canCreateTask: true },
+        { id: "group-other", name: "Other team", clientWorkstreamId: "stream-other", organisationWorkstreamId: null, canCreateTask: true },
+      ],
+    },
+    catalogSearchResult: {
+      entries: [{ id: "entry-remote", title: "Research template", description: "A remote template", priority: "high", revision: 3 }],
+      permissions: { view: true, manage: false },
+    },
+    correctionSearchResult: {
+      tasks: [{ id: "task-remote", title: "Approved research", status: "approved", isCorrection: false,
+        workstream: { id: "stream-remote", kind: "client" } }],
+    },
+    departmentSearchResult: { departments: [{ id: "dept-remote", name: "Research" }] },
+  };
+  const harness = await createHarness(searchResult);
+  const props = harness.route.createProps(harness.data);
+  const targets = await props.onSearchTargets("research");
+  assert.deepEqual(targets.map(({ id, kind }) => ({ id, kind })), [{ id: "stream-remote", kind: "client" }]);
+  const selectedTarget = targets[0];
+  const groups = await props.onSearchGroups(selectedTarget, "northstar");
+  assert.deepEqual(groups.map(({ id }) => id), ["group-remote"]);
+  const catalog = await props.onSearchCatalog(selectedTarget, "template");
+  const corrections = await props.onSearchCorrections(selectedTarget, "approved research");
+  const departments = await props.onSearchDepartments(selectedTarget, "research");
+
+  assert.deepEqual(catalog.map(({ id, revision }) => ({ id, revision })), [{ id: "entry-remote", revision: 3 }]);
+  assert.deepEqual(corrections.map(({ id, workstreamId }) => ({ id, workstreamId })), [{ id: "task-remote", workstreamId: "stream-remote" }]);
+  assert.deepEqual(departments.map(({ id }) => id), ["dept-remote"]);
+  const readPaths = harness.events.filter(({ kind }) => kind === "read").map(({ path }) => path);
+  assert.deepEqual(readPaths, [
+    "/api/work-context?q=research",
+    "/api/work-context?q=northstar",
+    "/api/task-composer/catalog?workstreamKind=client&workstreamId=stream-remote&q=template",
+    "/api/task-composer/correction-sources?workstreamKind=client&workstreamId=stream-remote&q=approved+research",
+    "/api/task-composer/departments?workstreamKind=client&workstreamId=stream-remote&q=research",
+  ]);
+
+  await props.onSubmit(validInput({
+    clientWorkstreamId: "stream-remote",
+    workGroupId: "group-remote",
+    organisationDepartmentId: "dept-remote",
+    taskCatalogEntryId: "entry-remote",
+    taskCatalogRevision: 3,
+    correctionOfTaskId: "task-remote",
+  }));
+  const post = harness.events.find(({ kind }) => kind === "post");
+  assert.equal(post.payload.clientWorkstreamId, "stream-remote");
+  assert.equal(post.payload.taskCatalogEntryId, "entry-remote");
+  assert.equal(post.payload.correctionOfTaskId, "task-remote");
+  assert.equal(post.payload.organisationDepartmentId, "dept-remote");
+});
+
+test("remote task-composer search rejects a changed page snapshot and revoked create access", async () => {
+  let resolveRead;
+  const harness = await createHarness({
+    pageApi: () => new Promise((resolve) => { resolveRead = resolve; }),
+  });
+  const props = harness.route.createProps(harness.data);
+  const pending = props.onSearchTargets("new");
+  harness.state.adminData = { ...harness.data };
+  resolveRead({ taskCreationTargets: [], groups: [] });
+  await assert.rejects(pending, /Admin changed before task choices could be searched/);
+
+  const revoked = await createHarness();
+  const revokedProps = revoked.route.createProps(revoked.data);
+  revoked.data.actorGrants.grants = revoked.data.actorGrants.grants.filter((grant) => grant.permissionKey !== "tasks.create");
+  await assert.rejects(revokedProps.onSearchTargets("anything"), /no longer allows task creation/);
+  assert.equal(revoked.events.some(({ kind }) => kind === "read"), false);
 });

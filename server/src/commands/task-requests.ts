@@ -8,6 +8,7 @@ import {
   personCanReceiveAssignments,
   personCanReviewTarget,
   personIsOperational,
+  permissionExistsSql,
   type Target,
 } from "./work-context.js";
 import { enqueueNotification } from "./notifications.js";
@@ -417,6 +418,10 @@ export async function readReviewerRequests(request: Request): Promise<Response> 
 }
 
 export async function readAssignmentCandidates(request: Request, assignmentId: string): Promise<Response> {
+  const search = parseAssignmentCandidateSearch(request);
+  if (search === undefined) {
+    return json({ error: "ASSIGNMENT_CANDIDATE_SEARCH_INPUT_INVALID" }, 400);
+  }
   const actor = await normalActor(request);
   if ("response" in actor) return actor.response;
   if (!uuidPattern.test(assignmentId)) return json({ error: "ASSIGNMENT_NOT_FOUND" }, 404);
@@ -429,28 +434,102 @@ export async function readAssignmentCandidates(request: Request, assignmentId: s
       const canRequestReviewer = await hasPermission(transaction, actor.context.userId, actor.context.organisationId, "tasks.reviewer_request", row.target);
       const canRequestHandover = await hasPermission(transaction, actor.context.userId, actor.context.organisationId, "tasks.handover_request", row.target);
       if (!canRequestReviewer && !canRequestHandover) return "PERMISSION_DENIED" as const;
-      const people = await transaction.query<{ id: string; display_name: string }>(
-        `SELECT people.id, people.display_name
-         FROM nova.people people
-         JOIN nova.person_status_periods statuses ON statuses.person_id = people.id AND statuses.ended_at IS NULL
-         WHERE people.organisation_id = $1 AND people.id <> $2
-           AND statuses.status IN ('active', 'notice')
-         ORDER BY people.display_name`,
-        [actor.context.organisationId, actor.context.userId],
+      const candidates = await transaction.query<{ kind: "reviewer" | "handover"; id: string; name: string }>(
+        assignmentCandidateOptionsSql(),
+        [
+          actor.context.organisationId,
+          actor.context.userId,
+          row.target.clientId ?? null,
+          row.target.clientWorkstreamId ?? null,
+          row.target.groupId ?? null,
+          row.target.taskId ?? null,
+          search.toLowerCase(),
+        ],
       );
-      const reviewers = [];
-      const handoverTargets = [];
-      for (const person of people.rows) {
-        if (canRequestReviewer && await personCanReviewTarget(transaction, person.id, actor.context.organisationId, row.target)) reviewers.push(person);
-        if (canRequestHandover && await personCanReceiveAssignments(transaction, person.id, actor.context.organisationId)) handoverTargets.push(person);
-      }
-      return { reviewers, handoverTargets };
+      return {
+        reviewers: canRequestReviewer
+          ? candidates.rows.filter((candidate) => candidate.kind === "reviewer").map(({ id, name }) => ({ id, display_name: name }))
+          : [],
+        handoverTargets: canRequestHandover
+          ? candidates.rows.filter((candidate) => candidate.kind === "handover").map(({ id, name }) => ({ id, display_name: name }))
+          : [],
+      };
     });
     if (result === "PERMISSION_DENIED") return json({ error: result }, 403);
     if (result === "ASSIGNMENT_NOT_FOUND") return json({ error: result }, 404);
     if (result === "ASSIGNMENT_NOT_REQUESTABLE") return json({ error: result }, 409);
     return json(result);
   } catch { return json({ error: "INTERNAL_ERROR" }, 500); }
+}
+
+export function parseAssignmentCandidateSearch(request: Request): string | undefined {
+  const values = new URL(request.url).searchParams.getAll("q");
+  if (values.length > 1) return undefined;
+  const query = (values[0] || "").trim();
+  return query.length <= 100 ? query : undefined;
+}
+
+/** Query already-operational candidates by name, with the same effective-role predicates as writes. */
+export function assignmentCandidateOptionsSql(): string {
+  const reviewPermission = permissionExistsSql({
+    actorId: "candidate_people.id",
+    grantPersonId: "candidate_people.id",
+    grantsRelation: "candidate_active_grants",
+    organisationId: "$1",
+    permissionKey: "'tasks.review'",
+    clientId: "$3::uuid",
+    clientWorkstreamId: "$4::uuid",
+    groupId: "$5::uuid",
+    taskId: "$6::uuid",
+  });
+  return `WITH candidate_people AS MATERIALIZED (
+    SELECT people.id, people.display_name,
+           nova.person_business_date(people.id) AS business_date
+    FROM nova.people people
+    JOIN nova.person_status_periods statuses
+      ON statuses.person_id = people.id AND statuses.ended_at IS NULL
+    WHERE people.organisation_id = $1
+      AND people.id <> $2
+      AND statuses.status IN ('active', 'notice')
+      AND ($7 = '' OR position($7 in lower(coalesce(people.display_name, ''))) > 0)
+  ), candidate_active_grants AS MATERIALIZED (
+    SELECT grants.person_id, candidate_people.business_date,
+           grants.permission_key, grants.scope, grants.client_id,
+           grants.client_workstream_id, grants.group_id, grants.office_id,
+           grants.organisation_department_id
+    FROM candidate_people
+    JOIN nova.person_role_assignments assignments
+      ON assignments.person_id = candidate_people.id
+    JOIN nova.roles roles ON roles.id = assignments.role_id
+      AND roles.organisation_id = $1 AND roles.archived_at IS NULL
+    JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
+    WHERE assignments.effective_on <= candidate_people.business_date
+      AND (assignments.effective_until IS NULL OR assignments.effective_until >= candidate_people.business_date)
+  ), candidate_eligibility AS MATERIALIZED (
+    SELECT candidate_people.id, candidate_people.display_name,
+           EXISTS (
+             SELECT 1
+             FROM nova.person_role_assignments assignments
+             JOIN nova.roles roles ON roles.id = assignments.role_id
+               AND roles.organisation_id = $1 AND roles.archived_at IS NULL
+             JOIN nova.role_operational_policies policies ON policies.role_id = roles.id
+             WHERE assignments.person_id = candidate_people.id
+               AND assignments.effective_on <= candidate_people.business_date
+               AND (assignments.effective_until IS NULL OR assignments.effective_until >= candidate_people.business_date)
+               AND policies.can_receive_assignments
+           ) AS can_receive,
+           ${reviewPermission} AS can_review
+    FROM candidate_people
+  ), assignee_options AS (
+    SELECT id, display_name FROM candidate_eligibility
+    WHERE can_receive ORDER BY lower(display_name), id LIMIT 100
+  ), reviewer_options AS (
+    SELECT id, display_name FROM candidate_eligibility
+    WHERE can_review ORDER BY lower(display_name), id LIMIT 100
+  )
+  SELECT 'handover'::text AS kind, id, display_name AS name FROM assignee_options
+  UNION ALL
+  SELECT 'reviewer'::text AS kind, id, display_name AS name FROM reviewer_options`;
 }
 
 export async function createHandoverRequest(request: Request, assignmentId: string): Promise<Response> {

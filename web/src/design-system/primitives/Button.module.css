@@ -61,7 +61,9 @@
 }
 
 .button[data-variant="danger"]:hover:not(:disabled) {
-  filter: brightness(0.94);
+  border-color: var(--nova-color-danger);
+  color: var(--nova-color-danger);
+  background: var(--nova-color-danger-surface);
 }
 
 .button:active:not(:disabled) {
@@ -73,7 +75,6 @@
   color: var(--nova-color-text-muted);
   background: var(--nova-color-surface-subtle);
   border-color: var(--nova-color-border);
-  opacity: 0.76;
 }
 
 .content {
@@ -143,6 +144,5 @@
   .button:disabled {
     color: GrayText;
     border-color: GrayText;
-    opacity: 1;
   }
 }

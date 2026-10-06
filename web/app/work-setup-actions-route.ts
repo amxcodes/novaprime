@@ -5,6 +5,7 @@ import type {
   BillingPolicySectionProps,
   BillingRuleInput,
   BillingRulesSnapshot,
+  BillingWorkstreamSummary,
   TaskCatalogPermissions,
   TaskCatalogSectionProps,
   TaskPriority,
@@ -81,10 +82,10 @@ function projectBillingRuleEntry(value: unknown): BillingRulesSnapshot["entries"
   return {
     entryId: entry.entryId,
     title: entry.title,
-    description: entry.description,
+    description: entry.description as string | null,
     priority: entry.priority,
     catalogRevision: Number(entry.catalogRevision),
-    billingClass: entry.billingClass,
+    billingClass: entry.billingClass as BillingRulesSnapshot["entries"][number]["billingClass"],
     ruleRevision: Number(entry.ruleRevision),
   };
 }
@@ -96,8 +97,8 @@ function projectBillingMutation(value: unknown, resource: string): BillingMutati
     throw invalidResponse(resource);
   }
   return {
-    policyClass: result.policyClass,
-    revision: result.revision,
+    policyClass: result.policyClass as BillingMutationResult["policyClass"],
+    revision: result.revision as number,
   };
 }
 
@@ -108,6 +109,34 @@ function billingWorkstreams(workContext: unknown): WorkstreamAccess[] {
   return clientWorkstreams.filter((item): item is WorkstreamAccess =>
     typeof item === "object" && item !== null && !Array.isArray(item),
   );
+}
+
+function projectBillingWorkstreamSearch(value: unknown): BillingWorkstreamSummary[] {
+  const result = responseRecord(value, "client workstream search");
+  if (!Array.isArray(result.clientWorkstreams)) throw invalidResponse("client workstream search");
+  const rows = result.clientWorkstreams.filter((item): item is WorkstreamAccess =>
+    typeof item === "object" && item !== null && !Array.isArray(item),
+  );
+  if (rows.length !== result.clientWorkstreams.length) throw invalidResponse("client workstream search");
+  return rows.filter((row) => row.canManageBillingPolicy === true).map((row) => {
+    const id = typeof row.id === "string" ? row.id : "";
+    const name = typeof row.name === "string" ? row.name : "";
+    const clientName = typeof row.client_name === "string"
+      ? row.client_name
+      : typeof row.clientName === "string" ? row.clientName : "";
+    const policyClass = row.billingPolicyClass ?? row.billing_policy_class ?? null;
+    const revision = row.billingPolicyRevision ?? row.billing_policy_revision;
+    if (!id || !name || !clientName ||
+        (policyClass !== null && !billingClass(policyClass)) ||
+        typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 0) {
+      throw invalidResponse("client workstream search");
+    }
+    return {
+      id, name, clientName,
+      policyClass: policyClass as BillingWorkstreamSummary["policyClass"],
+      policyRevision: revision,
+    };
+  });
 }
 
 /**
@@ -165,7 +194,7 @@ export function createWorkSetupActionsRoute(services: WorkSetupActionServices) {
 
     createBillingActions({ source, lifetime, workContext }: BillingActionOptions): Pick<
       BillingPolicySectionProps,
-      "onLoadRules" | "onSaveDefault" | "onSaveRule"
+      "onLoadRules" | "onSearchWorkstreams" | "onSaveDefault" | "onSaveRule"
     > {
       const workstreams = billingWorkstreams(workContext);
       const findManageableWorkstream = (workstreamId: string): WorkstreamAccess | null => {
@@ -186,18 +215,24 @@ export function createWorkSetupActionsRoute(services: WorkSetupActionServices) {
         () => api(path, requestOptions("PATCH", input)),
       );
 
-      const actions: Pick<BillingPolicySectionProps, "onLoadRules" | "onSaveDefault" | "onSaveRule"> = {
-        onLoadRules: async (workstreamId): Promise<BillingRulesSnapshot> => {
+      const actions: Pick<BillingPolicySectionProps, "onLoadRules" | "onSearchWorkstreams" | "onSaveDefault" | "onSaveRule"> = {
+        onSearchWorkstreams: async (query) => {
+          const result = await pageApi("/api/work-context?q=" + encodeURIComponent(query), lifetime);
+          return projectBillingWorkstreamSearch(result);
+        },
+        onLoadRules: async (workstreamId, query): Promise<BillingRulesSnapshot> => {
           requireBillingAndCatalog(workstreamId);
+          const search = query ? "?q=" + encodeURIComponent(query) : "";
           const result = responseRecord(await runCommand(
             source,
             lifetime,
-            () => pageApi(billingPath(workstreamId) + "/definitions", lifetime),
+            () => pageApi(billingPath(workstreamId) + "/definitions" + search, lifetime),
           ), "billing policy rules");
           const rawEntries = result.entries;
           if (rawEntries !== undefined && rawEntries !== null && !Array.isArray(rawEntries)) {
             throw invalidResponse("billing policy rules");
           }
+          const entries = Array.isArray(rawEntries) ? rawEntries : [];
           if ((result.defaultClass !== null && !billingClass(result.defaultClass)) ||
               typeof result.defaultRevision !== "number" || !Number.isSafeInteger(result.defaultRevision) ||
               result.defaultRevision < 1) {
@@ -206,7 +241,7 @@ export function createWorkSetupActionsRoute(services: WorkSetupActionServices) {
           return {
             defaultClass: result.defaultClass as BillingRulesSnapshot["defaultClass"],
             defaultRevision: Number(result.defaultRevision),
-            entries: (rawEntries ?? []).map(projectBillingRuleEntry),
+            entries: entries.map(projectBillingRuleEntry),
           };
         },
         onSaveDefault: async (workstreamId, input): Promise<BillingMutationResult> => {

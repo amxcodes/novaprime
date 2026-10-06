@@ -35,6 +35,8 @@ function input(overrides: Partial<AvailabilityConfigurationProjectionInput> = {}
     onCreateShift: async () => {},
     onCreateCalendar: async () => {},
     onCreateHoliday: async () => {},
+    searchOffices: async () => [{ value: "office-1", label: "Central" }],
+    searchShifts: async () => [{ value: "shift-1", label: "Standard" }],
     ...overrides,
   };
 }
@@ -55,7 +57,10 @@ describe("Availability configuration projection", () => {
       id: "holiday-1", name: "Foundation day", date: "2026-10-02",
       office: { id: "office-1", name: "Central" },
     }] });
-    expect(props.offices).toEqual({ status: "ready", data: [{ id: "office-1", name: "Central" }] });
+    expect(props.offices).toEqual({ status: "ready", data: [] });
+    expect(props.shiftTargets.read).toEqual({ status: "ready", data: [] });
+    expect(JSON.stringify(props.offices)).not.toContain("Central");
+    expect(JSON.stringify(props.shiftTargets)).not.toContain("Standard");
     expect(JSON.stringify(props)).not.toContain("omit");
   });
 

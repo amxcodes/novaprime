@@ -2,7 +2,6 @@ import type {
   WfhPolicyListReadState,
   WfhPolicyOverridesProps,
   WfhPolicySummary,
-  WfhPolicyTargetOption,
   WfhPolicyTargetReadState,
   WfhPolicyTargetType,
 } from "./wfh-policy-contracts";
@@ -62,22 +61,6 @@ function projectPolicy(value: unknown): WfhPolicySummary | null {
   };
 }
 
-function projectTarget(value: unknown, type: WfhPolicyTargetType): WfhPolicyTargetOption | null {
-  if (!isRecord(value) || typeof value.id !== "string" || !value.id.trim()) return null;
-  if (type === "office" || type === "organisation_department") {
-    return typeof value.name === "string" && value.name.trim()
-      ? { id: value.id, name: value.name }
-      : null;
-  }
-  if (!(value.displayName === undefined || value.displayName === null || typeof value.displayName === "string") ||
-      !(value.email === undefined || value.email === null || typeof value.email === "string")) return null;
-  return {
-    id: value.id,
-    displayName: typeof value.displayName === "string" ? value.displayName : null,
-    email: typeof value.email === "string" ? value.email : null,
-  };
-}
-
 function readProblem(result: unknown, issue: ReadIssue | null | undefined, resource: string): {
   status: "unavailable" | "error";
   message: string;
@@ -110,24 +93,13 @@ function projectPolicyRead(input: ReadInput, canView: boolean): WfhPolicyListRea
 
 function projectTargetRead(
   input: ReadInput,
-  type: WfhPolicyTargetType,
-  key: "offices" | "departments" | "people",
   canManage: boolean,
 ): WfhPolicyTargetReadState {
-  if (!canManage || !input.authorized) return { status: "unavailable", targets: [] };
-  if (isRecord(input.result) && input.result.readState === "loading") return { status: "loading", targets: [] };
-  const problem = readProblem(input.result, input.issue, `${type} targets`);
-  if (problem) return problem.status === "unavailable"
-    ? { status: "unavailable", targets: [] }
-    : { status: "error", targets: [], error: problem.message };
-  if (!isRecord(input.result) || !Array.isArray(input.result[key])) {
-    return { status: "error", targets: [], error: `The ${type} target response could not be read. Refresh Admin to try again.` };
-  }
-  const targets = input.result[key].map((row) => projectTarget(row, type));
-  if (targets.some((target) => target === null)) {
-    return { status: "error", targets: [], error: `The ${type} target response could not be read. Refresh Admin to try again.` };
-  }
-  return { status: "ready", targets: targets as WfhPolicyTargetOption[] };
+  // Target rows are fetched on demand from the permission-checked server search endpoint.
+  // Do not project the host's preloaded business directories into this feature.
+  return canManage && input.authorized
+    ? { status: "ready" }
+    : { status: "unavailable" };
 }
 
 export function projectWfhPolicyOverridesProps(
@@ -140,15 +112,11 @@ export function projectWfhPolicyOverridesProps(
     canManage,
     policyRead: projectPolicyRead(input.policies, canView),
     targetReads: {
-      office: projectTargetRead(input.targets.office, "office", "offices", canManage),
-      organisation_department: projectTargetRead(
-        input.targets.organisation_department,
-        "organisation_department",
-        "departments",
-        canManage,
-      ),
-      person: projectTargetRead(input.targets.person, "person", "people", canManage),
+      office: projectTargetRead(input.targets.office, canManage),
+      organisation_department: projectTargetRead(input.targets.organisation_department, canManage),
+      person: projectTargetRead(input.targets.person, canManage),
     },
+    onSearchTargets: input.onSearchTargets,
     onCreate: input.onCreate,
     createError: input.createError,
     isCreating: input.isCreating,

@@ -21,6 +21,13 @@ export interface AvailabilityShiftOption {
   name: string;
 }
 
+export type AvailabilityPickerPurpose = "calendar" | "holiday";
+
+export interface AvailabilitySearchOption {
+  value: string;
+  label: string;
+}
+
 export interface AvailabilityShift {
   id: string;
   name: string;
@@ -91,6 +98,8 @@ export interface AdminAvailabilityConfigurationProps {
     visible: boolean;
     read: AvailabilityReadState<AvailabilityShiftOption>;
   }>;
+  searchOffices: (purpose: AvailabilityPickerPurpose, query: string) => Promise<ReadonlyArray<AvailabilitySearchOption>>;
+  searchShifts: (query: string) => Promise<ReadonlyArray<AvailabilitySearchOption>>;
   onCreateShift: (request: CreateAvailabilityShiftRequest) => Promise<void>;
   onCreateCalendar: (request: CreateAvailabilityCalendarRequest) => Promise<void>;
   onCreateHoliday: (request: CreateAvailabilityHolidayRequest) => Promise<void>;

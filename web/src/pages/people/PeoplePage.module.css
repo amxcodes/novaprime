@@ -1,12 +1,16 @@
 .page {
   container: people-page / inline-size;
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
+  max-width: 100%;
 }
 
 .content {
   display: grid;
+  box-sizing: border-box;
   min-width: 0;
+  max-width: 100%;
   gap: var(--nova-space-7);
 }
 
@@ -19,6 +23,13 @@
 .feedback,
 .feature {
   min-width: 0;
+  max-width: 100%;
+}
+
+.feature {
+  display: grid;
+  gap: var(--nova-space-4);
+  overflow-wrap: anywhere;
 }
 
 .feedback {
@@ -41,6 +52,8 @@
   .content {
     gap: var(--nova-space-6);
   }
+
+  .feature { gap: var(--nova-space-3); }
 }
 
 @container people-page (max-width: 40rem) {
@@ -51,6 +64,8 @@
   .header {
     padding-block-end: var(--nova-space-4);
   }
+
+  .feature { gap: var(--nova-space-3); }
 }
 
 @media (forced-colors: active) {

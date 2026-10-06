@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { NavigationMenuButton } from "./Navigation";
 import styles from "./TopBar.module.css";
 
@@ -8,7 +8,7 @@ export interface TopBarProps {
   actions?: ReactNode;
   drawerId: string;
   navigationOpen: boolean;
-  onOpenNavigation: () => void;
+  onOpenNavigation: (event: MouseEvent<HTMLButtonElement>) => void;
 }
 
 export function TopBar({

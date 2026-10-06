@@ -21,18 +21,14 @@ export interface WfhPolicyDraft {
 
 export type WfhPolicyFieldErrors = Partial<Record<"targetId" | "effectiveOn" | "effectiveUntil" | "reason", string>>;
 
-export interface WfhPolicyTargetOption {
-  id: string;
-  name?: string | null;
-  displayName?: string | null;
-  email?: string | null;
+export interface WfhPolicySearchOption {
+  value: string;
+  label: string;
 }
 
 export type WfhPolicyTargetReadState =
-  | { status: "loading"; targets: ReadonlyArray<WfhPolicyTargetOption> }
-  | { status: "unavailable"; targets: ReadonlyArray<WfhPolicyTargetOption> }
-  | { status: "error"; targets: ReadonlyArray<WfhPolicyTargetOption>; error?: string }
-  | { status: "ready"; targets: ReadonlyArray<WfhPolicyTargetOption> };
+  | { status: "unavailable" }
+  | { status: "ready" };
 
 export interface WfhPolicyRecord {
   id: string;
@@ -59,6 +55,8 @@ export interface WfhPolicyOverridesProps {
   canManage: boolean;
   policyRead: WfhPolicyListReadState;
   targetReads: Readonly<Record<WfhPolicyTargetType, WfhPolicyTargetReadState>>;
+  /** Search is delegated to the permission-checked server directory. */
+  onSearchTargets?: (type: WfhPolicyTargetType, query: string) => Promise<ReadonlyArray<WfhPolicySearchOption>>;
   onCreate(input: WfhPolicyCreateInput): void | Promise<void>;
   createError?: string;
   isCreating?: boolean;

@@ -341,6 +341,14 @@ export async function readPermissions(request: Request): Promise<Response> {
 }
 
 export async function readRoles(request: Request): Promise<Response> {
+  const searchParams = new URL(request.url).searchParams;
+  const searchTerms = searchParams.getAll("q");
+  const rawSearch = searchTerms[0] || "";
+  const search = rawSearch.trim().toLowerCase();
+  if (searchTerms.length > 1 || search.length > 100) {
+    return json({ error: "ROLE_SEARCH_INPUT_INVALID" }, 400);
+  }
+
   return readWithPermission(request, "roles.view", async (transaction, organisationId) => {
     const result = await transaction.query<{
       id: string;
@@ -395,9 +403,18 @@ export async function readRoles(request: Request): Promise<Response> {
        LEFT JOIN nova.role_operational_policies policies ON policies.role_id = roles.id
        LEFT JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
        WHERE roles.organisation_id = $1
+         AND (
+           $2 = ''
+           OR position($2 in lower(roles.name)) > 0
+           OR position($2 in lower(roles.key)) > 0
+           OR ($2 IN ('protected', 'super admin') AND roles.is_protected)
+           OR ($2 IN ('custom', 'custom role') AND NOT roles.is_protected AND roles.archived_at IS NULL)
+           OR ($2 = 'archived' AND roles.archived_at IS NOT NULL)
+           OR ($2 = 'active' AND roles.archived_at IS NULL)
+         )
        GROUP BY roles.id, policies.role_id
        ORDER BY roles.is_protected DESC, roles.archived_at NULLS FIRST, roles.name`,
-      [organisationId],
+      [organisationId, search],
     );
     return {
       roles: result.rows.map((role) => ({
@@ -573,36 +590,46 @@ export async function readPeople(request: Request): Promise<Response> {
 }
 
 export async function readAuditEvents(request: Request): Promise<Response> {
+  const searchParams = new URL(request.url).searchParams;
+  const searchTerms = searchParams.getAll("q");
+  const actionTerms = searchParams.getAll("action");
+  const search = (searchTerms[0] || "").trim().toLowerCase();
+  const action = (actionTerms[0] || "").trim();
+  if (searchTerms.length > 1 || actionTerms.length > 1 || search.length > 100 ||
+      action.length > 120 || (action && !/^[a-zA-Z0-9._-]+$/.test(action))) {
+    return json({ error: "AUDIT_SEARCH_INPUT_INVALID" }, 400);
+  }
+
   return readWithPermission(request, "people.view", async (transaction, organisationId) => {
-    const rawLimit = Number(new URL(request.url).searchParams.get("limit") ?? "50");
+    const rawLimit = Number(searchParams.get("limit") ?? "50");
     const limit = Number.isFinite(rawLimit) ? Math.min(200, Math.max(1, Math.floor(rawLimit))) : 50;
     const result = await transaction.query<{
       id: string;
       action: string;
-      target_type: string;
-      target_id: string;
       occurred_at: Date;
-      details: unknown;
       actor_name: string | null;
     }>(
-      `SELECT events.id, events.action, events.target_type, events.target_id,
-              events.occurred_at, events.details,
+      `SELECT events.id, events.action, events.occurred_at,
               people.display_name AS actor_name
        FROM nova.audit_events events
        LEFT JOIN nova.people people ON people.id = events.actor_person_id
        WHERE events.organisation_id = $1
+         AND ($3 = '' OR events.action = $3)
+         AND (
+           $4 = ''
+           OR position($4 in lower(events.action)) > 0
+           OR position($4 in lower(regexp_replace(events.action, '[._-]+', ' ', 'g'))) > 0
+           OR position($4 in lower(COALESCE(people.display_name, 'System'))) > 0
+         )
        ORDER BY events.occurred_at DESC
        LIMIT $2`,
-      [organisationId, limit],
+      [organisationId, limit, action, search],
     );
     return {
       events: result.rows.map((event) => ({
         id: event.id,
         action: event.action,
-        targetType: event.target_type,
-        targetId: event.target_id,
         occurredAt: event.occurred_at,
-        details: event.details,
         actorName: event.actor_name,
       })),
     };

@@ -65,6 +65,8 @@ test("keeps route framing responsive and theme-token based", () => {
   assert.match(css, /container: operations-page \/ inline-size/);
   assert.match(css, /@container operations-page \(max-width: 60rem\)/);
   assert.match(css, /@container operations-page \(max-width: 40rem\)/);
+  assert.match(css, /\.content\s*>\s*\*\s*\{\s*min-width:\s*0;\s*\}/);
+  assert.match(css, /\.feedback\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /var\(--nova-color-border\)/);
   assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b|:global\(\.overview\)|\.reportGrid|overflow-(?:x|y):\s*(?:auto|scroll)/i);
 });
