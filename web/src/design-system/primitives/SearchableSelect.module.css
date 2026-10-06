@@ -84,14 +84,14 @@
 
 .optionLabel {
   overflow-wrap: anywhere;
-  font-size: var(--nova-type-size-sm);
+  font-size: var(--nova-type-size-control-label);
   font-weight: var(--nova-type-weight-medium);
   line-height: var(--nova-type-line-normal);
 }
 
 .optionDetail {
   color: var(--nova-color-text-secondary);
-  font-size: var(--nova-type-size-xs);
+  font-size: var(--nova-type-size-detail);
   line-height: var(--nova-type-line-normal);
   overflow-wrap: anywhere;
 }
@@ -107,7 +107,7 @@
   align-items: center;
   padding: var(--nova-space-3);
   color: var(--nova-color-text-secondary);
-  font-size: var(--nova-type-size-sm);
+  font-size: var(--nova-type-size-body);
   line-height: var(--nova-type-line-normal);
   overflow-wrap: anywhere;
 }

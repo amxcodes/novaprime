@@ -26,7 +26,90 @@ import { projectHistoricalExceptionsReadState } from "../src/features/admin/exce
  */
 export function loadAdminFeatureModule(authorized, load) {
   if (!authorized) return Promise.resolve(null);
-  return Promise.resolve().then(load).catch(() => null);
+  try {
+    return Promise.resolve(load()).catch(() => null);
+  } catch {
+    return Promise.resolve(null);
+  }
+}
+
+const adminFeatureImporters = {
+  adminPageSections: () => import("../src/pages/admin/admin-page-sections.ts"),
+  roleSectionModule: () => import("../src/features/admin/roles/RolePermissionsSection.tsx"),
+  roleScopeTargetsRouteModule: () => import("./admin-role-scope-targets-route.js"),
+  organizationStructureModule: () => import("../src/features/admin/organization/OrganizationStructureSection.tsx"),
+  availabilityConfigurationModule: () => import("../src/features/availability/AvailabilityConfigurationSection.tsx"),
+  availabilityPickerSearchModule: () => import("./admin-availability-picker-search-route.js"),
+  officeGeofenceModule: () => import("../src/features/admin/OfficeGeofenceSettingsSection.tsx"),
+  attendancePolicyModule: () => import("../src/features/admin/attendance-policy/AttendancePolicySettingsSection.tsx"),
+  wfhPolicyOverridesModule: () => import("../src/features/admin/WfhPolicyOverridesSection.tsx"),
+  wfhPolicyOverridesRouteModule: () => import("./admin-wfh-policy-overrides-route.js"),
+  wfhPolicyTargetSearchModule: () => import("./admin-wfh-policy-target-search-route.js"),
+  peopleModule: () => import("../src/features/admin/PeopleAdministrationSection.tsx"),
+  peopleRouteModule: () => import("./admin-people-route.js"),
+  ownerTransferModule: () => import("../src/features/admin/owner-transfer/index.ts"),
+  ownerTransferRouteModule: () => import("./admin-owner-transfer-route.js"),
+  leaveReviewModule: () => import("../src/features/admin/leave-requests/LeaveRequestsSection.tsx"),
+  wfhReviewModule: () => import("../src/features/admin/wfh-requests/WfhRequestsReviewSection.tsx"),
+  adminWorkModule: () => import("../src/features/admin/work/AdminWorkSection.tsx"),
+  adminWorkCompositionModule: () => import("./admin-work-composition.js"),
+  historicalExceptionsModule: () => import("../src/features/admin/exceptions/HistoricalExceptionsSection.tsx"),
+  auditModule: () => import("../src/features/admin/audit/AuditEventsSection.tsx"),
+  notificationDeliveryModule: () => import("../src/features/notifications/delivery-operations/NotificationDeliveryOperationsSection.tsx"),
+  adminWorkContextCreationModule: () => import("../src/features/work-context/WorkContextCreation.tsx"),
+  adminWorkContextCreationRouteModule: () => import("./admin-work-context-creation-route.js"),
+  adminTaskComposerModule: () => import("../src/features/work/task-composer/TaskComposer.tsx"),
+  adminTaskComposerRouteModule: () => import("./admin-task-composer-route.js"),
+  adminWorkOperationsModule: () => import("../src/features/admin/work-operations/WorkOperations.tsx"),
+  adminWorkOperationsRouteModule: () => import("./admin-work-operations-route.js"),
+  adminMembershipTargetsModule: () => import("../src/features/work-context/AdminClientMembershipTargets.tsx"),
+  adminClientMembershipsRouteModule: () => import("./admin-client-memberships-route.js"),
+};
+
+/** Start only the Admin chunks justified by this server-resolved grant set. */
+export function preloadAdminPageFeatureModules(data, importers = adminFeatureImporters) {
+  const adminWorkVisible = canShowAdminFeature(data.actorGrants, "work");
+  const adminWorkReadPlan = planAdminReads(data.actorGrants);
+  const adminContextCreationVisible = adminWorkVisible && hasAnyPermissionGrant(data.actorGrants,
+    ["clients.create", "workstreams.create", "groups.create"], ["organisation", "client", "client_workstream"]);
+  const adminTaskCreationVisible = adminWorkVisible && hasAnyPermissionGrant(data.actorGrants,
+    ["tasks.create"], ["organisation", "client", "client_workstream", "group"]);
+  const adminMembershipVisible = adminWorkVisible && hasAnyPermissionGrant(data.actorGrants,
+    ["clients.members.manage"], ["organisation", "client"]);
+  const load = (name, authorized = true) => loadAdminFeatureModule(authorized, importers[name]);
+
+  return Promise.all([
+    load("adminPageSections"),
+    load("roleSectionModule", canShowAdminFeature(data.actorGrants, "roles")),
+    load("roleScopeTargetsRouteModule", canShowAdminFeature(data.actorGrants, "roles")),
+    load("organizationStructureModule", canShowAdminFeature(data.actorGrants, "organisationStructure")),
+    load("availabilityConfigurationModule", canShowAdminFeature(data.actorGrants, "availabilityConfiguration")),
+    load("availabilityPickerSearchModule", canShowAdminFeature(data.actorGrants, "availabilityConfiguration")),
+    load("officeGeofenceModule", canShowAdminFeature(data.actorGrants, "geofence")),
+    load("attendancePolicyModule", canShowAdminFeature(data.actorGrants, "attendancePolicy")),
+    load("wfhPolicyOverridesModule", canShowAdminFeature(data.actorGrants, "wfhOverrides")),
+    load("wfhPolicyOverridesRouteModule", canShowAdminFeature(data.actorGrants, "wfhOverrides")),
+    load("wfhPolicyTargetSearchModule", canShowAdminFeature(data.actorGrants, "wfhOverrides")),
+    load("peopleModule", canInviteAdminPeople(data.actorGrants) || canViewAdminPeople(data.actorGrants)),
+    load("peopleRouteModule", canInviteAdminPeople(data.actorGrants) || canViewAdminPeople(data.actorGrants)),
+    load("ownerTransferModule", canShowOwnerTransfer(data.actorGrants)),
+    load("ownerTransferRouteModule", canShowOwnerTransfer(data.actorGrants)),
+    load("leaveReviewModule", canShowAdminFeature(data.actorGrants, "leaveReview")),
+    load("wfhReviewModule", canShowAdminFeature(data.actorGrants, "wfhReview")),
+    load("adminWorkModule", adminWorkVisible),
+    load("adminWorkCompositionModule", adminWorkVisible),
+    load("historicalExceptionsModule", canShowAdminFeature(data.actorGrants, "historicalExceptions")),
+    load("auditModule", canShowAdminFeature(data.actorGrants, "audit")),
+    load("notificationDeliveryModule", canShowAdminFeature(data.actorGrants, "notificationDelivery")),
+    load("adminWorkContextCreationModule", adminContextCreationVisible),
+    load("adminWorkContextCreationRouteModule", adminContextCreationVisible),
+    load("adminTaskComposerModule", adminTaskCreationVisible),
+    load("adminTaskComposerRouteModule", adminTaskCreationVisible),
+    load("adminWorkOperationsModule", adminWorkReadPlan.tasks),
+    load("adminWorkOperationsRouteModule", adminWorkReadPlan.tasks),
+    load("adminMembershipTargetsModule", adminMembershipVisible),
+    load("adminClientMembershipsRouteModule", adminMembershipVisible),
+  ]);
 }
 
 export function createAdminPageRoute(host) {
@@ -76,7 +159,7 @@ export function createAdminPageRoute(host) {
 
   let adminWorkContentRevision = 0;
 
-  return async function renderAdminContent(data, lifetime) {
+  return async function renderAdminContent(data, lifetime, preloadedFeatureModules) {
 
   const target = getTarget();
   if (!target || !isCurrentPageRequest(lifetime)) return;
@@ -104,38 +187,9 @@ export function createAdminPageRoute(host) {
     adminWorkContextCreationModule, adminWorkContextCreationRouteModule,
     adminTaskComposerModule, adminTaskComposerRouteModule,
     adminWorkOperationsModule, adminWorkOperationsRouteModule,
-    adminMembershipTargetsModule, adminClientMembershipsRouteModule] = await Promise.all([
-    import("../src/pages/admin/admin-page-sections.ts"),
-    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "roles"), () => import("../src/features/admin/roles/RolePermissionsSection.tsx")),
-    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "roles"), () => import("./admin-role-scope-targets-route.js")),
-    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "organisationStructure"), () => import("../src/features/admin/organization/OrganizationStructureSection.tsx")),
-    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "availabilityConfiguration"), () => import("../src/features/availability/AvailabilityConfigurationSection.tsx")),
-    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "availabilityConfiguration"), () => import("./admin-availability-picker-search-route.js")),
-    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "geofence"), () => import("../src/features/admin/OfficeGeofenceSettingsSection.tsx")),
-    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "attendancePolicy"), () => import("../src/features/admin/attendance-policy/AttendancePolicySettingsSection.tsx")),
-    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "wfhOverrides"), () => import("../src/features/admin/WfhPolicyOverridesSection.tsx")),
-    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "wfhOverrides"), () => import("./admin-wfh-policy-overrides-route.js")),
-    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "wfhOverrides"), () => import("./admin-wfh-policy-target-search-route.js")),
-    loadAdminFeatureModule(canInviteAdminPeople(data.actorGrants) || canViewAdminPeople(data.actorGrants), () => import("../src/features/admin/PeopleAdministrationSection.tsx")),
-    loadAdminFeatureModule(canInviteAdminPeople(data.actorGrants) || canViewAdminPeople(data.actorGrants), () => import("./admin-people-route.js")),
-    loadAdminFeatureModule(canShowOwnerTransfer(data.actorGrants), () => import("../src/features/admin/owner-transfer/index.ts")),
-    loadAdminFeatureModule(canShowOwnerTransfer(data.actorGrants), () => import("./admin-owner-transfer-route.js")),
-    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "leaveReview"), () => import("../src/features/admin/leave-requests/LeaveRequestsSection.tsx")),
-    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "wfhReview"), () => import("../src/features/admin/wfh-requests/WfhRequestsReviewSection.tsx")),
-    loadAdminFeatureModule(adminWorkVisible, () => import("../src/features/admin/work/AdminWorkSection.tsx")),
-    loadAdminFeatureModule(adminWorkVisible, () => import("./admin-work-composition.js")),
-    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "historicalExceptions"), () => import("../src/features/admin/exceptions/HistoricalExceptionsSection.tsx")),
-    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "audit"), () => import("../src/features/admin/audit/AuditEventsSection.tsx")),
-    loadAdminFeatureModule(canShowAdminFeature(data.actorGrants, "notificationDelivery"), () => import("../src/features/notifications/delivery-operations/NotificationDeliveryOperationsSection.tsx")),
-    loadAdminFeatureModule(adminContextCreationVisible, () => import("../src/features/work-context/WorkContextCreation.tsx")),
-    loadAdminFeatureModule(adminContextCreationVisible, () => import("./admin-work-context-creation-route.js")),
-    loadAdminFeatureModule(adminTaskCreationVisible, () => import("../src/features/work/task-composer/TaskComposer.tsx")),
-    loadAdminFeatureModule(adminTaskCreationVisible, () => import("./admin-task-composer-route.js")),
-    loadAdminFeatureModule(adminWorkReadPlan.tasks, () => import("../src/features/admin/work-operations/WorkOperations.tsx")),
-    loadAdminFeatureModule(adminWorkReadPlan.tasks, () => import("./admin-work-operations-route.js")),
-    loadAdminFeatureModule(adminMembershipVisible, () => import("../src/features/work-context/AdminClientMembershipTargets.tsx")),
-    loadAdminFeatureModule(adminMembershipVisible, () => import("./admin-client-memberships-route.js")),
-  ]);
+    adminMembershipTargetsModule, adminClientMembershipsRouteModule] = await (
+    preloadedFeatureModules ?? preloadAdminPageFeatureModules(data)
+  );
   if (!target.isConnected || !isCurrentPageRequest(lifetime) || identityEpoch !== state.identityEpoch || state.adminData !== data) return;
   const {
     buildAuthorizedAdminPageSections,

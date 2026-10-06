@@ -63,20 +63,20 @@ const typeScaleChoices = {
   large: { value: "large", label: "Large", detail: "Larger interface text" },
 } satisfies ChoiceSet<PersonalAppearance["typeScale"]>;
 const fontChoices = {
-  system: {
-    value: "system",
-    ...TYPEFACE_PREFERENCE_PRESENTATION.system,
-    disabled: !TYPEFACE_PREFERENCE_PRESENTATION.system.available,
+  inter: {
+    value: "inter",
+    ...TYPEFACE_PREFERENCE_PRESENTATION.inter,
+    disabled: !TYPEFACE_PREFERENCE_PRESENTATION.inter.available,
   },
   geist: {
     value: "geist",
     ...TYPEFACE_PREFERENCE_PRESENTATION.geist,
     disabled: !TYPEFACE_PREFERENCE_PRESENTATION.geist.available,
   },
-  inter: {
-    value: "inter",
-    ...TYPEFACE_PREFERENCE_PRESENTATION.inter,
-    disabled: !TYPEFACE_PREFERENCE_PRESENTATION.inter.available,
+  system: {
+    value: "system",
+    ...TYPEFACE_PREFERENCE_PRESENTATION.system,
+    disabled: !TYPEFACE_PREFERENCE_PRESENTATION.system.available,
   },
 } satisfies ChoiceSet<PersonalAppearance["font"]>;
 const contrastChoices = {

@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { resolveApplicationRoute } from "./src/app/route-resolution.ts";
-import { createAdminPageRoute } from "./app/admin-page-route.js";
+import { createAdminPageRoute, preloadAdminPageFeatureModules } from "./app/admin-page-route.js";
 import { createMyDayRequestRoute } from "./app/my-day-request-route.js";
 import { mountMyDayPageRoute } from "./app/my-day-page-route.ts";
 import { createWorkSetupRoute } from "./app/work-setup-route.js";
@@ -1947,6 +1947,7 @@ async function mountAdminPage(target, lifetime, props) {
 
 async function loadAdmin(lifetime, pageReady) {
   let stage = "load-module";
+  let preloadedFeatureModules;
   try {
     const { loadAdminPageData } = await import("./src/pages/admin/admin-page-loader.ts");
     stage = "load-authorized-data";
@@ -1955,11 +1956,17 @@ async function loadAdmin(lifetime, pageReady) {
       readOrError,
       skippedAdminRead,
       isCurrentPageRequest,
+      onEffectiveGrantsResolved: (actorGrants) => {
+        preloadedFeatureModules = preloadAdminPageFeatureModules({ actorGrants });
+        // The route still awaits this same promise after the read batch. Attach
+        // a handler now so an early chunk failure cannot become unhandled.
+        void preloadedFeatureModules.catch(() => {});
+      },
     });
     if (!adminData || !isCurrentPageRequest(lifetime)) return;
     state.adminData = adminData;
     stage = "compose-page";
-    await renderAdminContent(state.adminData, lifetime);
+    await renderAdminContent(state.adminData, lifetime, preloadedFeatureModules);
   } catch (error) {
     if (!isCurrentPageRequest(lifetime)) return;
     const diagnostic = {
@@ -1979,8 +1986,8 @@ async function loadAdmin(lifetime, pageReady) {
   }
 }
 
-async function renderAdminContent(data, lifetime) {
-  return adminPageRoute(data, lifetime);
+async function renderAdminContent(data, lifetime, preloadedFeatureModules) {
+  return adminPageRoute(data, lifetime, preloadedFeatureModules);
 }
 function adminFeatureReadError(result, resource) {
   if (!result?.readError) return null;

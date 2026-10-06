@@ -85,12 +85,15 @@ test("styles custom popup states with NOVA theme, touch, focus, reduced-motion a
   const fieldCss = fs.readFileSync(require.resolve("./Field.module.css"), "utf8");
 
   assert.match(css, /var\(--nova-control-border\)/);
-  assert.match(css, /var\(--nova-color-focus\)/);
+  assert.match(css, /var\(--nova-control-border-focus\)/);
   assert.match(css, /var\(--nova-color-danger\)/);
   assert.match(css, /var\(--nova-control-background-disabled\)/);
   assert.match(css, /var\(--nova-select-popup-background\)/);
   assert.match(css, /var\(--nova-select-popup-border\)/);
   assert.match(css, /var\(--nova-select-popup-shadow\)/);
+  assert.match(css, /\.value\s*\{[^}]*font-size:\s*var\(--nova-type-size-body\)/s);
+  assert.match(css, /\.optionLabel\s*\{[^}]*font-size:\s*var\(--nova-type-size-control-label\)/s);
+  assert.match(css, /\.optionDetail\s*\{[^}]*font-size:\s*var\(--nova-type-size-detail\)/s);
   assert.match(css, /var\(--nova-select-option-hover\)/);
   assert.match(css, /var\(--nova-select-option-selected\)/);
   assert.match(css, /var\(--nova-control-touch-target\)/);
@@ -101,7 +104,8 @@ test("styles custom popup states with NOVA theme, touch, focus, reduced-motion a
   assert.match(css, /appearance:\s*none/);
   assert.match(css, /font:\s*inherit/);
   assert.match(css, /\.trigger\[data-focus-visible\]/);
-  assert.match(css, /\.trigger\[data-focus-visible\]\s*\{\s*outline:\s*3px solid var\(--nova-color-focus\);\s*outline-offset:\s*2px;\s*box-shadow:\s*inset 0 -2px 0 var\(--nova-color-action\)/);
+  assert.match(css, /\.trigger\[data-focus-visible\]\s*\{\s*outline:\s*none;\s*border-color:\s*var\(--nova-control-border-focus\);\s*background:\s*var\(--nova-color-action-subtle\);\s*box-shadow:\s*inset 0 -2px 0 var\(--nova-color-action\)/);
+  assert.doesNotMatch(css.slice(0, css.indexOf("@media (forced-colors: active)")), /\.trigger\[data-focus-visible\][^}]*outline:\s*3px/);
   assert.match(css, /\.trigger\[data-open\]\s*\{[^}]*background:\s*var\(--nova-color-action-subtle\)/s);
   assert.match(css, /\.option\[data-focused\]/);
   assert.match(css, /\.option\s*\{[^}]*border-radius:\s*var\(--nova-radius-option\)/s);
@@ -111,6 +115,7 @@ test("styles custom popup states with NOVA theme, touch, focus, reduced-motion a
   assert.match(css, /@media\s*\(forced-colors:\s*active\)/);
   assert.match(css, /HighlightText/);
   const forcedColorsCss = css.slice(css.indexOf("@media (forced-colors: active)"));
+  assert.match(forcedColorsCss, /\.trigger\[data-focus-visible\]\s*\{\s*outline:\s*1px solid Highlight;\s*outline-offset:\s*-2px/);
   assert.match(forcedColorsCss, /\.option\[data-selected\]\s+\.optionDetail,\s*\.option\[data-focused\]\s+\.optionDetail\s*\{\s*color:\s*inherit/);
   assert.match(css, /\.select\[data-invalid\]\s+\.trigger\s*\{\s*border-color:\s*Mark/);
   assert.match(css, /\.option\[data-selected\]\s+\.check\s*\{\s*color:\s*inherit/);

@@ -17,8 +17,10 @@ const leaveComponentSource = fs.readFileSync(path.join(webRoot, "src", "features
 const wfhComponentSource = fs.readFileSync(path.join(webRoot, "src", "features", "admin", "wfh-requests", "WfhRequestsReview.tsx"), "utf8");
 
 test("Admin loads Leave and WFH review as independent grant-filtered React children", () => {
-  assert.match(routeSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "leaveReview"\), \(\) => import\("\.\.\/src\/features\/admin\/leave-requests\/LeaveRequestsSection\.tsx"\)\)/);
-  assert.match(routeSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "wfhReview"\), \(\) => import\("\.\.\/src\/features\/admin\/wfh-requests\/WfhRequestsReviewSection\.tsx"\)\)/);
+  assert.match(routeSource, /leaveReviewModule: \(\) => import\("\.\.\/src\/features\/admin\/leave-requests\/LeaveRequestsSection\.tsx"\)/);
+  assert.match(routeSource, /wfhReviewModule: \(\) => import\("\.\.\/src\/features\/admin\/wfh-requests\/WfhRequestsReviewSection\.tsx"\)/);
+  assert.match(routeSource, /load\("leaveReviewModule", canShowAdminFeature\(data\.actorGrants, "leaveReview"\)\)/);
+  assert.match(routeSource, /load\("wfhReviewModule", canShowAdminFeature\(data\.actorGrants, "wfhReview"\)\)/);
   assert.match(routeSource, /identityEpoch !== state\.identityEpoch \|\| state\.adminData !== data/);
   assert.match(routeSource, /LeaveRequestsSection = canShowAdminFeature\(\s*state\.adminData\?\.actorGrants,\s*"leaveReview"/);
   assert.match(routeSource, /WfhRequestsReviewSection = canShowAdminFeature\(\s*state\.adminData\?\.actorGrants,\s*"wfhReview"/);

@@ -75,7 +75,8 @@ test("historical-exception projector distinguishes denied, failed, empty, and ma
 test("Admin composes the lazy typed feature under org view grant and keeps resolution independent", () => {
   assert.match(sectionsSource, /\["historical-exceptions", canShowAdminFeature\(read, "historicalExceptions"\)\]/);
   assert.match(capabilitiesSource, /historicalExceptions:\s*Object\.freeze\(\{[\s\S]*?permissionKeys: Object\.freeze\(\["availability\.exception\.view"\]\),[\s\S]*?scopes: organisationScopes/);
-  assert.match(routeSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "historicalExceptions"\), \(\) => import\("\.\.\/src\/features\/admin\/exceptions\/HistoricalExceptionsSection\.tsx"\)\)/);
+  assert.match(routeSource, /historicalExceptionsModule: \(\) => import\("\.\.\/src\/features\/admin\/exceptions\/HistoricalExceptionsSection\.tsx"\)/);
+  assert.match(routeSource, /load\("historicalExceptionsModule", canShowAdminFeature\(data\.actorGrants, "historicalExceptions"\)\)/);
   assert.match(routeSource, /"historical-exceptions": HistoricalExceptions \? createElement\(HistoricalExceptions, \{/);
   assert.match(routeSource, /view: true,[\s\S]{0,120}resolve: hasAdminPermission\(data, "availability\.exception\.resolve"\)/);
   assert.match(routeSource, /projectHistoricalExceptionsReadState\(\s*data\.exceptions,\s*adminFeatureReadError\(data\.exceptions, "historical exceptions"\),\s*\)/);

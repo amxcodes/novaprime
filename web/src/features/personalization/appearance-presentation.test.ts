@@ -34,8 +34,8 @@ const appearance: PersonalAppearance = {
 };
 
 describe("appearance presentation", () => {
-  it("keeps the Fontsource variable family behind the semantic system/Inter fallback token", () => {
-    expect(motionTokens).toContain('--nova-type-family-custom: "Geist Variable";');
+  it("uses bundled Figma Inter by default and retains the semantic family fallbacks", () => {
+    expect(motionTokens).toContain('--nova-type-family-custom: "Inter Variable";');
     expect(motionTokens).toContain("--nova-type-family-sans: var(--nova-type-family-custom), Inter, ui-sans-serif, system-ui,");
     expect(motionTokens).toContain(':root[data-font="inter"]');
     expect(motionTokens).toContain(':root[data-font="system"]');
@@ -63,7 +63,7 @@ describe("appearance presentation", () => {
     expect(lightText).not.toBe("#ffffff");
     expect(darkText).not.toBe("#000000");
     expect(colorContrast(lightText, "#ffffff")).toBeGreaterThanOrEqual(4.5);
-    expect(colorContrast(darkText, "#0c100e")).toBeGreaterThanOrEqual(4.5);
+    expect(colorContrast(darkText, "#1a212c")).toBeGreaterThanOrEqual(4.5);
   });
 
   it("keeps the primary-button foreground at WCAG AA on both the accent and its hover fill", () => {
@@ -81,7 +81,7 @@ describe("appearance presentation", () => {
   });
 
   it("keeps normal and hover accent text readable on neutral and accent-subtle surfaces in both themes", () => {
-    const greySelectionSurface = mixHex("#f6f8f7", "#777777", 0.1);
+    const greySelectionSurface = mixHex("#f3f6fc", "#777777", 0.1);
     expect(colorContrast("#777777", greySelectionSurface)).toBeLessThan(4.5);
 
     const accents = [
@@ -128,7 +128,7 @@ describe("appearance presentation", () => {
   });
 
   it("uses the selected curated or custom accent for its preview", () => {
-    expect(getSelectedAccent(appearance)).toBe("#126a52");
+    expect(getSelectedAccent(appearance)).toBe("#3d6bff");
     expect(getSelectedAccent({ ...appearance, accent: "custom" })).toBe("#126a52");
   });
 
@@ -148,17 +148,17 @@ describe("appearance presentation", () => {
     });
   });
 
-  it("makes bundled Geist and System available while marking unconfigured Inter unavailable", () => {
+  it("makes Figma Inter, optional Geist, and System available", () => {
     expect(TYPEFACE_PREFERENCE_PRESENTATION).toEqual({
       geist: {
         label: "Geist",
-        detail: "Available · NOVA’s bundled variable font.",
+        detail: "Available · Optional NOVA typeface.",
         available: true,
       },
       inter: {
         label: "Inter",
-        detail: "Unavailable until this deployment configures an Inter font asset.",
-        available: false,
+        detail: "Available · Figma’s bundled variable font.",
+        available: true,
       },
       system: {
         label: "System",
@@ -168,10 +168,9 @@ describe("appearance presentation", () => {
     });
   });
 
-  it("explains unavailable Inter values without normalizing the persisted choice", () => {
+  it("keeps all available typeface choices free of fallback warnings", () => {
     expect(getTypefaceAvailabilityMessage("geist")).toBeNull();
-    expect(getTypefaceAvailabilityMessage("inter")).toContain("Inter is saved");
-    expect(getTypefaceAvailabilityMessage("inter")).toContain("Select System");
+    expect(getTypefaceAvailabilityMessage("inter")).toBeNull();
     expect(getTypefaceAvailabilityMessage("system")).toBeNull();
   });
 
@@ -198,10 +197,10 @@ function colorContrast(first: string, second: string): number {
 }
 
 function themeSurfaces(theme: "light" | "dark", accent: string): string[] {
-  const canvas = theme === "light" ? "#f6f8f7" : "#0c100e";
+  const canvas = theme === "light" ? "#f3f6fc" : "#1a212c";
   const neutralSurfaces = theme === "light"
-    ? ["#ffffff", "#f0f4f1"]
-    : ["#151c18", "#202a24", "#151c18"];
+    ? ["#ffffff", "#eef3fa"]
+    : ["#242d39", "#2a3544", "#202a37"];
   const subtleMix = theme === "light" ? 0.1 : 0.16;
   return [canvas, ...neutralSurfaces, mixHex(canvas, accent, subtleMix)];
 }

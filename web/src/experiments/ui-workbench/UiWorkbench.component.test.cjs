@@ -58,7 +58,7 @@ test("workbench composes shared components with labeled examples and feedback st
   assert.match(source, /appearanceAttributes\.map\(\(name\) => \[name, root\.getAttribute\(name\)\]/);
   assert.match(source, /appearanceProperties\.map\(\(name\) => \[/);
   assert.match(source, /font: \[/);
-  assert.doesNotMatch(source, /value: "inter"/);
+  assert.match(source, /value: "inter"/);
   assert.match(source, /value: "custom", label: "Custom"/);
   assert.match(source, /isAppearanceHexColor\(customAccentDraft\)/);
   assert.match(source, /pattern="#\[\\da-fA-F\]\{6\}"/);

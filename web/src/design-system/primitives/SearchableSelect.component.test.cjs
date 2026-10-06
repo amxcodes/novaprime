@@ -87,6 +87,9 @@ test("the shared popup owns tokenized responsive and forced-colors styling", () 
   const css = fs.readFileSync(require.resolve("./SearchableSelect.module.css"), "utf8");
   assert.match(css, /position:\s*fixed/);
   assert.match(css, /--nova-layer-menu/);
+  assert.match(css, /var\(--nova-select-popup-shadow\)/);
+  assert.match(css, /\.optionLabel\s*\{[^}]*font-size:\s*var\(--nova-type-size-control-label\)/s);
+  assert.match(css, /\.optionDetail\s*\{[^}]*font-size:\s*var\(--nova-type-size-detail\)/s);
   assert.match(css, /--nova-control-touch-target/);
   assert.match(css, /\.option\s*\{\s*display:\s*flex;\s*min-width:\s*0;\s*min-height:\s*var\(--nova-control-height\)/);
   assert.match(css, /@media\s*\(any-pointer:\s*coarse\)[\s\S]*?\.option\s*\{\s*min-height:\s*var\(--nova-control-touch-target\)/);

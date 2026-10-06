@@ -62,14 +62,15 @@ function fontRadio(markup, value) {
   return input[0];
 }
 
-test("bundled Geist and System are selectable while unconfigured Inter remains unavailable", () => {
+test("the Figma Inter face, optional Geist, and System are available typeface choices", () => {
   const html = render("system");
 
   assert.doesNotMatch(fontRadio(html, "geist"), /disabled=""/);
-  assert.match(fontRadio(html, "inter"), /disabled=""/);
+  assert.doesNotMatch(fontRadio(html, "inter"), /disabled=""/);
   assert.doesNotMatch(fontRadio(html, "system"), /disabled=""/);
   assert.match(fontRadio(html, "system"), /checked=""/);
-  assert.match(html, /Available · NOVA’s bundled variable font\./);
+  assert.match(html, /Available · Optional NOVA typeface\./);
+  assert.match(html, /Available · Figma’s bundled variable font\./);
   assert.match(html, /Available · Use the device sans-serif\./);
 });
 
@@ -79,7 +80,7 @@ test("every persisted appearance field renders a complete radio group with one s
     theme: ["system", "light", "dark"],
     accent: ["nova", "forest", "teal", "lime", "custom"],
     scale: ["default", "large"],
-    font: ["system", "geist", "inter"],
+    font: ["inter", "geist", "system"],
     density: ["comfortable", "compact"],
     surface: ["standard", "soft"],
     width: ["comfortable", "wide"],
@@ -213,17 +214,13 @@ test("keeps status, color choices, and preview readable at compact container wid
   assert.doesNotMatch(css, /#[\da-f]{3,8}\b|\brgb\(|\bhsl\(/i);
 });
 
-for (const font of ["inter"]) {
-  test(`a previously saved ${font} value stays represented and can be changed to System`, () => {
-    const html = render(font);
-    const unavailable = fontRadio(html, font);
-    const system = fontRadio(html, "system");
+test("Inter can be selected as the exact Figma typeface without fallback warnings", () => {
+  const html = render("inter");
+  const inter = fontRadio(html, "inter");
+  const system = fontRadio(html, "system");
 
-    assert.match(unavailable, /disabled=""/);
-    assert.match(unavailable, /checked=""/);
-    assert.doesNotMatch(system, /disabled=""/);
-    assert.match(html, new RegExp(`${font === "geist" ? "Geist" : "Inter"} is saved`));
-    assert.match(html, /device sans-serif fallback/);
-    assert.match(html, /Select System to save the active device font preference\./);
-  });
-}
+  assert.match(inter, /checked=""/);
+  assert.doesNotMatch(inter, /disabled=""/);
+  assert.doesNotMatch(system, /disabled=""/);
+  assert.doesNotMatch(html, /Inter is saved/);
+});

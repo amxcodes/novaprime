@@ -9,7 +9,7 @@
   border-radius: var(--nova-radius-status);
   color: var(--nova-color-text-secondary);
   background: var(--nova-color-surface-subtle);
-  font-size: var(--nova-type-size-xs);
+  font-size: var(--nova-type-size-detail);
   font-weight: var(--nova-type-weight-medium);
   line-height: 1.25;
   overflow-wrap: anywhere;

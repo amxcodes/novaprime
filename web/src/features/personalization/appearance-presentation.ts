@@ -13,13 +13,13 @@ export const MOTION_PREFERENCE_PRESENTATION = {
 export const TYPEFACE_PREFERENCE_PRESENTATION = {
   geist: {
     label: "Geist",
-    detail: "Available · NOVA’s bundled variable font.",
+    detail: "Available · Optional NOVA typeface.",
     available: true,
   },
   inter: {
     label: "Inter",
-    detail: "Unavailable until this deployment configures an Inter font asset.",
-    available: false,
+    detail: "Available · Figma’s bundled variable font.",
+    available: true,
   },
   system: {
     label: "System",

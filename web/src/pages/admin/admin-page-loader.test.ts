@@ -1,5 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import { loadAdminPageData } from "./admin-page-loader";
+import { preloadAdminPageFeatureModules } from "../../../app/admin-page-route.js";
+
+function createImporters(calls: string[]) {
+  return new Proxy({}, {
+    get: (_target, name) => () => {
+      calls.push(String(name));
+      return Promise.resolve({ module: String(name) });
+    },
+  }) as Record<string, () => Promise<{ module: string }>>;
+}
 
 function createServices(actorGrants: Record<string, unknown>, options: { current?: () => boolean } = {}) {
   const requests: string[] = [];
@@ -138,5 +148,60 @@ describe("Admin page route data", () => {
 
     expect(data).toBeUndefined();
     expect(requests).toEqual(["/api/me/permission-grants"]);
+  });
+
+  it("starts only authorized Admin modules before the protected read batch settles", async () => {
+    const actorGrants = { grants: [{ permissionKey: "roles.view", scope: "organisation" }] };
+    const { requests, services } = createServices(actorGrants);
+    const imports: string[] = [];
+    const events: string[] = [];
+    let releaseReads!: () => void;
+    let resolvePreloadStarted!: () => void;
+    const readsPending = new Promise<void>((resolve) => { releaseReads = resolve; });
+    const preloadStarted = new Promise<void>((resolve) => { resolvePreloadStarted = resolve; });
+    let loadSettled = false;
+    services.pageApi = async (path: string) => {
+      requests.push(path);
+      if (path === "/api/me/permission-grants") return actorGrants;
+      events.push(`read:${path}`);
+      await readsPending;
+      return {};
+    };
+    services.onEffectiveGrantsResolved = (grants) => {
+      events.push("grants-resolved");
+      void preloadAdminPageFeatureModules({ actorGrants: grants }, createImporters(imports));
+      resolvePreloadStarted();
+    };
+
+    const load = loadAdminPageData("page-1", Promise.resolve(true), services).then((result) => {
+      loadSettled = true;
+      return result;
+    });
+    await preloadStarted;
+
+    const firstProtectedRead = events.findIndex((event) => event.startsWith("read:"));
+    expect(imports).toContain("roleSectionModule");
+    expect(imports).toContain("roleScopeTargetsRouteModule");
+    expect(imports).not.toContain("peopleModule");
+    expect(imports).not.toContain("adminWorkModule");
+    expect(events.indexOf("grants-resolved")).toBeLessThan(firstProtectedRead);
+    expect(loadSettled).toBe(false);
+
+    releaseReads();
+    await load;
+  });
+
+  it("never starts feature-module imports when the effective grants authorize no Admin features", async () => {
+    const { services } = createServices({ grants: [], isSuperAdmin: true });
+    const imports: string[] = [];
+    services.onEffectiveGrantsResolved = (actorGrants) => {
+      void preloadAdminPageFeatureModules({ actorGrants }, createImporters(imports));
+    };
+
+    await loadAdminPageData("page-1", Promise.resolve(true), services);
+
+    // The shared section-permission composer is safe and always needed; every
+    // optional feature component and route importer stays out of this load.
+    expect(imports).toEqual(["adminPageSections"]);
   });
 });

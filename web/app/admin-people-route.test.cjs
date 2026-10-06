@@ -7,8 +7,10 @@ const routeSource = fs.readFileSync(path.join(__dirname, "admin-page-route.js"),
 const sectionsSource = fs.readFileSync(path.join(__dirname, "../src/pages/admin/admin-page-sections.ts"), "utf8");
 
 test("Admin loads People as a typed lazy child only for organization invite or view grants", () => {
-  assert.match(routeSource, /loadAdminFeatureModule\(canInviteAdminPeople\(data\.actorGrants\) \|\| canViewAdminPeople\(data\.actorGrants\), \(\) => import\("\.\.\/src\/features\/admin\/PeopleAdministrationSection\.tsx"\)\)/);
-  assert.match(routeSource, /loadAdminFeatureModule\(canInviteAdminPeople\(data\.actorGrants\) \|\| canViewAdminPeople\(data\.actorGrants\), \(\) => import\("\.\/admin-people-route\.js"\)\)/);
+  assert.match(routeSource, /peopleModule: \(\) => import\("\.\.\/src\/features\/admin\/PeopleAdministrationSection\.tsx"\)/);
+  assert.match(routeSource, /peopleRouteModule: \(\) => import\("\.\/admin-people-route\.js"\)/);
+  assert.match(routeSource, /load\("peopleModule", canInviteAdminPeople\(data\.actorGrants\) \|\| canViewAdminPeople\(data\.actorGrants\)\)/);
+  assert.match(routeSource, /load\("peopleRouteModule", canInviteAdminPeople\(data\.actorGrants\) \|\| canViewAdminPeople\(data\.actorGrants\)\)/);
   assert.match(routeSource, /canInviteAdminPeople,[\s\S]{0,120}canViewAdminPeople,[\s\S]{0,80}pageApi,/);
   assert.match(routeSource, /identityEpoch !== state\.identityEpoch \|\| state\.adminData !== data\) return;/);
   assert.match(routeSource, /canInviteAdminPeople\(state\.adminData\?\.actorGrants\) \|\|\s*canViewAdminPeople\(state\.adminData\?\.actorGrants\)[\s\S]*?peopleModule\?\.PeopleAdministrationSection/);

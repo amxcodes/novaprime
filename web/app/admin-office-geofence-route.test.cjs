@@ -86,7 +86,8 @@ test("Admin wires the typed child through the existing capability and protected 
   assert.ok(sectionStart >= 0 && sectionEnd > sectionStart);
   const section = routeSource.slice(sectionStart, sectionEnd);
 
-  assert.match(routeSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "geofence"\), \(\) => import\("\.\.\/src\/features\/admin\/OfficeGeofenceSettingsSection\.tsx"\)\)/);
+  assert.match(routeSource, /officeGeofenceModule: \(\) => import\("\.\.\/src\/features\/admin\/OfficeGeofenceSettingsSection\.tsx"\)/);
+  assert.match(routeSource, /load\("officeGeofenceModule", canShowAdminFeature\(data\.actorGrants, "geofence"\)\)/);
   assert.match(routeSource, /projectOfficeGeofenceSettingsProps/);
   assert.match(section, /issue: adminReadIssue\(data\.geofenceOptions, "office geofence settings"\)/);
   assert.match(section, /canManage: canShowAdminFeature\(data\.actorGrants, "geofence"\)/);
@@ -101,7 +102,7 @@ test("Admin wires the typed child through the existing capability and protected 
 });
 
 test("geofence child keeps the section heading and defers the feature with accessible states", () => {
-  assert.match(routeSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "geofence"\), \(\) => import\("\.\.\/src\/features\/admin\/OfficeGeofenceSettingsSection\.tsx"\)\)/);
+  assert.match(routeSource, /officeGeofenceModule: \(\) => import\("\.\.\/src\/features\/admin\/OfficeGeofenceSettingsSection\.tsx"\)/);
   assert.match(sectionSource, /lazy\(\(\) =>\s*import\("\.\/OfficeGeofenceSettings"\)/);
   assert.match(sectionSource, /<h2 className=\{styles\.title\}>Attendance geofences<\/h2>/);
   assert.match(sectionSource, /Set the office coordinates and radius used to validate office check-ins\./);

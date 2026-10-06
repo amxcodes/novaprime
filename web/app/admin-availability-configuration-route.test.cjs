@@ -13,8 +13,10 @@ const projectionSource = fs.readFileSync(path.join(webRoot, "src", "features", "
 const fallbackSource = fs.readFileSync(path.join(webRoot, "src", "features", "availability", "AvailabilityConfigurationFallback.tsx"), "utf8");
 
 test("Admin loads Availability only for its organization grant and composes its typed feature child", () => {
-  assert.match(routeSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "availabilityConfiguration"\), \(\) => import\("\.\.\/src\/features\/availability\/AvailabilityConfigurationSection\.tsx"\)\)/);
-  assert.match(routeSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "availabilityConfiguration"\), \(\) => import\("\.\/admin-availability-picker-search-route\.js"\)\)/);
+  assert.match(routeSource, /availabilityConfigurationModule: \(\) => import\("\.\.\/src\/features\/availability\/AvailabilityConfigurationSection\.tsx"\)/);
+  assert.match(routeSource, /availabilityPickerSearchModule: \(\) => import\("\.\/admin-availability-picker-search-route\.js"\)/);
+  assert.match(routeSource, /load\("availabilityConfigurationModule", canShowAdminFeature\(data\.actorGrants, "availabilityConfiguration"\)\)/);
+  assert.match(routeSource, /load\("availabilityPickerSearchModule", canShowAdminFeature\(data\.actorGrants, "availabilityConfiguration"\)\)/);
   assert.match(routeSource, /createAvailabilityPickerSearchRoute\(\{[\s\S]{0,300}pageApi,[\s\S]{0,120}captureCommandContext/);
   assert.match(routeSource, /if \(!target\.isConnected \|\| !isCurrentPageRequest\(lifetime\) \|\| identityEpoch !== state\.identityEpoch \|\| state\.adminData !== data\) return;/);
   assert.match(routeSource, /const AvailabilityConfigurationSection = canShowAdminFeature\(\s*state\.adminData\?\.actorGrants,\s*"availabilityConfiguration",\s*\)/);

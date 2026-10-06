@@ -43,6 +43,8 @@ export interface AdminPageLoaderServices<TLifetime = unknown> {
   readOrError: (promise: Promise<AdminRead>, fallback: AdminRead) => Promise<AdminRead>;
   skippedAdminRead: (fallback: AdminRead, requiredPermission: string) => AdminRead;
   isCurrentPageRequest: (lifetime: TLifetime) => boolean;
+  /** Start grant-authorized view modules before the independent Admin read batch. */
+  onEffectiveGrantsResolved?: (actorGrants: AdminActorRead) => unknown;
 }
 
 /**
@@ -62,6 +64,12 @@ export async function loadAdminPageData<TLifetime>(
     { grants: [], isSuperAdmin: false, actorPersonId: null },
   ) as AdminActorRead;
   if (!services.isCurrentPageRequest(lifetime)) return undefined;
+
+  // Feature imports are client-side view code, gated by the same effective
+  // server grant projection used to plan the reads below. They intentionally
+  // overlap the independent endpoint batch and are only consumed for this
+  // still-current page request.
+  services.onEffectiveGrantsResolved?.(actorGrants);
 
   const plan = planAdminReads(actorGrants);
   const read = (condition: boolean, path: string, fallback: AdminRead, permission: string) => condition

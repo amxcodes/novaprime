@@ -73,11 +73,12 @@ test("Admin composes the typed section under the exact organization manage grant
   const capabilitySource = fs.readFileSync(path.join(__dirname, "..", "src", "features", "admin", "capabilities.ts"), "utf8");
 
   assert.match(capabilitySource, /attendancePolicy:\s*Object\.freeze\(\{\s*permissionKeys:\s*Object\.freeze\(\["organisation\.settings\.manage"\]\),\s*scopes:\s*organisationScopes/);
-  assert.match(routeSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "attendancePolicy"\), \(\) => import\("\.\.\/src\/features\/admin\/attendance-policy\/AttendancePolicySettingsSection\.tsx"\)\)/);
+  assert.match(routeSource, /attendancePolicyModule: \(\) => import\("\.\.\/src\/features\/admin\/attendance-policy\/AttendancePolicySettingsSection\.tsx"\)/);
+  assert.match(routeSource, /load\("attendancePolicyModule", canShowAdminFeature\(data\.actorGrants, "attendancePolicy"\)\)/);
   assert.match(routeSource, /"attendance-policy": AttendancePolicySettings\s*\? createElement\(AttendancePolicySettings,/);
   assert.match(routeSource, /canManage: hasAdminPermission\(data, "organisation\.settings\.manage"\)/);
   assert.match(routeSource, /runAdminProtectedCommand\([\s\S]*?"organisation\.settings\.manage", \{\},[\s\S]*?"PATCH", "\/api\/organisation\/attendance-policy", request, "Attendance policy scheduled\."/);
-  assert.match(appSource, /adminPageRoute\(data, lifetime\)/);
+  assert.match(appSource, /adminPageRoute\(data, lifetime, preloadedFeatureModules\)/);
   assert.doesNotMatch(routeSource, /mountAdminAttendancePolicy/);
   assert.match(sectionSource, /lazy\(\(\) =>\s*import\("\.\/AttendancePolicySettings"\)/);
   assert.match(sectionSource, /StateMessage kind="loading" title="Loading attendance policy settings"/);

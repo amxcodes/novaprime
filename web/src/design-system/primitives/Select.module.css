@@ -11,7 +11,7 @@
   align-items: baseline;
   gap: var(--nova-space-1);
   color: var(--nova-color-text-primary);
-  font-size: var(--nova-type-size-sm);
+  font-size: var(--nova-type-size-control-label);
   font-weight: var(--nova-type-weight-medium);
   line-height: var(--nova-type-line-normal);
   overflow-wrap: anywhere;
@@ -64,8 +64,9 @@
 }
 
 .trigger[data-focus-visible] {
-  outline: 3px solid var(--nova-color-focus);
-  outline-offset: 2px;
+  outline: none;
+  border-color: var(--nova-control-border-focus);
+  background: var(--nova-color-action-subtle);
   box-shadow: inset 0 -2px 0 var(--nova-color-action);
 }
 
@@ -88,7 +89,7 @@
 .value {
   min-width: 0;
   overflow: hidden;
-  font-size: var(--nova-type-size-md);
+  font-size: var(--nova-type-size-body);
   line-height: var(--nova-type-line-normal);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -114,7 +115,7 @@
 
 .description,
 .error {
-  font-size: var(--nova-type-size-xs);
+  font-size: var(--nova-type-size-detail);
   line-height: var(--nova-type-line-normal);
   overflow-wrap: anywhere;
 }
@@ -192,7 +193,7 @@
   padding: var(--nova-space-3);
   border-radius: var(--nova-radius-option);
   color: var(--nova-color-text-secondary);
-  font-size: var(--nova-type-size-sm);
+  font-size: var(--nova-type-size-body);
   line-height: var(--nova-type-line-normal);
   overflow-wrap: anywhere;
 }
@@ -203,13 +204,13 @@
 }
 
 .optionLabel {
-  font-size: var(--nova-type-size-sm);
+  font-size: var(--nova-type-size-control-label);
   line-height: var(--nova-type-line-normal);
 }
 
 .optionDetail {
   color: var(--nova-color-text-secondary);
-  font-size: var(--nova-type-size-xs);
+  font-size: var(--nova-type-size-detail);
   line-height: var(--nova-type-line-normal);
 }
 
@@ -254,7 +255,8 @@
   }
 
   .trigger[data-focus-visible] {
-    outline-color: Highlight;
+    outline: 1px solid Highlight;
+    outline-offset: -2px;
   }
 
   .trigger[data-focus-visible],

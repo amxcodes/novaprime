@@ -28,7 +28,8 @@ test("Admin GET and typed section are planned only by organization-scoped delive
   assert.match(capabilitySource, /notificationDelivery:\s*Object\.freeze\(\{[\s\S]*?permissionKeys:\s*Object\.freeze\(\["notifications\.delivery\.view"\]\),\s*scopes:\s*organisationScopes/);
   assert.match(capabilitySource, /notificationDelivery:\s*hasPermissionGrant\(read, "notifications\.delivery\.view"\)/);
   assert.match(loaderSource, /read\(plan\.notificationDelivery,\s*"\/api\/notifications\/delivery\?limit=50"/);
-  assert.match(routeSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "notificationDelivery"\), \(\) => import\("\.\.\/src\/features\/notifications\/delivery-operations\/NotificationDeliveryOperationsSection\.tsx"\)\)/);
+  assert.match(routeSource, /notificationDeliveryModule: \(\) => import\("\.\.\/src\/features\/notifications\/delivery-operations\/NotificationDeliveryOperationsSection\.tsx"\)/);
+  assert.match(routeSource, /load\("notificationDeliveryModule", canShowAdminFeature\(data\.actorGrants, "notificationDelivery"\)\)/);
   assert.match(routeSource, /"notification-delivery": NotificationDeliveryOperations \? createElement\(NotificationDeliveryOperations/);
 
   const manageOnly = { grants: [{ permissionKey: "notifications.manage", scope: "organisation" }] };
@@ -105,7 +106,7 @@ test("requeue keeps view and manage grants independent and host-owned guards int
 });
 
 test("typed section lazy-loads the feature with accessible loading and failure states", () => {
-  assert.match(routeSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "notificationDelivery"\), \(\) => import\("\.\.\/src\/features\/notifications\/delivery-operations\/NotificationDeliveryOperationsSection\.tsx"\)\)/);
+  assert.match(routeSource, /notificationDeliveryModule: \(\) => import\("\.\.\/src\/features\/notifications\/delivery-operations\/NotificationDeliveryOperationsSection\.tsx"\)/);
   assert.match(sectionSource, /lazy\(\(\) =>\s*import\("\.\/NotificationDeliveryOperations"\)/);
   assert.match(sectionSource, /StateMessage kind="loading" title="Loading notification delivery operations"/);
   assert.match(sectionSource, /The delivery feature could not be downloaded\. Reload Admin to try again\./);

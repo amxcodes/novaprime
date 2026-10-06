@@ -98,7 +98,7 @@
 }
 
 .personRow {
-  min-height: 4rem;
+  min-height: var(--nova-table-row-height);
   padding-block: var(--nova-space-3);
 }
 

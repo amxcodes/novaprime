@@ -26,7 +26,7 @@ const appearanceOptions = {
     { value: "dark", label: "Dark", description: "Black and green." },
   ],
   accent: [
-    { value: "nova", label: "NOVA green" },
+    { value: "nova", label: "NOVA blue" },
     { value: "forest", label: "Forest" },
     { value: "teal", label: "Teal" },
     { value: "lime", label: "Lime" },
@@ -41,7 +41,8 @@ const appearanceOptions = {
     { value: "large", label: "Large" },
   ],
   font: [
-    { value: "geist", label: "Geist", description: "Bundled NOVA typeface." },
+    { value: "inter", label: "Inter", description: "Figma typeface." },
+    { value: "geist", label: "Geist", description: "Optional bundled typeface." },
     { value: "system", label: "System", description: "Device sans-serif." },
   ],
   contrast: [

@@ -54,8 +54,8 @@ test("action feedback surfaces resolve from the active light, dark, and system t
 
   assert.ok(blocks.every(Boolean), "light, explicit-dark, and system-dark token blocks exist");
   for (const block of blocks) {
-    assert.match(block, /--nova-color-action-edge:\s*color-mix\(in srgb, var\(--nova-color-action\) 82%, var\(--nova-color-text-primary\)\)/);
-    assert.match(block, /--nova-color-action-pressed:\s*color-mix\(in srgb, var\(--nova-color-action\) 86%, var\(--nova-color-text-primary\)\)/);
+    assert.match(block, /--nova-color-action-edge:\s*var\(--nova-user-accent-edge-(?:light|dark),\s*var\(--nova-palette-action-edge-(?:light|dark)\)\)/);
+    assert.match(block, /--nova-color-action-pressed:\s*var\(--nova-color-action\)/);
   }
 });
 
@@ -65,12 +65,12 @@ test("Orbit control track and highlight tokens follow explicit and system theme 
   const dark = tokenSource.match(/:root\[data-theme="dark"\]\s*\{([^}]*)\}/)?.[1] ?? "";
   const systemDark = tokenSource.match(/@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root\[data-theme="system"\]\s*\{([^}]*)\}/)?.[1] ?? "";
 
-  assert.match(light, /--nova-color-control-track:\s*var\(--nova-color-surface\)/);
-  assert.match(light, /--nova-color-control-highlight:\s*var\(--nova-palette-white\)/);
+  assert.match(light, /--nova-color-control-track:\s*var\(--nova-palette-well-light\)/);
+  assert.match(light, /--nova-color-control-highlight:\s*var\(--nova-palette-control-highlight-light\)/);
   assert.match(light, /--nova-control-highlight-opacity:\s*0\.36/);
   for (const block of [dark, systemDark]) {
-    assert.match(block, /--nova-color-control-track:\s*var\(--nova-color-surface-subtle\)/);
-    assert.match(block, /--nova-color-control-highlight:\s*var\(--nova-color-text-secondary\)/);
+    assert.match(block, /--nova-color-control-track:\s*var\(--nova-palette-well-dark\)/);
+    assert.match(block, /--nova-color-control-highlight:\s*var\(--nova-palette-control-highlight-dark\)/);
     assert.match(block, /--nova-control-highlight-opacity:\s*0\.24/);
   }
 });

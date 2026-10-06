@@ -11,7 +11,7 @@
   align-items: baseline;
   gap: var(--nova-space-1);
   color: var(--nova-color-text-primary);
-  font-size: var(--nova-type-size-sm);
+  font-size: var(--nova-type-size-control-label);
   font-weight: var(--nova-type-weight-medium);
   line-height: var(--nova-type-line-normal);
   overflow-wrap: anywhere;
@@ -30,7 +30,7 @@
   border-radius: var(--nova-radius-control);
   color: var(--nova-color-text-primary);
   background: var(--nova-control-background);
-  font-size: var(--nova-type-size-md);
+  font-size: var(--nova-type-size-body);
   line-height: var(--nova-type-line-normal);
   transition:
     border-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
@@ -70,7 +70,7 @@
 .hint,
 .error {
   min-width: 0;
-  font-size: var(--nova-type-size-xs);
+  font-size: var(--nova-type-size-detail);
   line-height: var(--nova-type-line-normal);
   overflow-wrap: anywhere;
 }

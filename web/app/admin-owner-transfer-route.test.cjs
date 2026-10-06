@@ -11,8 +11,10 @@ const capabilitySource = fs.readFileSync(path.join(__dirname, "../src/features/a
 test("Owner Transfer UI and host adapter load only behind Super Admin plus organization People access", () => {
   assert.match(capabilitySource, /export function canShowOwnerTransfer[\s\S]*?read\?\.isSuperAdmin === true[\s\S]*?Array\.isArray\(read\.grants\)/);
   assert.match(capabilitySource, /export function canShowOwnerTransfer[\s\S]*?canViewAdminPeople\(read\)/);
-  assert.match(adminPageRouteSource, /loadAdminFeatureModule\(canShowOwnerTransfer\(data\.actorGrants\), \(\) => import\("\.\.\/src\/features\/admin\/owner-transfer\/index\.ts"\)\)/);
-  assert.match(adminPageRouteSource, /loadAdminFeatureModule\(canShowOwnerTransfer\(data\.actorGrants\), \(\) => import\("\.\/admin-owner-transfer-route\.js"\)\)/);
+  assert.match(adminPageRouteSource, /ownerTransferModule: \(\) => import\("\.\.\/src\/features\/admin\/owner-transfer\/index\.ts"\)/);
+  assert.match(adminPageRouteSource, /ownerTransferRouteModule: \(\) => import\("\.\/admin-owner-transfer-route\.js"\)/);
+  assert.match(adminPageRouteSource, /load\("ownerTransferModule", canShowOwnerTransfer\(data\.actorGrants\)\)/);
+  assert.match(adminPageRouteSource, /load\("ownerTransferRouteModule", canShowOwnerTransfer\(data\.actorGrants\)\)/);
   assert.match(adminPageRouteSource, /canViewAdminPeople,[\s\S]{0,80}pageApi,[\s\S]{0,100}runAdminProtectedCommand/);
   assert.match(adminPageRouteSource, /state\.adminData !== data\) return;[\s\S]*?canShowOwnerTransfer\(state\.adminData\?\.actorGrants\)/);
   assert.match(adminPageRouteSource, /"owner-transfer": OwnerTransfer && ownerTransferRoute[\s\S]*?createElement\(OwnerTransfer, ownerTransferRoute\.createProps\(data\)\)/);

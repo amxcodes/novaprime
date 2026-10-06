@@ -14,7 +14,8 @@ const fallbackSource = fs.readFileSync(path.join(webRoot, "src", "features", "ad
 const fallbackStyles = fs.readFileSync(path.join(webRoot, "src", "features", "admin", "organization", "OrganizationStructureFallback.module.css"), "utf8");
 
 test("Admin loads Organization Structure only for its grant and composes the typed feature locally", () => {
-  assert.match(routeSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "organisationStructure"\), \(\) => import\("\.\.\/src\/features\/admin\/organization\/OrganizationStructureSection\.tsx"\)\)/);
+  assert.match(routeSource, /organizationStructureModule: \(\) => import\("\.\.\/src\/features\/admin\/organization\/OrganizationStructureSection\.tsx"\)/);
+  assert.match(routeSource, /load\("organizationStructureModule", canShowAdminFeature\(data\.actorGrants, "organisationStructure"\)\)/);
   assert.match(routeSource, /if \(!target\.isConnected \|\| !isCurrentPageRequest\(lifetime\) \|\| identityEpoch !== state\.identityEpoch \|\| state\.adminData !== data\) return;/);
   assert.match(routeSource, /OrganizationStructureLoadFailureSection,[\s\S]{0,120}RolePermissionsLoadFailureSection/);
   assert.match(routeSource, /"organization-structure": OrganizationStructureSection \? createElement\(OrganizationStructureSection, \{[\s\S]{0,1800}: createElement\(OrganizationStructureLoadFailureSection\)/);

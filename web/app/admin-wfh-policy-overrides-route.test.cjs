@@ -8,9 +8,12 @@ const routeSource = fs.readFileSync(path.join(__dirname, "admin-wfh-policy-overr
 const sectionsSource = fs.readFileSync(path.join(__dirname, "../src/pages/admin/admin-page-sections.ts"), "utf8");
 
 test("Admin imports and composes WFH Overrides as its own grant-filtered typed feature", () => {
-  assert.match(adminPageRouteSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "wfhOverrides"\), \(\) => import\("\.\.\/src\/features\/admin\/WfhPolicyOverridesSection\.tsx"\)\)/);
-  assert.match(adminPageRouteSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "wfhOverrides"\), \(\) => import\("\.\/admin-wfh-policy-overrides-route\.js"\)\)/);
-  assert.match(adminPageRouteSource, /loadAdminFeatureModule\(canShowAdminFeature\(data\.actorGrants, "wfhOverrides"\), \(\) => import\("\.\/admin-wfh-policy-target-search-route\.js"\)\)/);
+  assert.match(adminPageRouteSource, /wfhPolicyOverridesModule: \(\) => import\("\.\.\/src\/features\/admin\/WfhPolicyOverridesSection\.tsx"\)/);
+  assert.match(adminPageRouteSource, /wfhPolicyOverridesRouteModule: \(\) => import\("\.\/admin-wfh-policy-overrides-route\.js"\)/);
+  assert.match(adminPageRouteSource, /wfhPolicyTargetSearchModule: \(\) => import\("\.\/admin-wfh-policy-target-search-route\.js"\)/);
+  assert.match(adminPageRouteSource, /load\("wfhPolicyOverridesModule", canShowAdminFeature\(data\.actorGrants, "wfhOverrides"\)\)/);
+  assert.match(adminPageRouteSource, /load\("wfhPolicyOverridesRouteModule", canShowAdminFeature\(data\.actorGrants, "wfhOverrides"\)\)/);
+  assert.match(adminPageRouteSource, /load\("wfhPolicyTargetSearchModule", canShowAdminFeature\(data\.actorGrants, "wfhOverrides"\)\)/);
   assert.match(adminPageRouteSource, /createWfhPolicyTargetSearchRoute\(\{[\s\S]{0,360}pageApi,[\s\S]{0,180}captureCommandContext/);
   assert.match(adminPageRouteSource, /searchTargets: wfhPolicyTargetSearchRoute\?\.searchTargets/);
   assert.match(adminPageRouteSource, /state\.adminData !== data\) return;/);

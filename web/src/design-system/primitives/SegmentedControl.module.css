@@ -1,4 +1,5 @@
 .group {
+  position: relative;
   display: inline-flex;
   min-width: 0;
   max-width: 100%;
@@ -7,9 +8,21 @@
   container-type: inline-size;
   container-name: segmented-control;
   padding: 3px;
-  border: 1px solid var(--nova-color-border);
+  border: 1px solid var(--nova-color-control-edge-quiet);
   border-radius: var(--nova-radius-control);
-  background: var(--nova-color-control-track);
+  background: var(--nova-color-control-fill-quiet);
+}
+
+.group::before {
+  position: absolute;
+  inset-block-start: 1px;
+  inset-inline: 8%;
+  height: 1px;
+  border-radius: 0.5px;
+  background: var(--nova-color-control-highlight);
+  content: "";
+  opacity: var(--nova-control-highlight-opacity);
+  pointer-events: none;
 }
 
 .option {
@@ -24,7 +37,9 @@
   border-radius: var(--nova-radius-status);
   color: var(--nova-color-text-secondary);
   background: transparent;
-  font: var(--nova-type-label);
+  font-size: var(--nova-type-size-control-label);
+  font-weight: var(--nova-type-weight-regular);
+  line-height: var(--nova-type-line-control);
   white-space: nowrap;
   cursor: pointer;
   transition:
@@ -35,39 +50,30 @@
 
 .option:hover:not(:disabled):not([data-selected="true"]) {
   color: var(--nova-color-text-primary);
-  background: var(--nova-color-surface);
+  border-color: var(--nova-color-control-edge-hover);
+  background: var(--nova-color-control-fill-hover);
 }
 
 .option[data-selected="true"] {
-  position: relative;
   border-color: var(--nova-color-action-edge);
   color: var(--nova-color-action-contrast);
-  background: linear-gradient(112deg, var(--nova-color-action), var(--nova-color-action-edge));
-  font-weight: var(--nova-type-weight-semibold);
-}
-
-.option[data-selected="true"]::before {
-  position: absolute;
-  inset-block-start: 1px;
-  inset-inline: 9%;
-  height: 1px;
-  border-radius: 1px;
-  background: var(--nova-color-control-highlight);
-  content: "";
-  opacity: var(--nova-control-highlight-opacity);
-  pointer-events: none;
-}
-
-.option > span {
-  position: relative;
-  z-index: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
+  background: var(--nova-color-action);
 }
 
 .option:focus-visible {
-  outline: 2px solid var(--nova-color-focus);
-  outline-offset: 1px;
+  outline: none;
+  background: var(--nova-color-action-subtle);
+  box-shadow: inset 0 -2px 0 var(--nova-color-action);
+}
+
+.option[data-selected="true"]:focus-visible {
+  background: var(--nova-color-action);
+  box-shadow: inset 0 -2px 0 var(--nova-color-control-highlight);
+}
+
+.option > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .option:disabled {
@@ -102,7 +108,10 @@
     color: HighlightText;
     background: Highlight;
   }
-  .option[data-selected="true"]::before { display: none; }
-  .option:focus-visible { outline-color: Highlight; }
+  .option:focus-visible {
+    outline: 1px solid Highlight;
+    outline-offset: -2px;
+    box-shadow: none;
+  }
   .option:disabled { color: GrayText; }
 }

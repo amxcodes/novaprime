@@ -125,7 +125,10 @@ export function DesktopSidebar({
       ].filter(Boolean).join(" ")}
     >
       <div className={styles.desktopHeader}>
-        <div className={styles.brand}>{brand}</div>
+        <div className={styles.brand}>
+          <span className={styles.brandWordmark}>{brand}</span>
+          <span className={styles.brandKicker}>PEOPLE + PROJECTS</span>
+        </div>
         <button
           aria-controls={navigationId}
           aria-expanded={!compact}
@@ -136,9 +139,11 @@ export function DesktopSidebar({
           type="button"
         >
           <span aria-hidden="true" className={styles.toggleIcon}>
-            <SidebarToggleIcon compact={compact} />
+            <svg viewBox="0 0 20 20" fill="none">
+              <path d={compact ? "m7 4 6 6-6 6" : "m13 4-6 6 6 6"} />
+            </svg>
           </span>
-          <span aria-hidden="true" className={styles.toggleLabel}>
+          <span className={styles.toggleLabel}>
             {compact ? "Expand" : "Compact"}
           </span>
         </button>
@@ -323,14 +328,6 @@ function MoreIcon() {
       <circle cx="4" cy="10" r="1.4" />
       <circle cx="10" cy="10" r="1.4" />
       <circle cx="16" cy="10" r="1.4" />
-    </svg>
-  );
-}
-
-function SidebarToggleIcon({ compact }: { compact: boolean }) {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path d={compact ? "m7 4 6 6-6 6" : "m13 4-6 6 6 6"} />
     </svg>
   );
 }

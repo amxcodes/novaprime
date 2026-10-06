@@ -236,6 +236,7 @@ test("people layouts adapt to feature width rather than the browser viewport", (
   const css = fs.readFileSync(require.resolve("./People.module.css"), "utf8");
 
   assert.match(css, /container-type:\s*inline-size/);
+  assert.match(css, /\.personRow\s*\{\s*min-height:\s*var\(--nova-table-row-height\)/);
   assert.match(css, /@container\s*\(max-width:\s*56rem\)/);
   assert.match(css, /@container\s*\(max-width:\s*40rem\)/);
   assert.match(css, /@container\s*\(max-width:\s*22\.5rem\)/);
