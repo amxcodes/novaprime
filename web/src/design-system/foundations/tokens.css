@@ -10,19 +10,19 @@
   color-scheme: light;
 
   --nova-palette-white: #ffffff;
-  --nova-palette-canvas-light: #f3f6fc;
+  --nova-palette-canvas-light: #f6f8f7;
   --nova-palette-surface-light: #ffffff;
-  --nova-palette-surface-subtle-light: #eef3fa;
+  --nova-palette-surface-subtle-light: #f0f4f1;
   --nova-palette-surface-raised-light: #ffffff;
-  --nova-palette-text-light: #243146;
-  --nova-palette-text-secondary-light: #44546a;
-  --nova-palette-text-muted-light: #5d6e84;
-  --nova-palette-border-light: #dde6f0;
-  --nova-palette-action-800: #2856cf;
-  --nova-palette-action-700: #3d6bff;
-  --nova-palette-action-hover-light: #507aff;
-  --nova-palette-action-contrast-light: #000000;
-  --nova-palette-focus-light: #345cdb;
+  --nova-palette-text-light: #17211d;
+  --nova-palette-text-secondary-light: #56665e;
+  --nova-palette-text-muted-light: #66756d;
+  --nova-palette-border-light: #dbe3de;
+  --nova-palette-action-800: #104d38;
+  --nova-palette-action-700: #126a52;
+  --nova-palette-action-hover-light: #105f4a;
+  --nova-palette-action-contrast-light: #ffffff;
+  --nova-palette-focus-light: #16815d;
   --nova-palette-success-light: #27674a;
   --nova-palette-success-surface-light: #ddefe5;
   --nova-palette-warning-light: #805700;
@@ -31,20 +31,20 @@
   --nova-palette-danger-surface-light: #fde9e6;
   --nova-palette-info-light: #2b57aa;
   --nova-palette-info-surface-light: #e8edff;
-  --nova-palette-canvas-dark: #1a212c;
-  --nova-palette-surface-dark: #242d39;
-  --nova-palette-surface-subtle-dark: #2a3544;
-  --nova-palette-surface-raised-dark: #202a37;
-  --nova-palette-text-dark: #f0f3f8;
-  --nova-palette-text-secondary-dark: #c1ccdb;
-  --nova-palette-text-muted-dark: #abb9cd;
-  --nova-palette-border-dark: #3a4657;
-  --nova-palette-action-dark: #3d6bff;
-  --nova-palette-action-hover-dark: #507aff;
+  --nova-palette-canvas-dark: #0c100e;
+  --nova-palette-surface-dark: #151c18;
+  --nova-palette-surface-subtle-dark: #202a24;
+  --nova-palette-surface-raised-dark: #151c18;
+  --nova-palette-text-dark: #edf5ef;
+  --nova-palette-text-secondary-dark: #afbeb4;
+  --nova-palette-text-muted-dark: #93a197;
+  --nova-palette-border-dark: #35443a;
+  --nova-palette-action-dark: #68d6a4;
+  --nova-palette-action-hover-dark: #77daad;
   --nova-palette-action-contrast-dark: #000000;
-  --nova-palette-action-text-dark: #b1caff;
-  --nova-palette-action-text-hover-dark: #c9d9ff;
-  --nova-palette-focus-dark: #7999ff;
+  --nova-palette-action-text-dark: #68d6a4;
+  --nova-palette-action-text-hover-dark: #77daad;
+  --nova-palette-focus-dark: #68d6a4;
   --nova-palette-success-dark: #9ad3b4;
   --nova-palette-success-surface-dark: #203d32;
   --nova-palette-warning-dark: #f4ca70;
@@ -54,9 +54,9 @@
   --nova-palette-danger-surface-dark: #492f30;
   --nova-palette-info-dark: #b1caff;
   --nova-palette-info-surface-dark: #2a354c;
-  --nova-palette-shadow-light: 0 18px 48px rgb(36 49 70 / 12%), 0 3px 10px rgb(36 49 70 / 6%);
+  --nova-palette-shadow-light: 0 18px 48px rgb(23 33 29 / 12%), 0 3px 10px rgb(23 33 29 / 6%);
   --nova-palette-shadow-dark: 0 18px 52px rgb(0 0 0 / 48%), 0 3px 12px rgb(0 0 0 / 28%);
-  --nova-palette-raised-shadow-light: 0 1px 2px rgb(36 49 70 / 5%), 0 4px 12px rgb(36 49 70 / 5%);
+  --nova-palette-raised-shadow-light: 0 1px 2px rgb(23 33 29 / 5%), 0 4px 12px rgb(23 33 29 / 5%);
   --nova-palette-raised-shadow-dark: 0 4px 14px rgb(0 0 0 / 24%);
 
   --nova-color-canvas: var(--nova-palette-canvas-light);
@@ -68,9 +68,9 @@
   --nova-color-text-muted: var(--nova-palette-text-muted-light);
   --nova-color-border: var(--nova-palette-border-light);
   --nova-color-border-subtle: var(--nova-palette-border-light);
-  --nova-color-action: var(--nova-user-accent, var(--nova-palette-action-700));
-  --nova-color-action-hover: var(--nova-user-accent-hover, var(--nova-palette-action-hover-light));
-  --nova-color-action-contrast: var(--nova-user-accent-contrast, var(--nova-palette-action-contrast-light));
+  --nova-color-action: var(--nova-user-accent-light, var(--nova-palette-action-700));
+  --nova-color-action-hover: var(--nova-user-accent-hover-light, var(--nova-palette-action-hover-light));
+  --nova-color-action-contrast: var(--nova-user-accent-contrast-light, var(--nova-palette-action-contrast-light));
   --nova-color-action-text: var(--nova-user-accent-text-light, var(--nova-palette-action-800));
   --nova-color-action-text-hover: var(--nova-user-accent-text-light-hover, var(--nova-palette-action-800));
   --nova-color-action-subtle: color-mix(in srgb, var(--nova-color-action) 10%, var(--nova-color-canvas));
@@ -118,10 +118,15 @@
   --nova-space-10: 2.5rem;
   --nova-space-12: 3rem;
 
-  --nova-radius-control: 0.625rem;
-  --nova-radius-surface: 0.875rem;
+  --nova-radius-control: 0.75rem;
+  --nova-radius-option: 0.5rem;
+  --nova-radius-surface: 1.125rem;
   --nova-radius-overlay: 1rem;
   --nova-radius-pill: 999px;
+
+  /* Orbit Global Sidebar expanded and compact desktop widths. */
+  --nova-navigation-width-expanded: 18.125rem;
+  --nova-navigation-width-compact: 9.625rem;
 
   --nova-control-height: 2.5rem;
   --nova-control-height-compact: 2.25rem;
@@ -163,9 +168,9 @@
   --nova-color-text-muted: var(--nova-palette-text-muted-dark);
   --nova-color-border: var(--nova-palette-border-dark);
   --nova-color-border-subtle: var(--nova-palette-border-dark);
-  --nova-color-action: var(--nova-user-accent, var(--nova-palette-action-dark));
-  --nova-color-action-hover: var(--nova-user-accent-hover, var(--nova-palette-action-hover-dark));
-  --nova-color-action-contrast: var(--nova-user-accent-contrast, var(--nova-palette-action-contrast-dark));
+  --nova-color-action: var(--nova-user-accent-dark, var(--nova-palette-action-dark));
+  --nova-color-action-hover: var(--nova-user-accent-hover-dark, var(--nova-palette-action-hover-dark));
+  --nova-color-action-contrast: var(--nova-user-accent-contrast-dark, var(--nova-palette-action-contrast-dark));
   --nova-color-action-text: var(--nova-user-accent-text-dark, var(--nova-palette-action-text-dark));
   --nova-color-action-text-hover: var(--nova-user-accent-text-dark-hover, var(--nova-palette-action-text-hover-dark));
   --nova-color-action-subtle: color-mix(in srgb, var(--nova-color-action) 16%, var(--nova-color-canvas));
@@ -199,9 +204,9 @@
     --nova-color-text-muted: var(--nova-palette-text-muted-dark);
     --nova-color-border: var(--nova-palette-border-dark);
     --nova-color-border-subtle: var(--nova-palette-border-dark);
-    --nova-color-action: var(--nova-user-accent, var(--nova-palette-action-dark));
-    --nova-color-action-hover: var(--nova-user-accent-hover, var(--nova-palette-action-hover-dark));
-    --nova-color-action-contrast: var(--nova-user-accent-contrast, var(--nova-palette-action-contrast-dark));
+    --nova-color-action: var(--nova-user-accent-dark, var(--nova-palette-action-dark));
+    --nova-color-action-hover: var(--nova-user-accent-hover-dark, var(--nova-palette-action-hover-dark));
+    --nova-color-action-contrast: var(--nova-user-accent-contrast-dark, var(--nova-palette-action-contrast-dark));
     --nova-color-action-text: var(--nova-user-accent-text-dark, var(--nova-palette-action-text-dark));
     --nova-color-action-text-hover: var(--nova-user-accent-text-dark-hover, var(--nova-palette-action-text-hover-dark));
     --nova-color-action-subtle: color-mix(in srgb, var(--nova-color-action) 16%, var(--nova-color-canvas));

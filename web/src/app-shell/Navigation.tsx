@@ -17,7 +17,22 @@ interface NavigationProps {
   drawerId: string;
   brand: ReactNode;
   sidebarFooter?: ReactNode;
+  compact?: boolean;
+  navigationId?: string;
+  onToggleCompact: () => void;
 }
+
+type DesktopSidebarProps = Pick<
+  NavigationProps,
+  | "groups"
+  | "activeItemId"
+  | "onNavigate"
+  | "brand"
+  | "sidebarFooter"
+  | "compact"
+  | "navigationId"
+  | "onToggleCompact"
+>;
 
 function isPlainLeftClick(event: MouseEvent<HTMLAnchorElement>): boolean {
   return (
@@ -46,15 +61,17 @@ function NavigationLinks({
   onNavigate,
   onItemSelected,
   compact = false,
+  navigationId,
 }: {
   groups: readonly AppNavigationGroup[];
   activeItemId?: string;
   onNavigate?: (item: AppNavigationItem) => void;
   onItemSelected?: () => void;
   compact?: boolean;
+  navigationId?: string;
 }) {
   return (
-    <nav aria-label="Primary navigation" className={styles.navigation}>
+    <nav aria-label="Primary navigation" className={styles.navigation} id={navigationId}>
       {groups.filter((group) => group.items.length > 0).map((group) => (
         <section className={styles.group} key={group.id}>
           {group.label ? <h2 className={styles.groupLabel}>{group.label}</h2> : null}
@@ -96,11 +113,44 @@ export function DesktopSidebar({
   onNavigate,
   brand,
   sidebarFooter,
-}: Pick<NavigationProps, "groups" | "activeItemId" | "onNavigate" | "brand" | "sidebarFooter">) {
+  compact = false,
+  navigationId = "nova-desktop-primary-navigation",
+  onToggleCompact,
+}: DesktopSidebarProps) {
   return (
-    <aside aria-label="Workspace" className={styles.desktopSidebar}>
-      <div className={styles.brand}>{brand}</div>
-      <NavigationLinks groups={groups} activeItemId={activeItemId} onNavigate={onNavigate} />
+    <aside
+      aria-label="Workspace"
+      className={[
+        styles.desktopSidebar,
+        compact ? styles.compactSidebar : "",
+      ].filter(Boolean).join(" ")}
+    >
+      <div className={styles.desktopHeader}>
+        <div className={styles.brand}>{brand}</div>
+        <button
+          aria-controls={navigationId}
+          aria-expanded={!compact}
+          aria-label={compact ? "Expand sidebar navigation" : "Collapse sidebar navigation"}
+          className={styles.desktopToggle}
+          onClick={onToggleCompact}
+          title={compact ? "Expand sidebar navigation" : "Collapse sidebar navigation"}
+          type="button"
+        >
+          <span aria-hidden="true" className={styles.toggleIcon}>
+            <SidebarToggleIcon compact={compact} />
+          </span>
+          <span aria-hidden="true" className={styles.toggleLabel}>
+            {compact ? "Expand" : "Compact"}
+          </span>
+        </button>
+      </div>
+      <NavigationLinks
+        compact={compact}
+        groups={groups}
+        activeItemId={activeItemId}
+        navigationId={navigationId}
+        onNavigate={onNavigate}
+      />
       {sidebarFooter ? <div className={styles.sidebarFooter}>{sidebarFooter}</div> : null}
     </aside>
   );
@@ -274,6 +324,14 @@ function MoreIcon() {
       <circle cx="4" cy="10" r="1.4" />
       <circle cx="10" cy="10" r="1.4" />
       <circle cx="16" cy="10" r="1.4" />
+    </svg>
+  );
+}
+
+function SidebarToggleIcon({ compact }: { compact: boolean }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d={compact ? "m7 4 6 6-6 6" : "m13 4-6 6 6 6"} />
     </svg>
   );
 }

@@ -80,18 +80,23 @@
 .module[data-my-day-module="attendance"] { grid-column: 1 / -1; }
 
 .moduleHeader {
-  display: grid;
+  display: flex;
   min-width: 0;
-  gap: var(--nova-space-1);
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--nova-space-1) var(--nova-space-6);
   padding-block-end: var(--nova-space-2);
   border-block-end: 1px solid var(--nova-color-border);
 }
 
 .moduleHeader h2 {
+  min-width: 0;
   margin: 0;
   color: var(--nova-color-text-primary);
   font-size: var(--nova-type-size-lg);
   letter-spacing: -0.02em;
+  line-height: var(--nova-type-line-tight);
 }
 
 .moduleHeader p,
@@ -102,6 +107,14 @@
   line-height: var(--nova-type-line-normal);
   overflow-wrap: anywhere;
 }
+
+.moduleHeader p {
+  max-width: 64ch;
+  margin-inline-start: auto;
+  text-align: end;
+}
+
+.module[data-my-day-module="assignments"] { grid-column: 1 / -1; }
 
 .shortcuts {
   display: grid;
@@ -198,7 +211,10 @@
   .content { gap: var(--nova-space-6); }
   .moduleGrid { grid-template-columns: minmax(0, 1fr); gap: var(--nova-space-6); }
   .wideModule,
-  .module[data-my-day-module="attendance"] { grid-column: auto; }
+  .module[data-my-day-module="attendance"],
+  .module[data-my-day-module="assignments"] { grid-column: auto; }
+  .moduleHeader { align-items: flex-start; flex-direction: column; }
+  .moduleHeader p { margin-inline-start: 0; text-align: start; }
   .shortcutGrid { grid-template-columns: minmax(0, 1fr); }
 }
 

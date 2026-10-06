@@ -105,7 +105,7 @@ export interface UpdateRuntimeOverrides {
   offerPushAdapters?: Partial<OfferPushAdapters>;
 }
 
-function parseArguments(args: readonly string[]): Options {
+export function parseArguments(args: readonly string[]): Options {
   let mode: Mode = "apply";
   let modeSeen = false;
   let resume = false;
@@ -140,6 +140,7 @@ function parseArguments(args: readonly string[]): Options {
   }
   if (help && (modeSeen || resume || releaseTag)) throw new Error("UPDATE_HELP_CANNOT_BE_COMBINED");
   if (mode === "check" && resume) throw new Error("UPDATE_CHECK_CANNOT_RESUME");
+  if (resume && releaseTag) throw new Error("UPDATE_RESUME_RELEASE_CONFLICT: omit --release; resume uses the release pinned in the journal");
   if (mode === "check" && releaseTag && help) throw new Error("UPDATE_HELP_CANNOT_BE_COMBINED");
   return { mode, releaseTag, resume, help };
 }
@@ -528,10 +529,16 @@ async function planDatabase(
   });
 }
 
-async function confirmBackup(targetLabel: string): Promise<string> {
+async function confirmBackup(targetLabel: string): Promise<{ reference: string; confirmedAt: string }> {
   console.info(`Forward-only migration safety: NOVA will not create, store, or restore a database backup for ${targetLabel}.`);
-  const reference = await promptLine("Recent backup or PITR restore-point reference (required)");
+  const reference = (await promptLine("Backup/PITR restore-point ID or safe label (required; do not enter a URL or credentials)")).trim();
   if (reference.length < 4) throw new Error("BACKUP_REFERENCE_REQUIRED");
+  if (
+    reference.length > 160 || !/^[A-Za-z0-9][A-Za-z0-9._:/ -]{2,159}$/.test(reference) ||
+    reference.includes("://")
+  ) {
+    throw new Error("BACKUP_REFERENCE_INVALID: use a short ID or label without a URL or credentials");
+  }
   const createdAt = await promptLine("Backup/restore-point creation time in ISO 8601 format");
   const timestamp = Date.parse(createdAt);
   const age = Date.now() - timestamp;
@@ -541,7 +548,7 @@ async function confirmBackup(targetLabel: string): Promise<string> {
   if (!await confirm("Have you confirmed that this backup/restore point is available and restorable?")) {
     throw new Error("BACKUP_NOT_CONFIRMED");
   }
-  return new Date(timestamp).toISOString();
+  return { reference, confirmedAt: new Date(timestamp).toISOString() };
 }
 
 function verifiedJournalHashes(journal: UpdateJournal): MigrationHashManifest {
@@ -596,7 +603,9 @@ async function applyMigrations(
     const expectedPhrase = `APPLY ${target.kind === "supabase" ? target.projectRef : target.label}`;
     const answer = await services.promptLine(`Type exactly: ${expectedPhrase}`);
     if (answer !== expectedPhrase) throw new Error("DATABASE_WRITE_CONFIRMATION_MISMATCH");
-    journal.backupConfirmedAt = await services.confirmBackup(target.label);
+    const backup = await services.confirmBackup(target.label);
+    journal.backupReference = backup.reference;
+    journal.backupConfirmedAt = backup.confirmedAt;
   }
 
   journal.database = {
@@ -604,10 +613,35 @@ async function applyMigrations(
     targetFingerprint: updateTargetFingerprint(target.label),
     label: target.label,
   };
-  journal.phase = plan.pending.length ? "applying-database" : "database-applied";
-  await services.saveUpdateJournal(journal);
-  if (plan.pending.length === 0) return;
+  if (plan.pending.length === 0) {
+    const appliedInPlan = new Set(plan.applied);
+    const previousHashes = new Map(journal.appliedMigrations.map(({ filename, sha256 }) => [filename, sha256]));
+    if (journal.inFlightMigration) {
+      const { filename, sha256 } = journal.inFlightMigration;
+      if (!appliedInPlan.has(filename) || targetManifest[filename] !== sha256) {
+        throw new Error(`UPDATE_JOURNAL_MIGRATION_NOT_RECONCILED:${filename}`);
+      }
+      previousHashes.set(filename, sha256);
+    }
+    for (const [filename, sha256] of previousHashes) {
+      const expected = targetManifest[filename] ?? baselineManifest[filename];
+      if (!appliedInPlan.has(filename) || expected !== sha256) {
+        throw new Error(`UPDATE_JOURNAL_MIGRATION_MISMATCH:${filename}`);
+      }
+    }
+    journal.appliedMigrations = plan.applied.map((filename) => {
+      const sha256 = targetManifest[filename] ?? baselineManifest[filename];
+      if (!sha256) throw new Error(`MIGRATION_HASH_NOT_FOUND:${filename}`);
+      return { filename, sha256 };
+    });
+    journal.inFlightMigration = undefined;
+    journal.phase = "database-applied";
+    await services.saveUpdateJournal(journal);
+    return;
+  }
 
+  journal.phase = "applying-database";
+  await services.saveUpdateJournal(journal);
   const onMigrationStarting = async (filename: string, sha256: string) => {
     journal.inFlightMigration = { filename, sha256 };
     journal.phase = "applying-database";
@@ -752,6 +786,9 @@ async function offerPush(
 }
 
 export async function runGuided(options: Options, overrides: UpdateRuntimeOverrides = {}): Promise<void> {
+  if (options.resume && options.releaseTag) {
+    throw new Error("UPDATE_RESUME_RELEASE_CONFLICT: omit --release; resume uses the release pinned in the journal");
+  }
   const root = overrides.repoRoot ?? repoRoot;
   const askConfirm = overrides.confirm ?? confirm;
   const askLine = overrides.promptLine ?? promptLine;

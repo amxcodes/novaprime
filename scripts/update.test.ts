@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "bun:test";
-import { runCheck, runGuided, type UpdateRuntimeOverrides } from "./update.ts";
+import { parseArguments, runCheck, runGuided, type UpdateRuntimeOverrides } from "./update.ts";
 import { prepareUpdateWorktree } from "./update/git.ts";
 import { newUpdateJournal, updateTargetFingerprint, type UpdateJournal } from "./update/state.ts";
 import type { MigrationPlan } from "./update/database.ts";
@@ -150,7 +150,7 @@ function makeRuntime(
     confirm: options.confirm ?? (async () => true),
     promptLine: options.promptLine ?? (async (prompt) => prompt.replace(/^Type exactly: /, "")),
     migrationApplyAdapters: {
-      confirmBackup: async () => "2026-10-06T00:00:00.000Z",
+      confirmBackup: async () => ({ reference: "qa-restore-point-20261006", confirmedAt: "2026-10-06T00:00:00.000Z" }),
       applyPostgresUpdate: async (input) => {
         databaseWriteCalls += 1;
         events.push("database-write");
@@ -191,6 +191,12 @@ afterEach(async () => {
 });
 
 describe("update coordinator integration", () => {
+  it("rejects a release override with resume instead of silently ignoring it", () => {
+    expect(() => parseArguments(["--resume", "--release", "v0.2.0"]))
+      .toThrow("UPDATE_RESUME_RELEASE_CONFLICT");
+    expect(parseArguments(["--resume"])).toMatchObject({ mode: "apply", resume: true, releaseTag: undefined });
+  });
+
   it("checks a clean checkout without changing Git state or invoking database adapters", async () => {
     const fixture = await makeRepository();
     const headBefore = git(fixture.root, ["rev-parse", "HEAD"]);
@@ -248,6 +254,8 @@ describe("update coordinator integration", () => {
     expect(consentPromptCount).toBe(1);
     expect(harness.counts()).toMatchObject({ databaseWriteCalls: 1, pushCalls: 0, preflightCalls: 0 });
     expect(harness.getJournal()?.phase).toBe("complete");
+    expect(harness.getJournal()?.backupReference).toBe("qa-restore-point-20261006");
+    expect(harness.getJournal()?.backupConfirmedAt).toBe("2026-10-06T00:00:00.000Z");
     expect(git(fixture.root, ["rev-parse", "HEAD"])).toBe(fixture.baselineCommit);
     expect(git(fixture.root, ["status", "--porcelain"])).toBe("");
   }, 60_000);
@@ -283,5 +291,43 @@ describe("update coordinator integration", () => {
     expect(harness.counts()).toMatchObject({ planCalls: 0, databaseWriteCalls: 0, pushCalls: 0 });
     expect(git(fixture.root, ["rev-parse", "HEAD"])).toBe(fixture.baselineCommit);
     expect(await readFile(join(candidate.path!, "package.json"), "utf8")).toContain('"version": "0.2.0"');
+  }, 60_000);
+
+  it("reconciles a committed migration with a stale in-flight journal before the no-pending return", async () => {
+    const fixture = await makeRepository();
+    const harness = makeRuntime(fixture);
+    harness.runtime.migrationApplyAdapters = {
+      ...harness.runtime.migrationApplyAdapters,
+      applyPostgresUpdate: async (input) => {
+        await input.onMigrationStarting?.(migrationFilename, migrationHash);
+        harness.events.push("database-commit-before-lost-response");
+        throw new Error("FAKE_COMMIT_RESPONSE_LOST");
+      },
+    };
+
+    await expect(runGuided({ mode: "apply", resume: false, help: false }, harness.runtime))
+      .rejects.toThrow("FAKE_COMMIT_RESPONSE_LOST");
+    expect(harness.getJournal()?.inFlightMigration).toEqual({ filename: migrationFilename, sha256: migrationHash });
+    expect(harness.getJournal()?.appliedMigrations).toEqual([]);
+
+    harness.runtime.planDatabase = async (target) => ({
+      target: target.label,
+      applied: [...fixture.baselineTree.migrationHashes.keys(), migrationFilename],
+      pending: [],
+    });
+    harness.runtime.migrationApplyAdapters = {
+      ...harness.runtime.migrationApplyAdapters,
+      applyPostgresUpdate: async () => { throw new Error("No migration should run after ledger reconciliation"); },
+    };
+
+    await runGuided({ mode: "apply", resume: true, help: false }, harness.runtime);
+
+    const journal = harness.getJournal();
+    expect(journal?.phase).toBe("complete");
+    expect(journal?.inFlightMigration).toBeUndefined();
+    expect(journal?.appliedMigrations).toContainEqual({ filename: migrationFilename, sha256: migrationHash });
+    expect(journal?.appliedMigrations.map(({ filename }) => filename)).toEqual([
+      ...fixture.baselineTree.migrationHashes.keys(), migrationFilename,
+    ]);
   }, 60_000);
 });

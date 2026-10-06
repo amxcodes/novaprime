@@ -24,6 +24,21 @@ This document translates the design principles in `planbyaman.md` into decisions
 
 The React/Vite choice follows the source plan's framework recommendation and gives the feature-owned composition a typed module boundary. Vite's production build emits static assets suitable for static hosting, which fits NOVA's existing deployment model; all existing host adapters and API routing still need to be verified in the migration spike. [React's TypeScript guide](https://react.dev/learn/typescript) · [Vite production build](https://vite.dev/guide/build.html)
 
+## User-supplied Figma reference
+
+`orbit-people-projects-system.fig` was inspected in OpenPencil across all four pages. Use it as the authored component and layout reference while keeping NOVA's feature ownership and server contracts:
+
+| Figma page | NOVA implementation boundary |
+|---|---|
+| Orbit System | Shared semantic tokens and primitives: light/dark surface roles, typography, control sizes, button states, pickers, rows, badges, and list/table surfaces. Keep theme changes in foundation tokens and feature CSS Modules. |
+| Daily Workflows | My Day and Work feature surfaces for assignment lists, personal work, timers, and attendance. Map each module to its existing feature plan; add a surface only when its API and capability contract exist. |
+| Social Calendar | Reference for a future calendar feature only. NOVA has no social-calendar route or publishing API, so do not render sample posts or private notes as product data. |
+| Global Sidebar | Shared shell expanded/compact desktop rail and existing tablet/phone drawer and quick navigation. Preserve server-filtered groups and route order; theme variants use the same semantic roles. |
+
+The Figma desktop frames contain illustrative records, counts, badges, locations, and permissions; none are application data. The file does not provide phone/tablet layouts, so feature-owned container layouts must adapt the same authorized data and actions at narrow widths. Avoid adding sample-only controls, local permission logic, or hard-coded theme values.
+
+The Global Sidebar's light and dark frames are theme variants of the same shared component. Its surface, selected destination, type, border, and focus treatments resolve from semantic tokens; the default appearance follows NOVA's white/green and black/green palettes, while saved accent choices remain account-specific. Daily Workflows sections continue to mount their feature-owned React components, so attendance/work rules and permission-based module inclusion stay with their existing contracts.
+
 ## Reset baseline (historical starting point)
 
 At the user's direction, the previous visual layer was removed before this rebuild began. That snapshot is historical: the design foundation, route styles, feature modules, and preview tooling have since been restored incrementally.

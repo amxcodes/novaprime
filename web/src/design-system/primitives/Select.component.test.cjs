@@ -101,7 +101,11 @@ test("styles custom popup states with NOVA theme, touch, focus, reduced-motion a
   assert.match(css, /appearance:\s*none/);
   assert.match(css, /font:\s*inherit/);
   assert.match(css, /\.trigger\[data-focus-visible\]/);
+  assert.match(css, /\.trigger\[data-focus-visible\]\s*\{\s*outline:\s*3px solid var\(--nova-color-focus\);\s*outline-offset:\s*2px;\s*box-shadow:\s*inset 0 -2px 0 var\(--nova-color-action\)/);
+  assert.match(css, /\.trigger\[data-open\]\s*\{[^}]*background:\s*var\(--nova-color-action-subtle\)/s);
   assert.match(css, /\.option\[data-focused\]/);
+  assert.match(css, /\.option\s*\{[^}]*border-radius:\s*var\(--nova-radius-option\)/s);
+  assert.match(css, /\.option\[data-focused\]\s*\{[^}]*box-shadow:\s*inset 0 -2px 0 var\(--nova-color-action\)/s);
   assert.match(css, /\.option\[data-disabled\]/);
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
   assert.match(css, /@media\s*\(forced-colors:\s*active\)/);

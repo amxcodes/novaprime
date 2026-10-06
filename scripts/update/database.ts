@@ -287,6 +287,7 @@ export function reconcileMigrationLedger(
 export async function planPostgresUpdate(options: PostgresUpdateOptions): Promise<MigrationPlan> {
   const target = postgresTargetLabel(options.databaseUrl);
   requireExactTargetConfirmation(target, options.confirmation);
+  assertPostgresConnectionSecurity(options.databaseUrl);
   const migrations = await loadCanonicalMigrations(options.targetManifest, options.migrationDirectory);
   const pool = await (options.createPool ?? defaultPoolFactory)(options.databaseUrl);
   try {
@@ -313,6 +314,7 @@ export async function planPostgresUpdate(options: PostgresUpdateOptions): Promis
 export async function applyPostgresUpdate(options: PostgresUpdateOptions): Promise<AppliedMigrationSummary> {
   const target = postgresTargetLabel(options.databaseUrl);
   requireExactTargetConfirmation(target, options.confirmation);
+  assertPostgresConnectionSecurity(options.databaseUrl);
   const migrations = await loadCanonicalMigrations(options.targetManifest, options.migrationDirectory);
   const pool = await (options.createPool ?? defaultPoolFactory)(options.databaseUrl);
   const appliedDuringRun: string[] = [];
@@ -740,21 +742,7 @@ function verifyAttemptChecksumsPersisted(
 }
 
 async function verifyPostgresConnection(client: PgQueryable, connectionString: string): Promise<void> {
-  const parsed = parsePostgresUrl(connectionString);
-  const poolMode = parsed.searchParams.get("pool_mode")?.toLowerCase() ??
-    parsed.searchParams.get("pooling")?.toLowerCase();
-  if (
-    poolMode === "transaction" || parsed.searchParams.get("pgbouncer")?.toLowerCase() === "true" ||
-    (parsed.hostname.toLowerCase().endsWith(".pooler.supabase.com") && parsed.port === "6543")
-  ) {
-    throw new Error("POSTGRES_TRANSACTION_POOLER_UNSUPPORTED");
-  }
-  if (!localHosts.has(parsed.hostname.toLowerCase())) {
-    const sslmode = parsed.searchParams.get("sslmode")?.toLowerCase();
-    if (!sslmode || sslmode === "disable" || sslmode === "allow" || sslmode === "prefer") {
-      throw new Error("POSTGRES_REMOTE_TLS_REQUIRED");
-    }
-  }
+  const parsed = assertPostgresConnectionSecurity(connectionString);
 
   const result = await client.query<{
     current_database: string;
@@ -917,6 +905,26 @@ function parsePostgresUrl(connectionString: string): URL {
     parsed.username.length === 0
   ) {
     throw new Error("POSTGRES_CONNECTION_URL_INVALID");
+  }
+  return parsed;
+}
+
+/** Validate the URL before creating a pool so credentials are never sent through an unverified TLS session. */
+function assertPostgresConnectionSecurity(connectionString: string): URL {
+  const parsed = parsePostgresUrl(connectionString);
+  const poolMode = parsed.searchParams.get("pool_mode")?.toLowerCase() ??
+    parsed.searchParams.get("pooling")?.toLowerCase();
+  if (
+    poolMode === "transaction" || parsed.searchParams.get("pgbouncer")?.toLowerCase() === "true" ||
+    (parsed.hostname.toLowerCase().endsWith(".pooler.supabase.com") && parsed.port === "6543")
+  ) {
+    throw new Error("POSTGRES_TRANSACTION_POOLER_UNSUPPORTED");
+  }
+  if (!localHosts.has(parsed.hostname.toLowerCase())) {
+    const sslModes = parsed.searchParams.getAll("sslmode");
+    if (sslModes.length !== 1 || sslModes[0] !== "verify-full") {
+      throw new Error("POSTGRES_REMOTE_TLS_VERIFY_FULL_REQUIRED");
+    }
   }
   return parsed;
 }

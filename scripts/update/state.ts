@@ -16,6 +16,7 @@ export interface UpdateJournal {
   database?: { kind: "postgres" | "supabase"; targetFingerprint: string; label: string };
   inFlightMigration?: { filename: string; sha256: string };
   appliedMigrations: Array<{ filename: string; sha256: string }>;
+  backupReference?: string;
   backupConfirmedAt?: string;
   updatedAt: string;
 }

@@ -99,7 +99,9 @@ test("shared primitive styles consume semantic appearance tokens and support res
     assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b|rgba?\(/i, `${name} should use themeable semantic color tokens`);
   }
   assert.match(field, /\.control:focus-visible\s*\{[^}]*var\(--nova-control-border-focus\)/s);
+  assert.match(field, /\.control:focus-visible\s*\{[^}]*caret-color:\s*var\(--nova-color-action\);[^}]*box-shadow:\s*inset 0 -2px 0 var\(--nova-color-action\)/s);
   assert.match(field, /\.control\[aria-invalid="true"\]:focus-visible\s*\{[^}]*var\(--nova-color-danger\)/s);
+  assert.match(field, /\.control\[aria-invalid="true"\]:focus-visible\s*\{[^}]*box-shadow:\s*inset 0 -2px 0 var\(--nova-color-danger\)/s);
   assert.match(field, /@media \(any-pointer: coarse\)\s*\{\s*\.control\s*\{[^}]*var\(--nova-control-touch-target\)/s);
   assert.match(button, /@media \(any-pointer: coarse\)/);
   assert.match(pageHeader, /@media \(max-width: 47\.999rem\)/);

@@ -64,12 +64,15 @@
 }
 
 .trigger[data-focus-visible] {
-  outline: 2px solid var(--nova-color-focus);
+  outline: 3px solid var(--nova-color-focus);
   outline-offset: 2px;
+  box-shadow: inset 0 -2px 0 var(--nova-color-action);
 }
 
 .trigger[data-open] {
   border-color: var(--nova-control-border-focus);
+  background: var(--nova-color-action-subtle);
+  box-shadow: inset 0 -2px 0 var(--nova-color-action);
 }
 
 .select[data-invalid] .trigger {
@@ -157,7 +160,7 @@
   justify-content: space-between;
   gap: var(--nova-space-3);
   padding: var(--nova-space-2) var(--nova-space-3);
-  border-radius: calc(var(--nova-radius-control) - var(--nova-space-1));
+  border-radius: var(--nova-radius-option);
   color: var(--nova-color-text-primary);
   cursor: pointer;
   outline: none;
@@ -165,6 +168,7 @@
 
 .option[data-focused] {
   background: var(--nova-select-option-hover);
+  box-shadow: inset 0 -2px 0 var(--nova-color-action);
 }
 
 .option[data-selected] {
@@ -186,7 +190,7 @@
 
 .empty {
   padding: var(--nova-space-3);
-  border-radius: calc(var(--nova-radius-control) - var(--nova-space-1));
+  border-radius: var(--nova-radius-option);
   color: var(--nova-color-text-secondary);
   font-size: var(--nova-type-size-sm);
   line-height: var(--nova-type-line-normal);
@@ -253,8 +257,15 @@
     outline-color: Highlight;
   }
 
+  .trigger[data-focus-visible],
+  .option[data-focused] {
+    box-shadow: none;
+  }
+
   .trigger[data-open] {
     border-color: ButtonText;
+    background: Canvas;
+    box-shadow: none;
   }
 
   .trigger[data-disabled] {

@@ -109,6 +109,7 @@ let appearanceSaveGeneration = 0;
 let appearanceEditorRenderGeneration = 0;
 let workspaceEditorRenderGeneration = 0;
 let savedTaskViewsRenderGeneration = 0;
+let savedTaskViewsReadRequest = null;
 // Reviewer notes stay in memory only and are scoped to the actor's current review grants.
 const reviewFeedbackDrafts = createReviewFeedbackDraftStore();
 const pageRequestLifecycle = createRequestLifecycle();
@@ -124,6 +125,7 @@ const state = {
   savedTaskViews: [],
   savedTaskViewsLoading: false,
   savedTaskViewsReadError: false,
+  savedTaskViewsLoaded: false,
   savedTaskViewsRequestGeneration: 0,
   uiPreferenceRevision: 0,
   uiPreferencePersonId: null,
@@ -1065,7 +1067,18 @@ async function updateSavedTaskViewsEditor() {
     ...(workPlan.assignments ? ["mine"] : []),
     ...(workPlan.taskCollection ? ["visible"] : []),
   ];
-  if (!allowedCollections.length && !state.savedTaskViews.length && !state.savedTaskViewsReadError && !state.savedTaskViewsLoading) return;
+  const personId = state.identityPersonId || state.actorGrants?.actorPersonId || null;
+  if (personId && allowedCollections.length > 0 && !state.savedTaskViewsLoaded && !state.savedTaskViewsLoading) {
+    void ensureSavedTaskViewsLoaded(personId, identityEpoch).then(() => {
+      if (isCurrentSavedTaskViewsEditor(target, generation, identityEpoch)) {
+        void updateSavedTaskViewsEditor();
+      }
+    });
+  }
+  if (!allowedCollections.length && !state.savedTaskViews.length && !state.savedTaskViewsReadError && !state.savedTaskViewsLoading) {
+    target.replaceChildren();
+    return;
+  }
   let SettingsSavedTaskViews;
   try {
     ({ SettingsSavedTaskViews } = await import("./src/features/work/SettingsSavedTaskViews.tsx"));
@@ -1173,34 +1186,52 @@ function orderedSavedTaskViews(views) {
 }
 
 async function loadSavedTaskViews(expectedPersonId, identityEpoch = state.identityEpoch) {
+  const pending = savedTaskViewsReadRequest;
+  if (state.savedTaskViewsLoading && pending?.personId === expectedPersonId && pending.identityEpoch === identityEpoch) {
+    return pending.promise;
+  }
   const requestGeneration = ++state.savedTaskViewsRequestGeneration;
   const isCurrent = () => requestGeneration === state.savedTaskViewsRequestGeneration &&
     identityEpoch === state.identityEpoch && state.identityPersonId === expectedPersonId;
   state.savedTaskViewsLoading = true;
-  try {
-    const result = await api("/api/me/task-views", requestOptions("GET"));
-    if (!isCurrent()) return false;
-    if (result.personId !== expectedPersonId || result.schemaVersion !== 1 || !Array.isArray(result.views)) {
-      state.savedTaskViews = [];
-      state.savedTaskViewsReadError = true;
-      return false;
-    }
-    state.savedTaskViews = orderedSavedTaskViews(result.views);
-    state.savedTaskViewsReadError = false;
-    return true;
-  } catch (error) {
-    if (isCurrent()) {
-      state.savedTaskViews = [];
-      state.savedTaskViewsReadError = true;
-      if (error?.httpStatus === 401 || error?.httpStatus === 403) {
-        state.savedTaskViewsLoading = false;
-        recoverProtectedCommandFailure(error, { identityEpoch, actorPersonId: expectedPersonId });
+  const promise = (async () => {
+    try {
+      const result = await api("/api/me/task-views", requestOptions("GET"));
+      if (!isCurrent()) return false;
+      if (result.personId !== expectedPersonId || result.schemaVersion !== 1 || !Array.isArray(result.views)) {
+        state.savedTaskViews = [];
+        state.savedTaskViewsReadError = true;
+        state.savedTaskViewsLoaded = true;
+        return false;
       }
+      state.savedTaskViews = orderedSavedTaskViews(result.views);
+      state.savedTaskViewsReadError = false;
+      state.savedTaskViewsLoaded = true;
+      return true;
+    } catch (error) {
+      if (isCurrent()) {
+        state.savedTaskViews = [];
+        state.savedTaskViewsReadError = true;
+        state.savedTaskViewsLoaded = true;
+        if (error?.httpStatus === 401 || error?.httpStatus === 403) {
+          state.savedTaskViewsLoading = false;
+          recoverProtectedCommandFailure(error, { identityEpoch, actorPersonId: expectedPersonId });
+        }
+      }
+      return false;
+    } finally {
+      if (isCurrent()) state.savedTaskViewsLoading = false;
     }
-    return false;
-  } finally {
-    if (isCurrent()) state.savedTaskViewsLoading = false;
+  })();
+  savedTaskViewsReadRequest = { personId: expectedPersonId, identityEpoch, promise };
+  return promise;
+}
+
+function ensureSavedTaskViewsLoaded(expectedPersonId, identityEpoch = state.identityEpoch) {
+  if (state.savedTaskViewsLoaded && !state.savedTaskViewsLoading) {
+    return Promise.resolve(!state.savedTaskViewsReadError);
   }
+  return loadSavedTaskViews(expectedPersonId, identityEpoch);
 }
 
 function taskViewIdentityError() {
@@ -1565,7 +1596,9 @@ function clearIdentityScopedState() {
   state.savedTaskViews = [];
   state.savedTaskViewsLoading = false;
   state.savedTaskViewsReadError = false;
+  state.savedTaskViewsLoaded = false;
   state.savedTaskViewsRequestGeneration += 1;
+  savedTaskViewsReadRequest = null;
   state.uiPreferenceRevision = 0;
   state.uiPreferencePersonId = null;
   state.identityPersonId = null;
@@ -1910,8 +1943,10 @@ async function mountAdminPage(target, lifetime, props) {
 }
 
 async function loadAdmin(lifetime, pageReady) {
+  let stage = "load-module";
   try {
     const { loadAdminPageData } = await import("./src/pages/admin/admin-page-loader.ts");
+    stage = "load-authorized-data";
     const adminData = await loadAdminPageData(lifetime, pageReady, {
       pageApi,
       readOrError,
@@ -1920,17 +1955,19 @@ async function loadAdmin(lifetime, pageReady) {
     });
     if (!adminData || !isCurrentPageRequest(lifetime)) return;
     state.adminData = adminData;
+    stage = "compose-page";
     await renderAdminContent(state.adminData, lifetime);
   } catch (error) {
     if (!isCurrentPageRequest(lifetime)) return;
     const diagnostic = {
+      stage,
       name: typeof error?.name === "string" && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(error.name) ? error.name : "Error",
       ...(typeof error?.code === "string" && /^[A-Z0-9_]{1,80}$/.test(error.code) ? { code: error.code } : {}),
       ...(Number.isInteger(error?.httpStatus) && error.httpStatus >= 100 && error.httpStatus <= 599
         ? { httpStatus: error.httpStatus }
         : {}),
     };
-    console.error("[NOVA Admin] page load failed", diagnostic);
+    console.error("[NOVA Admin] page load failed " + JSON.stringify(diagnostic));
     const target = app.querySelector("#admin-console");
     if (target) await mountAdminPage(target, lifetime, {
       state: { status: "error", message: errorText(error) },
@@ -2226,6 +2263,9 @@ async function renderWork(date, lifetime) {
     import("./src/features/work/page-contracts.ts"),
   ]).then(([page, composition]) => ({ ...page, ...composition }), (error) => ({ error }));
   const workRouteFeaturesPromise = loadWorkRouteFeatures(featureImports);
+  const savedTaskViewsRead = featureImports.savedTaskViews && requestedActorId
+    ? ensureSavedTaskViewsLoaded(requestedActorId, requestIdentityEpoch)
+    : Promise.resolve(false);
   renderShell(createElement("div", { id: "work-route-root" }), "work");
   const workRouteRoot = app.querySelector("#work-route-root");
   if (!workRouteRoot || !isCurrentPageRequest(lifetime)) return;
@@ -2302,6 +2342,19 @@ async function renderWork(date, lifetime) {
     return;
   }
   try {
+    const [workReadData] = await Promise.all([
+      readWorkRouteData({
+        readPlan,
+        hasReviewRoute,
+        focusRequest,
+        reviewTarget: reviewTarget || {},
+        date,
+        searchParams: new URLSearchParams(window.location.search),
+        lifetime,
+        pageApi,
+      }),
+      savedTaskViewsRead,
+    ]);
     const {
       assignmentsResult,
       sessionsResult,
@@ -2315,16 +2368,7 @@ async function renderWork(date, lifetime) {
       taskCatalogResult,
       attendanceResult,
       reviewerManagementResult,
-    } = await readWorkRouteData({
-      readPlan,
-      hasReviewRoute,
-      focusRequest,
-      reviewTarget: reviewTarget || {},
-      date,
-      searchParams: new URLSearchParams(window.location.search),
-      lifetime,
-      pageApi,
-    });
+    } = workReadData;
     if (!isCurrentPageRequest(lifetime)) return;
     const selectedReview = hasReviewRoute
       ? reviewTarget?.assignmentId
@@ -3408,7 +3452,6 @@ async function refreshSession() {
       state.uiPreferenceSaveStatus = state.uiPreferenceWritable ? "saved" : "idle";
     }
     state.uiPreferenceConflict = null;
-    await loadSavedTaskViews(grants.actorPersonId, preferenceEpoch);
     if (preferenceEpoch !== state.identityEpoch || state.uiPreferencePersonId !== grants.actorPersonId) return;
   } catch {
     state.session = null;

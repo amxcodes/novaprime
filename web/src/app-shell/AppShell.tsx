@@ -19,6 +19,7 @@ export function AppShell({
 }: AppShellProps) {
   const drawerId = `nova-navigation-${useId()}`;
   const [navigationOpen, setNavigationOpen] = useState(false);
+  const [navigationCompact, setNavigationCompact] = useState(false);
   const navigationTriggerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -35,17 +36,24 @@ export function AppShell({
     setNavigationOpen(true);
   };
   const closeNavigation = () => setNavigationOpen(false);
+  const desktopNavigationId = `${drawerId}-desktop`;
 
   return (
-    <div className={styles.shell}>
+    <div
+      className={styles.shell}
+      data-navigation-state={navigationCompact ? "compact" : "expanded"}
+    >
       <a className={styles.skipLink} href="#nova-main-content">
         Skip to main content
       </a>
       <DesktopSidebar
         activeItemId={activeItemId}
         brand={brand}
+        compact={navigationCompact}
         groups={navigation}
+        navigationId={desktopNavigationId}
         onNavigate={onNavigate}
+        onToggleCompact={() => setNavigationCompact((compact) => !compact)}
         sidebarFooter={sidebarFooter}
       />
       <div className={styles.contentColumn}>

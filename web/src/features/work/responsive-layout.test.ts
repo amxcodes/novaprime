@@ -10,7 +10,8 @@ describe("responsive layout contracts", () => {
     const topBar = read("../../app-shell/TopBar.module.css");
     const shellComponent = read("../../app-shell/AppShell.tsx");
     const shellBreakpoints = read("../../app-shell/breakpoints.ts");
-    expect(shell).toContain("grid-template-columns: 16.5rem minmax(0, 1fr)");
+    expect(shell).toContain("grid-template-columns: var(--nova-navigation-width-expanded) minmax(0, 1fr)");
+    expect(shell).toContain("grid-template-columns: var(--nova-navigation-width-compact) minmax(0, 1fr)");
     expect(shell).toMatch(/@media\s*\(max-width:\s*1199px\)[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/);
     expect(navigation).toMatch(/@media\s*\(max-width:\s*1199px\)[\s\S]*?\.desktopSidebar\s*\{\s*display: none/);
     expect(topBar).toMatch(/@media\s*\(min-width:\s*1200px\)[\s\S]*?\.start\s*\{\s*display: none/);
@@ -45,6 +46,15 @@ describe("responsive layout contracts", () => {
     expect(assignmentSummary).toMatch(/@media\s*\(any-pointer:\s*coarse\)[\s\S]*?\.title a\s*\{\s*min-height: var\(--nova-control-touch-target\)/);
   });
 
+  it("gives assignment collections room for their table layout and preserves narrow-card labels", () => {
+    const work = read("./WorkPage.module.css");
+    const assignments = read("./MyAssignments.module.css");
+    expect(work).toMatch(/\.section\[data-section="assignments"\],[\s\S]*?\.section\[data-section="tasks"\],[\s\S]*?grid-column:\s*1\s*\/\s*-1/);
+    expect(assignments).toMatch(/@container assignments \(max-width: 34rem\)[\s\S]*?\.collectionHeader \{ display: none; \}[\s\S]*?\.task,[\s\S]*?\.actions \{\s*grid-column: 1 \/ -1;/);
+    expect(assignments).toMatch(/@container assignments \(max-width: 34rem\)[\s\S]*?\.fieldLabel \{[\s\S]*?position: static/);
+    expect(assignments).toMatch(/@container assignments \(max-width: 22rem\)[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/);
+  });
+
   it("keeps Work surfaces explicit and leaves feature controls to their owners", () => {
     const tokens = read("../../design-system/foundations/tokens.css");
     const work = read("./WorkPage.module.css");
@@ -53,6 +63,8 @@ describe("responsive layout contracts", () => {
     }
     expect(work).toContain('.section[data-section="create"]');
     expect(work).toContain('.section[data-section="sessions"]');
+    expect(work).toContain('.section[data-section="assignments"]');
+    expect(work).toContain('.section[data-section="tasks"]');
     expect(work).not.toContain('.section[data-section="sessions"] > :global(section > .panel-header');
     expect(work).not.toContain(".feature-section");
     expect(work).not.toMatch(/:global\((?:label|input|select|textarea|button|p)\b/);

@@ -44,11 +44,11 @@ type ChoiceSet<T extends string> = { [Value in T]: Choice<Value> };
 
 const themeChoices = {
   system: { value: "system", label: "System", detail: "Follow device" },
-  light: { value: "light", label: "Light", detail: "Cloud and cobalt" },
-  dark: { value: "dark", label: "Dark", detail: "Graphite and cobalt" },
+  light: { value: "light", label: "Light", detail: "White and green" },
+  dark: { value: "dark", label: "Dark", detail: "Black and green" },
 } satisfies ChoiceSet<PersonalAppearance["theme"]>;
 const accentChoices = {
-  nova: { value: "nova", label: "NOVA", detail: "Cobalt" },
+  nova: { value: "nova", label: "NOVA", detail: "Green" },
   forest: { value: "forest", label: "Forest" },
   teal: { value: "teal", label: "Teal" },
   lime: { value: "lime", label: "Lime" },

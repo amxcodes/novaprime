@@ -340,6 +340,7 @@ describe("direct PostgreSQL update adapter", () => {
     const url = "postgresql://nova_migrator:private@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require";
     let queries = 0;
     let released = false;
+    let poolConstructions = 0;
     const client = {
       async query() {
         queries += 1;
@@ -354,10 +355,58 @@ describe("direct PostgreSQL update adapter", () => {
       targetManifest: fixture.targetManifest,
       baselineManifest: fixture.baselineManifest,
       migrationDirectory: fixture.directory,
-      createPool: () => ({ connect: async () => client, end: async () => {} }) as never,
+      createPool: () => {
+        poolConstructions += 1;
+        return { connect: async () => client, end: async () => {} } as never;
+      },
     })).rejects.toThrow("POSTGRES_TRANSACTION_POOLER_UNSUPPORTED");
     expect(queries).toBe(0);
-    expect(released).toBe(true);
+    expect(poolConstructions).toBe(0);
+    expect(released).toBe(false);
+  });
+
+  test("requires verified TLS before constructing a remote PostgreSQL pool", async () => {
+    const fixture = await migrationFixture();
+    const insecureUrls = [
+      "postgresql://nova_migrator:private@db.example.com:5432/nova",
+      "postgresql://nova_migrator:private@db.example.com:5432/nova?sslmode=require",
+      "postgresql://nova_migrator:private@db.example.com:5432/nova?sslmode=require&uselibpqcompat=true",
+      "postgresql://nova_migrator:private@db.example.com:5432/nova?sslmode=verify-ca&sslrootcert=/tmp/ca.pem",
+      "postgresql://nova_migrator:private@db.example.com:5432/nova?sslmode=no-verify",
+      "postgresql://nova_migrator:private@db.example.com:5432/nova?sslmode=verify-full&sslmode=disable",
+    ];
+    let poolConstructions = 0;
+
+    for (const databaseUrl of insecureUrls) {
+      const target = postgresTargetLabel(databaseUrl);
+      await expect(planPostgresUpdate({
+        databaseUrl,
+        confirmation: target,
+        targetManifest: fixture.targetManifest,
+        baselineManifest: fixture.baselineManifest,
+        migrationDirectory: fixture.directory,
+        createPool: () => {
+          poolConstructions += 1;
+          throw new Error("Pool construction must not occur for unverified TLS");
+        },
+      })).rejects.toThrow("POSTGRES_REMOTE_TLS_VERIFY_FULL_REQUIRED");
+    }
+    expect(poolConstructions).toBe(0);
+
+    const secureUrl = "postgresql://nova_migrator:private@db.example.com:5432/nova?sslmode=verify-full&uselibpqcompat=true";
+    const secureTarget = postgresTargetLabel(secureUrl);
+    await expect(planPostgresUpdate({
+      databaseUrl: secureUrl,
+      confirmation: secureTarget,
+      targetManifest: fixture.targetManifest,
+      baselineManifest: fixture.baselineManifest,
+      migrationDirectory: fixture.directory,
+      createPool: () => {
+        poolConstructions += 1;
+        return { connect: async () => { throw new Error("Stopped after secure URL validation"); }, end: async () => {} };
+      },
+    })).rejects.toThrow("Stopped after secure URL validation");
+    expect(poolConstructions).toBe(1);
   });
 
   test("uses the existing advisory-lock key and transaction for each canonical file", async () => {

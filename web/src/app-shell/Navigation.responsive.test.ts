@@ -7,6 +7,7 @@ const appShellSource = readFileSync(new URL("./AppShell.tsx", import.meta.url), 
 const appShellStyles = readFileSync(new URL("./AppShell.module.css", import.meta.url), "utf8");
 const navigationStyles = readFileSync(new URL("./Navigation.module.css", import.meta.url), "utf8");
 const topBarStyles = readFileSync(new URL("./TopBar.module.css", import.meta.url), "utf8");
+const designTokens = readFileSync(new URL("../design-system/foundations/tokens.css", import.meta.url), "utf8");
 
 describe("responsive navigation focus", () => {
   test("moves focus into visible desktop navigation when an open drawer closes at desktop width", () => {
@@ -35,6 +36,38 @@ describe("responsive navigation focus", () => {
     }
     expect(topBarStyles).toContain(`@media (min-width: ${minWidth}px)`);
     expect(topBarStyles).toContain(`@media (max-width: ${minWidth - 1}px)`);
+  });
+
+  test("uses the 290px expanded and 154px compact desktop rail while retaining current touch navigation breakpoints", () => {
+    const minWidth = Number(EXPANDED_NAVIGATION_MEDIA_QUERY.match(/\d+/)?.[0]);
+    expect(appShellStyles).toContain("grid-template-columns: var(--nova-navigation-width-expanded) minmax(0, 1fr)");
+    expect(appShellStyles).toContain("grid-template-columns: var(--nova-navigation-width-compact) minmax(0, 1fr)");
+    expect(designTokens).toContain("--nova-navigation-width-expanded: 18.125rem");
+    expect(designTokens).toContain("--nova-navigation-width-compact: 9.625rem");
+    expect(appShellStyles).toContain('.shell[data-navigation-state="compact"]');
+    expect(appShellSource).toContain('data-navigation-state={navigationCompact ? "compact" : "expanded"}');
+    expect(appShellSource).toContain("setNavigationCompact((compact) => !compact)");
+    expect(source).toContain("aria-controls={navigationId}");
+    expect(source).toContain("aria-expanded={!compact}");
+    expect(navigationStyles).toContain("min-height: var(--nova-control-touch-target)");
+    expect(navigationStyles).toContain(`@media (max-width: ${minWidth - 1}px)`);
+    expect(appShellStyles).toContain('.shell[data-navigation-state="compact"]');
+    expect(appShellStyles).toContain('.shell[data-navigation-state="compact"] {\n    grid-template-columns: minmax(0, 1fr)');
+    expect(navigationStyles).toContain("@media (max-width: 639px)");
+    expect(navigationStyles).toContain("min-height: 3.25rem");
+  });
+
+  test("keeps rail resizing motion-reduced and the toggle legible in forced colors", () => {
+    const reducedMotionRule = appShellStyles.match(
+      /@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/,
+    )?.[1] ?? "";
+    const forcedColorsRule = navigationStyles.slice(navigationStyles.indexOf("@media (forced-colors: active)"));
+
+    expect(reducedMotionRule).toContain("transition: none");
+    expect(forcedColorsRule).toContain(".desktopToggle");
+    expect(forcedColorsRule).toContain("ButtonFace");
+    expect(forcedColorsRule).toContain("ButtonText");
+    expect(forcedColorsRule).toContain("outline-color: Highlight");
   });
 
   test("uses an opaque theme-token backdrop when reduced transparency is requested", () => {

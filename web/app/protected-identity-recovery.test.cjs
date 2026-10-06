@@ -36,6 +36,23 @@ test("saved-view access loss clears cached records before permission/session rec
   assert.match(loader, /state\.savedTaskViewsReadError = true;/);
 });
 
+test("saved views stay off session readiness and load on the Work or Settings surface", () => {
+  const session = section("async function refreshSession()", "function canOpenView(");
+  const work = section("async function renderWork(date, lifetime)", "async function renderWorkSetup(lifetime)");
+  const settings = section("async function updateSavedTaskViewsEditor()", "async function renderAppearanceEditor()");
+  const loader = section("async function loadSavedTaskViews(", "function taskViewIdentityError(");
+
+  assert.doesNotMatch(session, /loadSavedTaskViews|ensureSavedTaskViewsLoaded|\/api\/me\/task-views/);
+  assert.match(work, /featureImports\.savedTaskViews && requestedActorId[\s\S]*?ensureSavedTaskViewsLoaded\(requestedActorId, requestIdentityEpoch\)/);
+  assert.match(work, /Promise\.all\(\[[\s\S]*?readWorkRouteData\([\s\S]*?savedTaskViewsRead/);
+  assert.match(settings, /ensureSavedTaskViewsLoaded\(personId, identityEpoch\)/);
+  assert.match(settings, /const personId = state\.identityPersonId \|\| state\.actorGrants\?\.actorPersonId \|\| null/);
+  assert.match(settings, /if \(personId && allowedCollections\.length > 0 && !state\.savedTaskViewsLoaded/);
+  assert.match(settings, /isCurrentSavedTaskViewsEditor\(target, generation, identityEpoch\)/);
+  assert.match(loader, /state\.savedTaskViewsLoading && pending\?\.personId === expectedPersonId && pending\.identityEpoch === identityEpoch/);
+  assert.match(loader, /state\.savedTaskViewsLoaded = true;/);
+});
+
 test("appearance writes disable a denied editor and use its captured identity for recovery", () => {
   const save = section("async function saveAppearancePreferences()", "function clearIdentityScopedState(");
   assert.match(save, /const identityContext = \{ identityEpoch, actorPersonId: personId \}/);

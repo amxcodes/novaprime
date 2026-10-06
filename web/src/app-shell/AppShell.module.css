@@ -1,10 +1,15 @@
 .shell {
   display: grid;
-  grid-template-columns: 16.5rem minmax(0, 1fr);
+  grid-template-columns: var(--nova-navigation-width-expanded) minmax(0, 1fr);
   min-height: 100vh;
   min-height: 100dvh;
   color: var(--nova-color-text-primary);
   background: var(--nova-color-canvas);
+  transition: grid-template-columns var(--nova-motion-duration-standard) var(--nova-motion-ease-standard);
+}
+
+.shell[data-navigation-state="compact"] {
+  grid-template-columns: var(--nova-navigation-width-compact) minmax(0, 1fr);
 }
 
 .contentColumn {
@@ -40,7 +45,15 @@
 }
 
 @media (max-width: 1199px) {
-  .shell {
+  .shell,
+  .shell[data-navigation-state="compact"] {
     grid-template-columns: minmax(0, 1fr);
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell {
+    transition: none;
   }
 }

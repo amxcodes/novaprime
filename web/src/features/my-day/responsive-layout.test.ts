@@ -29,6 +29,13 @@ describe("My Day page layout", () => {
     expect(styles).toMatch(/@container my-day-page\s*\(max-width:\s*40rem\)[\s\S]*?\.moduleGrid \{ grid-template-columns: minmax\(0, 1fr\);/);
   });
 
+  it("gives assignments the wide task surface and keeps module headings readable", () => {
+    expect(styles).toMatch(/\.module\[data-my-day-module="assignments"\]\s*\{\s*grid-column:\s*1\s*\/\s*-1;/);
+    expect(styles).toMatch(/@container my-day-page\s*\(max-width:\s*40rem\)[\s\S]*?\.module\[data-my-day-module="assignments"\]\s*\{\s*grid-column:\s*auto;/);
+    expect(styles).toMatch(/\.moduleHeader\s*\{[\s\S]*?align-items:\s*baseline;[\s\S]*?justify-content:\s*space-between/);
+    expect(styles).toMatch(/@container my-day-page\s*\(max-width:\s*40rem\)[\s\S]*?\.moduleHeader\s*\{[^}]*flex-direction:\s*column/);
+  });
+
   it("keeps Leave form breakpoints within the width its My Day island can reach", () => {
     const wideContentWidth = Number(foundationTokens.match(/--nova-content-max:\s*(\d+)rem/)?.[1]);
     const userWideContentWidth = Number(foundationTokens.match(/data-content-width="wide"\]\s*\{\s*--nova-content-max:\s*(\d+)rem/)?.[1]);

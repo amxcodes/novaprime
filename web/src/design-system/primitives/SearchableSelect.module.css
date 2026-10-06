@@ -12,6 +12,12 @@
   appearance: none;
 }
 
+.choiceShell input[aria-expanded="true"] {
+  border-color: var(--nova-control-border-focus);
+  background: var(--nova-color-action-subtle);
+  box-shadow: inset 0 -2px 0 var(--nova-color-action);
+}
+
 .choiceInputHasClear {
   padding-inline-end: 4.5rem;
 }
@@ -45,7 +51,7 @@
   justify-content: space-between;
   gap: var(--nova-space-3);
   padding: var(--nova-space-2) var(--nova-space-3);
-  border-radius: calc(var(--nova-radius-control) - var(--nova-space-1));
+  border-radius: var(--nova-radius-option);
   cursor: pointer;
   outline: none;
 }
@@ -58,6 +64,10 @@
 .option[aria-selected="true"] {
   color: var(--nova-select-option-selected-text);
   background: var(--nova-select-option-selected);
+}
+
+.option[data-active="true"] {
+  box-shadow: inset 0 -2px 0 var(--nova-color-action);
 }
 
 .option[aria-disabled="true"] {
@@ -117,6 +127,14 @@
   white-space: nowrap;
 }
 
+.choiceShell .clearChoice[data-size="compact"] {
+  border-color: transparent;
+}
+
+.choiceShell .clearChoice[data-size="compact"]:hover:not(:disabled) {
+  border-color: transparent;
+}
+
 @media (any-pointer: coarse) {
   .option {
     min-height: var(--nova-control-touch-target);
@@ -132,7 +150,15 @@
   }
 
   .option[data-active="true"] {
+    box-shadow: none;
     outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+
+  .choiceShell input[aria-expanded="true"] {
+    border-color: ButtonText;
+    background: Field;
+    box-shadow: none;
   }
 
   .option[aria-selected="true"] {

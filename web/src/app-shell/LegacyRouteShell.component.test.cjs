@@ -87,6 +87,7 @@ test("omits empty navigation groups and preserves authorized destination order a
   const markup = renderToStaticMarkup(React.createElement(DesktopSidebar, {
     brand: "NOVA",
     activeItemId: "work",
+    onToggleCompact() {},
     groups: [
       { id: "empty", label: "Empty group", items: [] },
       { id: "core", label: "My workspace", items: [
@@ -102,6 +103,46 @@ test("omits empty navigation groups and preserves authorized destination order a
   assert.doesNotMatch(markup, /Empty group/);
   assert.ok(markup.indexOf("My workspace") < markup.indexOf("Configuration"));
   assert.match(markup, /aria-current="page"[^>]*href="\/work"/);
+});
+
+test("desktop rail toggle exposes the same supplied destinations in expanded and compact states", () => {
+  const groups = [
+    { id: "core", label: "Workspace", items: [
+      { id: "home", label: "Home", href: "/", icon: null },
+      { id: "work", label: "Work", href: "/work", icon: null },
+    ] },
+    { id: "admin", label: "Configuration", items: [
+      { id: "settings", label: "Settings", href: "/settings", icon: null },
+    ] },
+  ];
+  const props = {
+    activeItemId: "work",
+    brand: "NOVA",
+    groups,
+    navigationId: "test-desktop-navigation",
+    onToggleCompact() {},
+  };
+  const expanded = renderToStaticMarkup(React.createElement(DesktopSidebar, {
+    ...props,
+    compact: false,
+  }));
+  const compact = renderToStaticMarkup(React.createElement(DesktopSidebar, {
+    ...props,
+    compact: true,
+  }));
+
+  assert.match(expanded, /aria-label="Collapse sidebar navigation"/);
+  assert.match(expanded, /aria-expanded="true"/);
+  assert.match(compact, /aria-label="Expand sidebar navigation"/);
+  assert.match(compact, /aria-expanded="false"/);
+  assert.match(expanded, /aria-controls="test-desktop-navigation"/);
+  assert.match(compact, /id="test-desktop-navigation"/);
+  assert.match(compact, /title="Home"/);
+  assert.match(compact, /title="Settings"/);
+
+  const destinations = (markup) => Array.from(markup.matchAll(/<a\b[^>]*href="([^"]+)"/g), ([, href]) => href);
+  assert.deepEqual(destinations(expanded), ["/", "/work", "/settings"]);
+  assert.deepEqual(destinations(compact), destinations(expanded));
 });
 
 test("exposes only supplied navigation in quick links and wires More to the complete authorized drawer", () => {
@@ -121,6 +162,9 @@ test("exposes only supplied navigation in quick links and wires More to the comp
   assert.match(markup, /aria-current="page" class="bottomLink" href="\/people"/);
   assert.match(markup, /class="bottomLink" href="\/"/);
   assert.match(markup, /aria-label="Navigation"/);
+  assert.match(markup, /data-navigation-state="expanded"/);
+  assert.match(markup, /aria-label="Collapse sidebar navigation"/);
+  assert.match(markup, /aria-controls="nova-navigation-[^"]+-desktop"/);
   assert.match(markup, /aria-haspopup="dialog"/);
   assert.match(markup, /aria-expanded="false"/);
   assert.match(markup, /More/);

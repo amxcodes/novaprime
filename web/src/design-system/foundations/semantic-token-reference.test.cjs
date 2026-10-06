@@ -32,6 +32,16 @@ test("every consumed spacing token exists in the design-system foundation", () =
   assert.deepEqual(missing, [], "define spacing tokens in foundations/tokens.css before consuming them");
 });
 
+test("Orbit component geometry is mapped through shared semantic tokens", () => {
+  const tokenSource = withoutCssComments(fs.readFileSync(tokenFile, "utf8"));
+
+  assert.match(tokenSource, /--nova-radius-option:\s*0\.5rem\s*;/);
+  assert.match(tokenSource, /--nova-radius-control:\s*0\.75rem\s*;/);
+  assert.match(tokenSource, /--nova-radius-surface:\s*1\.125rem\s*;/);
+  assert.match(tokenSource, /--nova-navigation-width-expanded:\s*18\.125rem\s*;/);
+  assert.match(tokenSource, /--nova-navigation-width-compact:\s*9\.625rem\s*;/);
+});
+
 test("every NOVA custom property used by source styles has a CSS or runtime definition", () => {
   const declarations = new Set();
   const references = new Set();

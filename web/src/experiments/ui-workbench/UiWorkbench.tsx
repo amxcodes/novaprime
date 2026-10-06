@@ -81,9 +81,12 @@ const appearanceAttributes = [
 ] as const;
 
 const appearanceProperties = [
-  "--nova-user-accent",
-  "--nova-user-accent-contrast",
-  "--nova-user-accent-hover",
+  "--nova-user-accent-light",
+  "--nova-user-accent-dark",
+  "--nova-user-accent-contrast-light",
+  "--nova-user-accent-contrast-dark",
+  "--nova-user-accent-hover-light",
+  "--nova-user-accent-hover-dark",
   "--nova-user-accent-text-light",
   "--nova-user-accent-text-light-hover",
   "--nova-user-accent-text-dark",

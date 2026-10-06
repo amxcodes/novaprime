@@ -94,7 +94,9 @@ test("the shared popup owns tokenized responsive and forced-colors styling", () 
   assert.match(css, /Highlight/);
   assert.match(css, /-webkit-appearance:\s*none/);
   assert.match(css, /appearance:\s*none/);
-  assert.match(css, /border-radius:\s*calc\(var\(--nova-radius-control\) - var\(--nova-space-1\)\)/);
+  assert.match(css, /\.choiceShell input\[aria-expanded="true"\]\s*\{[^}]*background:\s*var\(--nova-color-action-subtle\)[^}]*box-shadow:\s*inset 0 -2px 0 var\(--nova-color-action\)/s);
+  assert.match(css, /\.option\s*\{[^}]*border-radius:\s*var\(--nova-radius-option\)/s);
+  assert.match(css, /\.option\[data-active="true"\]\s*\{\s*box-shadow:\s*inset 0 -2px 0 var\(--nova-color-action\)/);
   assert.match(css, /@media\s*\(any-pointer:\s*coarse\)[\s\S]*?min-height:\s*var\(--nova-control-touch-target\)/);
   assert.match(css, /scrollbar-gutter:\s*stable/);
 });

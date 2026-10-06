@@ -121,12 +121,12 @@ test("approved and custom accents keep button and selected-text contrast in both
   assert.deepEqual(Object.keys(ACCENT_SWATCHES), ["nova", "forest", "teal", "lime"]);
   assert.equal(ACCENT_SWATCHES.nova, propertyValue(tokenSource, "--nova-palette-action-700"));
   assert.equal(getAccentHover(ACCENT_SWATCHES.nova), propertyValue(tokenSource, "--nova-palette-action-hover-light"));
-  assert.equal(getAccentHover(ACCENT_SWATCHES.nova), propertyValue(tokenSource, "--nova-palette-action-hover-dark"));
   assert.equal(getAccentForeground(ACCENT_SWATCHES.nova), propertyValue(tokenSource, "--nova-palette-action-contrast-light"));
-  assert.equal(getAccentForeground(ACCENT_SWATCHES.nova), propertyValue(tokenSource, "--nova-palette-action-contrast-dark"));
-  assert.equal(propertyValue(tokenSource, "--nova-palette-action-dark"), ACCENT_SWATCHES.nova);
-  assert.equal(getReadableAccentText(ACCENT_SWATCHES.nova, "light"), propertyValue(tokenSource, "--nova-palette-focus-light"));
-  assert.equal(getReadableAccentText(ACCENT_SWATCHES.nova, "dark"), propertyValue(tokenSource, "--nova-palette-focus-dark"));
+  const darkNova = propertyValue(tokenSource, "--nova-palette-action-dark");
+  assert.equal(getAccentHover(darkNova), propertyValue(tokenSource, "--nova-palette-action-hover-dark"));
+  assert.equal(getAccentForeground(darkNova), propertyValue(tokenSource, "--nova-palette-action-contrast-dark"));
+  assert.ok(contrastRatio(propertyValue(tokenSource, "--nova-palette-focus-light"), propertyValue(tokenSource, "--nova-palette-canvas-light")) >= 4.5);
+  assert.ok(contrastRatio(propertyValue(tokenSource, "--nova-palette-focus-dark"), propertyValue(tokenSource, "--nova-palette-canvas-dark")) >= 4.5);
 
   const themes = [
     {
@@ -220,8 +220,10 @@ test("appearance changes replace document-root theme and accent tokens instead o
       surface: "soft",
       contentWidth: "wide",
     });
-    assert.equal(properties.get("--nova-user-accent"), "#ff7a00");
-    assert.equal(properties.get("--nova-user-accent-hover"), getAccentHover("#ff7a00"));
+    assert.equal(properties.get("--nova-user-accent-light"), "#ff7a00");
+    assert.equal(properties.get("--nova-user-accent-dark"), "#ff7a00");
+    assert.equal(properties.get("--nova-user-accent-hover-light"), getAccentHover("#ff7a00"));
+    assert.equal(properties.get("--nova-user-accent-hover-dark"), getAccentHover("#ff7a00"));
     assert.equal(properties.get("--nova-user-focus-light"), getReadableAccentText("#ff7a00", "light"));
     assert.equal(properties.get("--nova-user-focus-dark"), getReadableAccentText("#ff7a00", "dark"));
 
@@ -239,11 +241,57 @@ test("appearance changes replace document-root theme and accent tokens instead o
     });
     assert.equal(root.dataset.theme, "light");
     assert.equal(root.dataset.accent, "nova");
-    assert.equal(properties.get("--nova-user-accent"), ACCENT_SWATCHES.nova);
-    assert.equal(properties.get("--nova-user-accent-contrast"), getAccentForeground(ACCENT_SWATCHES.nova));
+    assert.equal(properties.get("--nova-user-accent-light"), ACCENT_SWATCHES.nova);
+    assert.equal(properties.get("--nova-user-accent-dark"), propertyValue(tokenSource, "--nova-palette-action-dark"));
+    assert.equal(properties.get("--nova-user-accent-contrast-light"), getAccentForeground(ACCENT_SWATCHES.nova));
+    assert.equal(properties.get("--nova-user-accent-contrast-dark"), getAccentForeground(propertyValue(tokenSource, "--nova-palette-action-dark")));
     assert.equal(properties.get("--nova-user-focus-light"), getReadableAccentText(ACCENT_SWATCHES.nova, "light"));
-    assert.equal(properties.get("--nova-user-focus-dark"), getReadableAccentText(ACCENT_SWATCHES.nova, "dark"));
-    assert.notEqual(properties.get("--nova-user-accent"), "#ff7a00");
+    assert.equal(properties.get("--nova-user-focus-dark"), getReadableAccentText(propertyValue(tokenSource, "--nova-palette-action-dark"), "dark"));
+    assert.notEqual(properties.get("--nova-user-accent-light"), "#ff7a00");
+  } finally {
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
+test("curated account accents resolve to readable theme-specific colors through one document token boundary", () => {
+  const properties = new Map();
+  const previousDocument = global.document;
+  global.document = {
+    documentElement: {
+      dataset: {},
+      style: { setProperty: (name, value) => properties.set(name, value) },
+    },
+  };
+
+  try {
+    const themePairs = [
+      ["nova", "#126a52", "#68d6a4"],
+      ["forest", "#27674a", "#89d5a4"],
+      ["teal", "#2b7489", "#78c9dc"],
+      ["lime", "#778642", "#c4d584"],
+    ];
+    for (const [accent, light, dark] of themePairs) {
+      applyAppearanceTokens({
+        theme: "dark",
+        accent,
+        customAccent: "#126a52",
+        density: "comfortable",
+        typeScale: "default",
+        font: "geist",
+        contrast: "system",
+        motion: "system",
+        surface: "standard",
+        contentWidth: "comfortable",
+      });
+      assert.equal(properties.get("--nova-user-accent-light"), light);
+      assert.equal(properties.get("--nova-user-accent-dark"), dark);
+      assert.equal(properties.get("--nova-user-accent-hover-dark"), getAccentHover(dark));
+      assert.ok(contrastRatio(
+        properties.get("--nova-user-accent-contrast-dark"),
+        properties.get("--nova-user-accent-dark"),
+      ) >= 4.5, `${accent} dark primary action foreground`);
+    }
   } finally {
     if (previousDocument === undefined) delete global.document;
     else global.document = previousDocument;
