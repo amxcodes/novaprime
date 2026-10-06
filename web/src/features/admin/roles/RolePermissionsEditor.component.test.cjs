@@ -214,11 +214,15 @@ test("protected and archived roles never expose an edit action", () => {
 
 test("payroll policy flags are described as future eligibility, not a payroll workflow", () => {
   const html = render();
+  const source = fs.readFileSync(path.join(__dirname, "RolePermissionsEditor.tsx"), "utf8");
 
   assert.match(html, /Payroll fields record future eligibility only; NOVA does not calculate or run payroll\./);
   assert.match(html, /Payroll eligibility/);
   assert.match(html, /Attendance in future payroll rules/);
   assert.match(html, /Overtime eligibility/);
+  assert.match(html, /Enable payroll eligibility first\./);
+  assert.match(source, /disabled=\{!canEditDraft \|\| submitting \|\| !prerequisiteEnabled\}/);
+  assert.match(source, /updateRoleOperationalPolicy\(/);
   assert.doesNotMatch(html, /Include this role in payroll processing|Use attendance in payroll calculations/);
 });
 

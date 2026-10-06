@@ -21,6 +21,11 @@ import {
   roleGrantTargetId,
   rolePermissionModules,
 } from "./role-editor-model";
+import {
+  isRoleOperationalPolicyFieldEnabled,
+  roleOperationalPolicyPrerequisite,
+  updateRoleOperationalPolicy,
+} from "./role-policy-model";
 import { PermissionGrantMatrix, type PermissionGrantDraft } from "./PermissionGrantMatrix";
 import styles from "./RolePermissionsEditor.module.css";
 
@@ -336,23 +341,33 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
                 <p>These defaults are separate from permission grants. Payroll fields record future eligibility only; NOVA does not calculate or run payroll.</p>
               </div>
               <div className={styles.policyGrid}>
-                {policyFields.map((field) => (
-                  <label className={styles.policyChoice} key={field.key}>
-                    <input
-                      type="checkbox"
-                      checked={draft.operationalPolicy[field.key]}
-                      disabled={!canEditDraft || submitting}
-                      onChange={(event) => updateDraft("operationalPolicy", {
-                        ...draft.operationalPolicy,
-                        [field.key]: event.currentTarget.checked,
-                      })}
-                    />
-                    <span>
-                      <strong>{field.label}</strong>
-                      <small>{field.detail}</small>
-                    </span>
-                  </label>
-                ))}
+                {policyFields.map((field) => {
+                  const prerequisite = roleOperationalPolicyPrerequisite(field.key);
+                  const prerequisiteField = prerequisite
+                    ? policyFields.find((candidate) => candidate.key === prerequisite)
+                    : undefined;
+                  const prerequisiteEnabled = isRoleOperationalPolicyFieldEnabled(draft.operationalPolicy, field.key);
+                  return (
+                    <label className={styles.policyChoice} key={field.key}>
+                      <input
+                        type="checkbox"
+                        checked={draft.operationalPolicy[field.key]}
+                        disabled={!canEditDraft || submitting || !prerequisiteEnabled}
+                        onChange={(event) => updateDraft("operationalPolicy", updateRoleOperationalPolicy(
+                          draft.operationalPolicy,
+                          field.key,
+                          event.currentTarget.checked,
+                        ))}
+                      />
+                      <span>
+                        <strong>{field.label}</strong>
+                        <small>{!prerequisiteEnabled && prerequisiteField
+                          ? `Enable ${prerequisiteField.label.toLowerCase()} first. ${field.detail}`
+                          : field.detail}</small>
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
             </section>
 
