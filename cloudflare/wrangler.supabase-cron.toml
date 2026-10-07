@@ -7,11 +7,6 @@ compatibility_date = "2026-09-22"
 compatibility_flags = ["nodejs_compat"]
 keep_vars = true
 
-# Keep API query round trips near NOVA's Supabase PostgreSQL project in Seoul.
-# The assets binding still serves static assets at the closest edge location.
-[placement]
-region = "aws:ap-northeast-2"
-
 [build]
 command = "bun run build:web"
 

@@ -231,11 +231,6 @@ permanent hosting change.
 
 ### 5. Test region and runtime choices before migration
 
-- [x] Configure the existing Cloudflare Worker adapter to run API requests
-  near the Supabase database in AWS Seoul (`aws:ap-northeast-2`). Keep
-  `/api/*` as the only Worker-first route so static assets remain edge-served.
-  This config does not affect the active Netlify deployment; a Cloudflare
-  canary is still required to measure it.
 - [ ] Confirm the currently selected Netlify Function region in the project
   settings, rather than relying only on the site's age or default. Netlify's
   current documented default is `cmh` (Ohio); `nrt` (Tokyo) is available on
@@ -247,13 +242,7 @@ permanent hosting change.
 - [ ] Compare warm p50/p95, cold latency, errors, and function execution costs
   before selecting a region. Since all `/api/*` traffic currently enters the
   same `nova` function, a per-function region affects the whole API.
-- [ ] Configure a Cloudflare Hyperdrive connection to the Supabase direct
-  database endpoint using the restricted `nova_app` role, then deploy the
-  existing Cloudflare adapter to a temporary host with matching Better Auth
-  origins and secrets. Compare authenticated warm/cold page waterfalls,
-  request counts, and safe server timings against the same Netlify workload.
-  Retain Netlify as rollback until the comparison passes.
-- [ ] If the Cloudflare canary is unavailable or still too slow, test a
+- [ ] If regional configuration is unavailable or still too slow, test a
   small Deno/Supabase Edge Function canary near the Seoul database, not a
   wholesale API cutover. Keep the canary limited to a read path with a clear
   auth contract and equivalent result semantics.
@@ -283,15 +272,13 @@ Recommended order:
 
 1. Publish the diagnostics and measure authenticated warm and cold requests.
 2. If database round trips dominate, run the Netlify Asia-region comparison
-   when the plan supports it. This retains the existing Node runtime,
+   first when the plan supports it. This retains the existing Node runtime,
    same-origin cookies, auth behavior, and deployment model.
-3. Since the repository already includes the same API on Cloudflare Workers,
-   compare a Seoul-placed Worker with Supabase Hyperdrive against the same
-   authenticated workload before considering a Deno/Supabase Edge migration.
-4. If needed, test a small Deno/Supabase Edge Function canary with the same
-   auth and RLS/domain checks; do not switch the whole API without an equivalent
-   result and rollback test.
-5. Use PostgreSQL functions for specific data-intensive transactions when
+3. If a region switch is unavailable or insufficient, build a small Supabase
+   Edge Function canary with the same auth and RLS/domain checks. Compare it
+   against the same API workload before deciding whether an API migration is
+   justified.
+4. Use PostgreSQL functions for specific data-intensive transactions when
    the measured bottleneck is database-side work that benefits from executing
    close to the data. Keep external services, email, and orchestration in an
    application runtime.
