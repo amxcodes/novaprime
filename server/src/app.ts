@@ -154,6 +154,7 @@ import {
   updateNotificationPreferences,
 } from "./commands/notifications.js";
 import { stateChangingRequestError } from "./request-security.js";
+import { requestFailureStatus } from "./request-failure.js";
 import { readPublicOrigin, updatePublicOrigin } from "./commands/public-origin.js";
 import { readPersonalUiPreferences, updatePersonalUiPreferences } from "./commands/ui-preferences.js";
 import { deletePersonalTaskView, readPersonalTaskViews, writePersonalTaskView } from "./commands/task-views.js";
@@ -181,7 +182,10 @@ export async function handleRequest(request: Request): Promise<Response> {
       ? error.code
       : "UNKNOWN";
     console.error(`NOVA_REQUEST_FAILED ${request.method} ${code}`);
-    response = json({ error: "INTERNAL_ERROR" }, 500);
+    const status = requestFailureStatus(error);
+    response = status === 503
+      ? json({ error: "SERVICE_UNAVAILABLE" }, status)
+      : json({ error: "INTERNAL_ERROR" }, status);
   }
   const headers = new Headers(response.headers);
   const existingTiming = headers.get("server-timing");

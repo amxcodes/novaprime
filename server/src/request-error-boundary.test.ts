@@ -2,7 +2,10 @@ import { afterEach, expect, mock, test } from "bun:test";
 
 mock.module("./auth.js", () => ({
   auth: {
-    handler: async () => {
+    handler: async (request: Request) => {
+      if (new URL(request.url).searchParams.has("unknown-failure")) {
+        throw new Error("unexpected internal failure");
+      }
       throw Object.assign(new Error("database password must not reach the caller"), { code: "28P01" });
     },
   },
@@ -24,19 +27,26 @@ afterEach(() => {
   }
 });
 
-test("unhandled auth failures return a generic response and log only the safe database code", async () => {
+test("database authentication failures return service unavailable and log only the safe code", async () => {
   const previousConsoleError = console.error;
   const logEntries: string[] = [];
   console.error = (...values) => logEntries.push(values.join(" "));
   try {
     const response = await handleRequest(new Request("https://nova.test/api/auth/get-session"));
 
-    expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: "INTERNAL_ERROR" });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "SERVICE_UNAVAILABLE" });
     expect(response.headers.get("server-timing")).toMatch(/^nova-app;dur=\d+(?:\.\d+)?$/);
     expect(logEntries.join(" ")).toContain("28P01");
     expect(logEntries.join(" ")).not.toContain("database password");
   } finally {
     console.error = previousConsoleError;
   }
+});
+
+test("unexpected auth failures remain internal errors", async () => {
+  const response = await handleRequest(new Request("https://nova.test/api/auth/get-session?unknown-failure=1"));
+
+  expect(response.status).toBe(500);
+  expect(await response.json()).toEqual({ error: "INTERNAL_ERROR" });
 });
