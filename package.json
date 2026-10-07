@@ -28,7 +28,7 @@
     "supabase:audit": "bun --env-file=.env scripts/supabase-boundary-audit.ts",
     "setup": "bun --no-env-file scripts/setup.ts",
     "setup:supabase": "bun --no-env-file scripts/setup.ts --mode supabase",
-    "nova:update": "bun scripts/update.ts",
+    "nova:update": "bun --no-env-file scripts/update.ts",
     "update:manifest": "bun scripts/update/manifest.ts",
     "deployment:preflight": "bun --no-env-file scripts/deployment-preflight.ts",
     "qa:postgres": "bun scripts/qa-postgres.ts",

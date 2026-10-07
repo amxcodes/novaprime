@@ -23,6 +23,15 @@ project-bound database URLs are validated before bootstrap writes or preflight
 connections. Current local QA env drift is blocked by this guard. GitHub
 Actions passed the full `Verify NOVA` workflow for commit `cfb3c761`.
 
+The supplied 65-entry Postgres export spans 2026-10-06 18:22:17–19:20:00 UTC.
+Five earlier `42P01` errors reference `nova.personal_ui_preferences` and
+`nova.personal_task_views` between 18:22:37 and 18:32:40 UTC. The first
+successful references to those tables (`00000`) appear at 18:44:16 and
+18:44:19 UTC; the later migration-ledger check reports 0075–0078 applied.
+This records a prior code/schema rollout gap that stopped after migration
+application. It is separate from the later `28P01` credential rejection and
+should not be treated as the current cause of auth failures.
+
 Production follow-up — 2026-10-07, 10:15 IST: after `adfb26c` was published,
 new Netlify function logs still report password authentication failure for
 `nova_app` (`28P01`) on GET/POST requests and on the background tick. The

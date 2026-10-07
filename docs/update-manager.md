@@ -31,6 +31,12 @@ bun run nova:update --plan
 bun run nova:update
 ```
 
+For an isolated database environment file, prefix the updater command with
+`bun --env-file=.env.qa-supabase`; for example,
+`bun --env-file=.env.qa-supabase run nova:update --plan`. The child updater
+does not auto-load the checkout's root `.env`, so it uses the selected
+environment for both migration-target discovery and the `nova_app` preflight.
+
 `--check` reads stable release and Git metadata; it does not modify the checkout, refs, or database. `--plan` creates a durable update branch/worktree under the operator's local NOVA state directory, then makes read-only database queries after the operator selects and confirms the target. The guided command builds and tests the pinned candidate before it asks to apply migrations.
 
 The operator selects direct PostgreSQL or a Supabase project. PostgreSQL uses the migration-owner `MIGRATOR_DATABASE_URL`, never NOVA's restricted runtime role. Supabase Management API updates use a project-scoped token entered through a masked prompt if it is not already available in the process environment. A fine-grained token needs Database Read-write access (`database_write`) for the [query endpoint](https://supabase.com/docs/reference/api/v1-run-a-query) and Migrations Read-write access (`database_migrations_write`) for [migration requests](https://supabase.com/docs/reference/api/v1-apply-a-migration). Supabase documents the query endpoint as Beta and says migration-endpoint access is available only to selected customers; if that API is unavailable to a project, use a session-affine direct PostgreSQL connection where the provider permits it. The command displays a sanitized database identity and requires an exact target confirmation. It accepts only a non-empty, contiguous prefix of the trusted migration history, plans the remaining migrations, and refuses unknown, gapped, newer, or inconsistent ledgers.
