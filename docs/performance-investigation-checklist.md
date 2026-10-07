@@ -75,7 +75,10 @@ pool waiting, and application work.
   use the same database URL, so they now share one process-local auth pool;
   the maximum is 10 + 5 (15 total) without changing sessions, schema
   validation, or permission checks. This reduces unnecessary pool creation
-  and connection churn, but it does not remove the Ohio-to-Seoul distance.
+  and peak connection capacity, but it does not remove the Ohio-to-Seoul
+  distance. The first post-deploy sample still recorded up to about 3.1 s of
+  aggregate pool-acquisition time on a fresh runtime, so this fix is capacity
+  hygiene, not a demonstrated end-to-end latency cure.
 - `nova.configured_public_origins()` is also a high-call-count statement in
   the cumulative report. It is deliberately read by Better Auth's dynamic
   trusted-origin callback on relevant auth requests. It returns a low
@@ -102,6 +105,19 @@ multi-second individual API responses.
 - The current deployed code already reduced the attendance availability
 calculation from six serial database trips to one statement. Further query
 changes should follow the measurements below.
+- After commit `3635d61` was published as Netlify deploy
+  `6ac61e0ce6e5b90008fd3c00`, a read-only Admin reload emitted fresh production
+  diagnostics. Warm `api.me`, offices, permissions, people, and departments
+  samples were about 1.5–1.7 s each, with roughly 1.0–1.4 s in 6–7 NOVA query
+  round trips and about 0.34 s across two auth queries. Fresh-instance reads
+  of `api.me`, people, roles, permissions, offices, and departments were about
+  4.4–4.7 s in NOVA, with 10 queries, 1.7–2.5 s query round-trip totals, and
+  roughly 3.0–3.1 s summed acquisition time across both pools; Netlify
+  recorded about 6.1–6.3 s for these calls while entry-module time stayed
+  around 3–16 ms. `api.work-context` remained about 2.6 s with 11 queries and
+  a 0.5 s maximum. These are a single post-deploy page-load sample, not p50 or
+  p95, but they confirm fresh pools and repeated database round trips remain
+  the primary measured costs.
 
 **Working diagnosis:** the strongest evidence is the repeated server/database
 round-trip cost across several API queries on a Netlify function in Ohio and a
