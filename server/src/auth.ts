@@ -7,6 +7,7 @@ import {
   authenticationConfiguration,
   authenticationIpAddressHeaders,
 } from "./auth-configuration.js";
+import { createDatabaseAuthRateLimitStorage } from "./auth-rate-limit-storage.js";
 import { activeEmailConnection } from "./commands/email-connections.js";
 import { stageAuthHandoffForIdentity, type AuthHandoffPurpose } from "./commands/auth-handoffs.js";
 import { database } from "./db.js";
@@ -149,6 +150,8 @@ function buildAuth(options: Readonly<{
     rateLimit: {
       enabled: true,
       storage: "database",
+      customStorage: createDatabaseAuthRateLimitStorage((statement, parameters) =>
+        database().query(statement, [...parameters])),
       window: 10,
       max: 100,
     },

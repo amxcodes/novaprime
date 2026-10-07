@@ -32,6 +32,7 @@ const pg = await import(pgModulePath) as unknown as {
 };
 const fixtureDatabase = new pg.Pool({ connectionString: migrationUrl, max: 2 });
 const { handleRequest } = await import("../server/src/app.ts");
+const { createDatabaseAuthRateLimitStorage } = await import("../server/src/auth-rate-limit-storage.ts");
 const { database, withDatabaseRequest, withRequestScopedDatabase } = await import("../server/src/db.ts");
 const { requestActor } = await import("../server/src/request-actor.ts");
 
@@ -158,6 +159,84 @@ function numberField(label: string, result: ApiResult, name: string): number {
 
 async function sql<T extends Record<string, unknown>>(query: string, values: readonly unknown[] = []): Promise<T[]> {
   return (await fixtureDatabase.query<T>(query, [...values])).rows;
+}
+
+async function verifySharedAuthRateLimitStorage(): Promise<void> {
+  const prefix = `qa-auth-rate-limit:${randomUUID()}:`;
+  const keys = {
+    burst: `${prefix}burst`,
+    sensitive: `${prefix}sensitive`,
+    expired: `${prefix}expired`,
+    concurrentReset: `${prefix}concurrent-reset`,
+  };
+  const storage = createDatabaseAuthRateLimitStorage((statement, parameters) =>
+    database().query(statement, [...parameters]));
+  try {
+    const burstResults = await Promise.all(
+      Array.from({ length: 25 }, () => storage.consume(keys.burst, { window: 10, max: 10 })),
+    );
+    assert(burstResults.filter((result) => result.allowed).length === 10,
+      "auth_rate_limit_concurrent_burst_admits_exact_limit");
+    const burstRow = (await sql<{ count: number; last_request: string }>(
+      `SELECT count, "lastRequest" AS last_request
+       FROM nova_auth."rateLimit" WHERE key = $1`,
+      [keys.burst],
+    ))[0];
+    assert(burstRow?.count === 10, "auth_rate_limit_burst_persists_exact_count");
+
+    const denied = await storage.consume(keys.burst, { window: 10, max: 10 });
+    const afterDenial = (await sql<{ count: number; last_request: string }>(
+      `SELECT count, "lastRequest" AS last_request
+       FROM nova_auth."rateLimit" WHERE key = $1`,
+      [keys.burst],
+    ))[0];
+    assert(!denied.allowed && Number(denied.retryAfter) >= 1,
+      "auth_rate_limit_denial_has_retry_seconds");
+    assert(afterDenial?.count === burstRow.count
+      && afterDenial.last_request === burstRow.last_request,
+    "auth_rate_limit_denial_does_not_mutate_window");
+
+    const sensitiveResults = await Promise.all(
+      Array.from({ length: 8 }, () => storage.consume(keys.sensitive, { window: 10, max: 3 })),
+    );
+    assert(sensitiveResults.filter((result) => result.allowed).length === 3,
+      "auth_rate_limit_preserves_sensitive_endpoint_limit");
+
+    await fixtureDatabase.query(
+      `INSERT INTO nova_auth."rateLimit" (id, key, count, "lastRequest")
+       VALUES ($1, $2, 10,
+         (extract(epoch FROM statement_timestamp()) * 1000)::bigint - $3::bigint)`,
+      [randomUUID(), keys.expired, 10_000],
+    );
+    const reset = await storage.consume(keys.expired, { window: 10, max: 10 });
+    const resetRow = (await sql<{ count: number }>(
+      `SELECT count FROM nova_auth."rateLimit" WHERE key = $1`,
+      [keys.expired],
+    ))[0];
+    assert(reset.allowed && resetRow?.count === 1, "auth_rate_limit_expiry_resets_to_one");
+
+    await fixtureDatabase.query(
+      `INSERT INTO nova_auth."rateLimit" (id, key, count, "lastRequest")
+       VALUES ($1, $2, 10,
+         (extract(epoch FROM statement_timestamp()) * 1000)::bigint - $3::bigint)`,
+      [randomUUID(), keys.concurrentReset, 10_000],
+    );
+    const resetResults = await Promise.all(
+      Array.from({ length: 25 }, () => storage.consume(keys.concurrentReset, { window: 10, max: 10 })),
+    );
+    const concurrentResetRow = (await sql<{ count: number }>(
+      `SELECT count FROM nova_auth."rateLimit" WHERE key = $1`,
+      [keys.concurrentReset],
+    ))[0];
+    assert(resetResults.filter((result) => result.allowed).length === 10
+      && concurrentResetRow?.count === 10,
+    "auth_rate_limit_concurrent_expiry_admits_exact_limit");
+  } finally {
+    await fixtureDatabase.query(
+      `DELETE FROM nova_auth."rateLimit" WHERE key = ANY($1::text[])`,
+      [Object.values(keys)],
+    );
+  }
 }
 
 async function assertNoGroupOrTaskWrites(label: string, groupName: string, taskTitle: string): Promise<void> {
@@ -439,6 +518,7 @@ async function runEmployeeLoadSmoke(input: Readonly<{
 }
 
 async function main(): Promise<void> {
+  await verifySharedAuthRateLimitStorage();
   const founderEmail = process.env.NOVA_LIFECYCLE_FOUNDER_EMAIL ?? `nova-founder-${randomUUID()}@example.test`;
   const founderPassword = process.env.NOVA_LIFECYCLE_FOUNDER_PASSWORD ?? `N0va-Founder-${randomUUID()}-Aa!`;
   const registration = await request("POST", "/setup/register", {
