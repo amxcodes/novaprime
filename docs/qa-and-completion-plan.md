@@ -44,6 +44,12 @@ Commit `0bca141` includes the Netlify adapter fix for Better Auth's client IP:
 it derives the private IP header only from trusted Function `context.ip` and
 overwrites caller-supplied values. The fix is now deployed; inspect fresh
 function logs to confirm the shared per-path rate-limit warning is gone.
+The Netlify log view exposed invocation duration and memory but not the route,
+so it could not correlate slow requests. The follow-up handler diagnostic logs
+HTTP 5xx responses, handler time at or above 1,500 ms, or NOVA app time at or
+above 750 ms. It records only a method, an allow-listed route group, status,
+and timings; it omits request data, dynamic path segments, query strings, and
+client IP. Confirm its first production event after deployment.
 
 The Supabase setup tool now serializes changes per environment file and records
 `pending`, `applying`, and `applied` rotation checkpoints. Ambiguous password

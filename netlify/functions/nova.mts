@@ -1,4 +1,5 @@
 import { requestWithNetlifyContextIp, type NetlifyRequestContext } from "./trusted-client-ip.js";
+import { slowRequestDiagnostic } from "./request-diagnostics.js";
 
 // Netlify controls the edge forwarding headers for this function runtime.
 process.env.NOVA_TRUST_PROXY_HEADERS ??= "true";
@@ -12,8 +13,22 @@ export default async function handler(
   request: Request,
   context: NetlifyRequestContext,
 ): Promise<Response> {
+  const startedAt = performance.now();
   const { handleRequest } = await novaApp;
-  return handleRequest(requestWithNetlifyContextIp(request, context.ip));
+  const moduleWaitMs = performance.now() - startedAt;
+  const response = await handleRequest(requestWithNetlifyContextIp(request, context.ip));
+  const durationMs = performance.now() - startedAt;
+  const timing = response.headers.get("server-timing")?.match(/(?:^|,)\s*nova-app;dur=([\d.]+)/i);
+  const diagnostic = slowRequestDiagnostic({
+    method: request.method,
+    pathname: new URL(request.url).pathname,
+    status: response.status,
+    durationMs,
+    ...(timing ? { appMs: Number(timing[1]) } : {}),
+    moduleWaitMs,
+  });
+  if (diagnostic) console.warn(JSON.stringify(diagnostic));
+  return response;
 }
 
 export const config = { path: "/api/*" };
