@@ -15,7 +15,7 @@ export type SlowRequestInput = Readonly<{
   status: number;
   durationMs: number;
   appMs?: number;
-  moduleWaitMs: number;
+  moduleLoadMs: number;
 }>;
 
 /** Return a route label without identifiers, query strings, or arbitrary paths. */
@@ -30,7 +30,10 @@ function safeRoute(pathname: string): string {
 
 /** Keep function logs quiet on normal requests and redact all request data. */
 export function slowRequestDiagnostic(input: SlowRequestInput) {
-  if (input.status < 500 && input.durationMs < 1_500 && (input.appMs ?? 0) < 750) return null;
+  if (
+    input.status < 500 && input.durationMs < 1_500 && (input.appMs ?? 0) < 750 &&
+    input.moduleLoadMs < 1_000
+  ) return null;
 
   const method = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/.test(input.method)
     ? input.method
@@ -40,8 +43,8 @@ export function slowRequestDiagnostic(input: SlowRequestInput) {
     method,
     route: safeRoute(input.pathname),
     status: input.status,
-    duration_ms: Math.round(input.durationMs),
+    handler_ms: Math.round(input.durationMs),
     ...(input.appMs === undefined ? {} : { app_ms: Math.round(input.appMs) }),
-    module_wait_ms: Math.round(input.moduleWaitMs),
+    module_load_ms: Math.round(input.moduleLoadMs),
   } as const;
 }

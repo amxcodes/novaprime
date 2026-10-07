@@ -49,7 +49,14 @@ so it could not correlate slow requests. The follow-up handler diagnostic logs
 HTTP 5xx responses, handler time at or above 1,500 ms, or NOVA app time at or
 above 750 ms. It records only a method, an allow-listed route group, status,
 and timings; it omits request data, dynamic path segments, query strings, and
-client IP. Confirm its first production event after deployment.
+client IP. After `15ab7f5` was published, the live log confirmed route grouping
+works: cold auth requests recorded about 3.3–3.6 s inside NOVA, while serial
+warm probes were about 510 ms app time / 844 ms end-to-end. This confirms both
+cold and warm latency need attention; it does not by itself identify whether
+cold delay is module initialization, database connection setup, or another
+startup cost. The next diagnostic records one-time server-module import time
+separately from handler duration, so a subsequent cold invocation can narrow
+that cause without logging customer data.
 
 The Supabase setup tool now serializes changes per environment file and records
 `pending`, `applying`, and `applied` rotation checkpoints. Ambiguous password

@@ -7,7 +7,7 @@ const request = (overrides: Partial<Parameters<typeof slowRequestDiagnostic>[0]>
   status: 200,
   durationMs: 300,
   appMs: 100,
-  moduleWaitMs: 0,
+  moduleLoadMs: 0,
   ...overrides,
 });
 
@@ -27,9 +27,9 @@ test("reports slow route timing without IDs or query data", () => {
     method: "GET",
     route: "api.people",
     status: 200,
-    duration_ms: 1_650,
+    handler_ms: 1_650,
     app_ms: 1_200,
-    module_wait_ms: 0,
+    module_load_ms: 0,
   });
 });
 
@@ -45,4 +45,9 @@ test("records auth and server failure classes", () => {
     method: "BAD\nHEADER",
     durationMs: 1_500,
   }))).toMatchObject({ route: "api.other", method: "OTHER" });
+  expect(slowRequestDiagnostic(request({
+    durationMs: 400,
+    appMs: 150,
+    moduleLoadMs: 1_250,
+  }))).toMatchObject({ module_load_ms: 1_250 });
 });
