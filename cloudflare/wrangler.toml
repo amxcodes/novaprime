@@ -4,6 +4,12 @@ compatibility_date = "2026-09-22"
 compatibility_flags = ["nodejs_compat"]
 keep_vars = true
 
+# NOVA's Supabase PostgreSQL project is in AWS Seoul (ap-northeast-2). Place
+# API execution near the database; static assets remain served at the edge
+# because only /api/* is routed through the Worker below.
+[placement]
+region = "aws:ap-northeast-2"
+
 [build]
 command = "bun run build:web"
 

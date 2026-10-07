@@ -24,6 +24,7 @@ test("both Cloudflare scheduler configs build and serve the same Vite asset grap
     expect(configuration).toContain('command = "bun run build:web"');
     expect(configuration).toContain('directory = "../web/dist"');
     expect(configuration).toContain('run_worker_first = ["/api/*"]');
+    expect(configuration).toContain('[placement]\nregion = "aws:ap-northeast-2"');
   }
 
   const supabaseCron = readFileSync(new URL("./wrangler.supabase-cron.toml", import.meta.url), "utf8");
