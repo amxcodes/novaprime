@@ -31,6 +31,17 @@ Guided first path:
   a local API check, or copy runtime values into the selected host's private
   settings and deploy the connected repository. The management token is never
   a runtime secret and must not be copied to Netlify, Vercel, or a public repo.
+  For an isolated QA project, keep its settings in the ignored
+  `.env.qa-supabase` file and run
+  `bun --no-env-file run setup:supabase -- --env-file .env.qa-supabase --project-ref YOUR_PROJECT_REF`.
+  The `--no-env-file` flag prevents Bun from loading a different root `.env`;
+  the setup command then reads and updates only the selected file. It rejects
+  paths outside the checkout and symlinked env files. The project token is
+  requested with terminal masking when it is not already in the process
+  environment; do not pass it as a command-line argument. To repair a rejected
+  `nova_app` password, add `--rotate-app-role-password` only when you can also
+  update the API host with the newly generated `DATABASE_URL` from that same
+  selected file. On Netlify, update Production Functions before serving traffic.
 - an already-provisioned VPS/direct PostgreSQL: set `.env` and run
   `bun run setup -- --mode external`.
 

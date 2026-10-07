@@ -5,11 +5,13 @@ import { spawnSync } from "node:child_process";
 import { resolveSupabasePoolerHost, selectSupabasePoolerHost } from "../server/src/supabase-pooler.ts";
 import { isSecretsEncryptionKeyValid } from "../server/src/secrets.ts";
 import { confirmSupabaseProject } from "../server/src/supabase-project-confirmation.ts";
+import { promptSecret } from "./update/terminal.ts";
+import { resolveSetupEnvironmentPath } from "./setup-env-path.ts";
 
 type SetupMode = "docker" | "external" | "supabase";
 
 const root = resolve(import.meta.dir, "..");
-const envPath = resolve(root, ".env");
+const envPath = resolveSetupEnvironmentPath(root, argument("--env-file"));
 const composePath = resolve(root, "docker", "compose.yaml");
 
 function secret(bytes: number): string {
@@ -126,7 +128,7 @@ async function configureSupabaseEnvironment(): Promise<Record<string, string>> {
   if (!/^[a-z0-9]{20}$/.test(projectRef)) throw new Error("NOVA_SUPABASE_PROJECT_REF_INVALID");
   await confirmSupabaseProject(projectRef, "apply NOVA migrations and configure the restricted application role");
   const accessToken = optionalArgument("--access-token") ?? process.env.SUPABASE_ACCESS_TOKEN ??
-    existing.SUPABASE_ACCESS_TOKEN ?? await promptValue("Supabase project-scoped access token");
+    existing.SUPABASE_ACCESS_TOKEN ?? await promptSecret("Supabase project-scoped access token");
   const rotateAppRolePassword = process.argv.includes("--rotate-app-role-password");
   const requestedAppPassword = optionalArgument("--app-password") ?? process.env.NOVA_APP_PASSWORD;
   const savedAppPassword = existing.NOVA_APP_PASSWORD;
