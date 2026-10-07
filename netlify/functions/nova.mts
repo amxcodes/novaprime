@@ -7,10 +7,10 @@ process.env.NOVA_TRUST_PROXY_HEADERS ??= "true";
 process.env.NOVA_AUTH_IP_ADDRESS_HEADER = "x-nova-remote-ip";
 
 // Load after the Netlify-specific auth settings above are in place.
-const moduleLoadStartedAt = performance.now();
-let moduleLoadMs = 0;
+const entryModuleLoadStartedAt = performance.now();
+let entryModuleLoadMs = 0;
 const novaApp = import("../../server/src/app").then((module) => {
-  moduleLoadMs = performance.now() - moduleLoadStartedAt;
+  entryModuleLoadMs = performance.now() - entryModuleLoadStartedAt;
   return module;
 });
 
@@ -23,13 +23,16 @@ export default async function handler(
   const response = await handleRequest(requestWithNetlifyContextIp(request, context.ip));
   const durationMs = performance.now() - startedAt;
   const timing = response.headers.get("server-timing")?.match(/(?:^|,)\s*nova-app;dur=([\d.]+)/i);
+  const authModuleTiming = response.headers.get("server-timing")
+    ?.match(/(?:^|,)\s*nova-auth-module;dur=([\d.]+)/i);
   const diagnostic = slowRequestDiagnostic({
     method: request.method,
     pathname: new URL(request.url).pathname,
     status: response.status,
     durationMs,
     ...(timing ? { appMs: Number(timing[1]) } : {}),
-    moduleLoadMs,
+    ...(authModuleTiming ? { authModuleLoadMs: Number(authModuleTiming[1]) } : {}),
+    entryModuleLoadMs,
   });
   if (diagnostic) console.warn(JSON.stringify(diagnostic));
   return response;

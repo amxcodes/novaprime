@@ -51,12 +51,15 @@ above 750 ms. It records only a method, an allow-listed route group, status,
 and timings; it omits request data, dynamic path segments, query strings, and
 client IP. After `15ab7f5` was published, the live log confirmed route grouping
 works: cold auth requests recorded about 3.3–3.6 s inside NOVA, while serial
-warm probes were about 510 ms app time / 844 ms end-to-end. This confirms both
-cold and warm latency need attention; it does not by itself identify whether
-cold delay is module initialization, database connection setup, or another
-startup cost. The next diagnostic records one-time server-module import time
-separately from handler duration, so a subsequent cold invocation can narrow
-that cause without logging customer data.
+warm probes were about 510 ms app time / 844 ms end-to-end. Commit `cb5549f`
+measured the `app.ts` entry import at only 16 ms on a slow request, but auth is
+lazy-imported inside that route, so this did not isolate Better Auth startup.
+The follow-up records auth-module initialization separately. It also avoids
+the tenant-origin database read only on `GET /api/auth/get-session`, where
+Better Auth skips origin/CSRF validation; every other auth request still loads
+the live configured origins. Compare auth-module, entry-module, and total app
+timings after deployment, then recheck state-changing auth flows and session
+latency. These logs contain no customer data.
 
 The Supabase setup tool now serializes changes per environment file and records
 `pending`, `applying`, and `applied` rotation checkpoints. Ambiguous password

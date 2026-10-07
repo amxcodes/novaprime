@@ -42,7 +42,8 @@ test("database authentication failures return service unavailable and log only t
 
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ error: "SERVICE_UNAVAILABLE" });
-    expect(response.headers.get("server-timing")).toMatch(/^nova-app;dur=\d+(?:\.\d+)?$/);
+    expect(response.headers.get("server-timing")).toMatch(/nova-auth-module;dur=\d+(?:\.\d+)?/);
+    expect(response.headers.get("server-timing")).toMatch(/nova-app;dur=\d+(?:\.\d+)?/);
     expect(logEntries.join(" ")).toContain("28P01");
     expect(logEntries.join(" ")).not.toContain("database password");
   } finally {

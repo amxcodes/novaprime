@@ -55,3 +55,17 @@ export function authenticationIpAddressHeaders(
     ? ["cf-connecting-ip", "x-forwarded-for", "x-real-ip"]
     : ["x-nova-remote-ip"];
 }
+
+/**
+ * Better Auth skips its origin/CSRF middleware for this read-only session
+ * endpoint. Resolving tenant-specific origins there adds a serial database
+ * round trip without protecting a state-changing request.
+ */
+export function canSkipDatabaseTrustedOrigins(request?: Request): boolean {
+  if (!request || request.method !== "GET") return false;
+  try {
+    return new URL(request.url).pathname === "/api/auth/get-session";
+  } catch {
+    return false;
+  }
+}

@@ -174,9 +174,10 @@ const json = (body: unknown, status = 200) =>
 /** Add safe request timing to API responses so browser tools can separate server time from network time. */
 export async function handleRequest(request: Request): Promise<Response> {
   const startedAt = performance.now();
+  const requestTiming: { authModuleLoadMs?: number } = {};
   let response: Response;
   try {
-    response = await dispatchRequest(request);
+    response = await dispatchRequest(request, requestTiming);
   } catch (error) {
     const code = error && typeof error === "object" && "code" in error && typeof error.code === "string"
       ? error.code
@@ -189,8 +190,13 @@ export async function handleRequest(request: Request): Promise<Response> {
   }
   const headers = new Headers(response.headers);
   const existingTiming = headers.get("server-timing");
-  const appTiming = `nova-app;dur=${Math.max(0, performance.now() - startedAt).toFixed(1)}`;
-  headers.set("server-timing", existingTiming ? `${existingTiming}, ${appTiming}` : appTiming);
+  const timings = [
+    ...(requestTiming.authModuleLoadMs === undefined
+      ? []
+      : [`nova-auth-module;dur=${Math.max(0, requestTiming.authModuleLoadMs).toFixed(1)}`]),
+    `nova-app;dur=${Math.max(0, performance.now() - startedAt).toFixed(1)}`,
+  ];
+  headers.set("server-timing", [existingTiming, ...timings].filter(Boolean).join(", "));
 
   return new Response(response.body, {
     status: response.status,
@@ -199,7 +205,10 @@ export async function handleRequest(request: Request): Promise<Response> {
   });
 }
 
-async function dispatchRequest(request: Request): Promise<Response> {
+async function dispatchRequest(
+  request: Request,
+  requestTiming: { authModuleLoadMs?: number },
+): Promise<Response> {
   const { pathname } = new URL(request.url);
   const commandPath = pathname.startsWith("/api/")
     ? pathname.slice("/api".length)
@@ -212,7 +221,9 @@ async function dispatchRequest(request: Request): Promise<Response> {
       return json({ error: "AUTHENTICATION_CONFIGURATION_REQUIRED" }, 503);
     }
 
+    const authModuleStartedAt = performance.now();
     const { auth } = await import("./auth.js");
+    requestTiming.authModuleLoadMs = performance.now() - authModuleStartedAt;
     return auth.handler(request);
   }
 

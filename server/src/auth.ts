@@ -3,6 +3,7 @@ import { betterAuth } from "better-auth";
 import { PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import {
+  canSkipDatabaseTrustedOrigins,
   authenticationConfiguration,
   authenticationIpAddressHeaders,
 } from "./auth-configuration.js";
@@ -109,12 +110,14 @@ function buildAuth(options: Readonly<{
       fallback: configuration.baseUrl,
       protocol: "auto",
     },
-    trustedOrigins: async () => {
+    trustedOrigins: async (request) => {
+      const allowed = configuredPublicOrigins();
+      if (canSkipDatabaseTrustedOrigins(request)) return [...allowed];
+
       try {
         const origins = await database().query<{ origin: string | null }>(
           "SELECT origin FROM nova.configured_public_origins()",
         );
-        const allowed = configuredPublicOrigins();
         return [...allowed, ...origins.rows.flatMap((row) =>
           row.origin && allowed.includes(row.origin) ? [row.origin] : [])];
       } catch {
