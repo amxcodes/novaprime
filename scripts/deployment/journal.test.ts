@@ -12,14 +12,33 @@ import {
 import { saveDeploymentPlan } from "./state.ts";
 
 const originalLocalAppData = process.env.LOCALAPPDATA;
+const originalXdgStateHome = process.env.XDG_STATE_HOME;
 let temporaryRoot: string | undefined;
 
 afterEach(async () => {
   if (originalLocalAppData === undefined) delete process.env.LOCALAPPDATA;
   else process.env.LOCALAPPDATA = originalLocalAppData;
+  if (originalXdgStateHome === undefined) delete process.env.XDG_STATE_HOME;
+  else process.env.XDG_STATE_HOME = originalXdgStateHome;
   if (temporaryRoot) await rm(temporaryRoot, { recursive: true, force: true });
   temporaryRoot = undefined;
 });
+
+function setStateHome(path: string): void {
+  if (process.platform === "win32") {
+    process.env.LOCALAPPDATA = path;
+    delete process.env.XDG_STATE_HOME;
+  } else {
+    process.env.XDG_STATE_HOME = path;
+    delete process.env.LOCALAPPDATA;
+  }
+}
+
+function stateRoot(): string {
+  return process.platform === "win32"
+    ? join(process.env.LOCALAPPDATA!, "NOVA", "deployment-manager")
+    : join(process.env.XDG_STATE_HOME!, "nova", "deployment-manager");
+}
 
 const inventory: LocalDeploymentInventory = {
   environmentSource: "test",
@@ -33,7 +52,7 @@ const inventory: LocalDeploymentInventory = {
 
 async function makeOperation() {
   temporaryRoot = await mkdtemp(join(tmpdir(), "nova-deployment-operation-"));
-  process.env.LOCALAPPDATA = join(temporaryRoot, "state");
+  setStateHome(join(temporaryRoot, "state"));
   const repo = join(temporaryRoot, "repo");
   const preview = buildDeploymentPreview(inventory, {
     runtime: "cloudflare", database: "keep", scheduler: "supabase",
@@ -128,9 +147,9 @@ test("concurrent journal writers cannot overwrite each other's revision", async 
 
 test("a leftover writer lock blocks journal updates instead of risking a lost event", async () => {
   const { repo, operation } = await makeOperation();
-  const stateRoot = join(process.env.LOCALAPPDATA!, "NOVA", "deployment-manager");
-  const [hashDirectory] = await readdir(stateRoot);
-  await writeFile(join(stateRoot, hashDirectory!, "journal.lock"), "stale writer marker");
+  const root = stateRoot();
+  const [hashDirectory] = await readdir(root);
+  await writeFile(join(root, hashDirectory!, "journal.lock"), "stale writer marker");
   await expect(appendDeploymentOperationEvent(repo, operation.id, 1, {
     type: "state-transition", nextState: "ready-for-review",
   })).rejects.toThrow("DEPLOYMENT_JOURNAL_BUSY_OR_STALE_LOCK");
@@ -139,9 +158,9 @@ test("a leftover writer lock blocks journal updates instead of risking a lost ev
 
 test("journal readback rejects unknown fields and does not accept secrets as journal data", async () => {
   const { repo, operation } = await makeOperation();
-  const stateRoot = join(process.env.LOCALAPPDATA!, "NOVA", "deployment-manager");
-  const [hashDirectory] = await readdir(stateRoot);
-  const path = join(stateRoot, hashDirectory!, `${operation.id}.json`);
+  const root = stateRoot();
+  const [hashDirectory] = await readdir(root);
+  const path = join(root, hashDirectory!, `${operation.id}.json`);
   const edited = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
   edited.SUPABASE_ACCESS_TOKEN = "must-not-be-persisted";
   await writeFile(path, JSON.stringify(edited));
@@ -150,9 +169,9 @@ test("journal readback rejects unknown fields and does not accept secrets as jou
 
 test("operation journal is bound to the saved plan contents", async () => {
   const { repo, plan, operation } = await makeOperation();
-  const stateRoot = join(process.env.LOCALAPPDATA!, "NOVA", "deployment-manager");
-  const [hashDirectory] = await readdir(stateRoot);
-  const path = join(stateRoot, hashDirectory!, `${plan.id}.json`);
+  const root = stateRoot();
+  const [hashDirectory] = await readdir(root);
+  const path = join(root, hashDirectory!, `${plan.id}.json`);
   const edited = JSON.parse(await readFile(path, "utf8")) as { preview: { request: { runtime: string } } };
   edited.preview.request.runtime = "netlify";
   await writeFile(path, JSON.stringify(edited));

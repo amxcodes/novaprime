@@ -7,13 +7,32 @@ import type { LocalDeploymentInventory } from "./inventory.ts";
 import { loadDeploymentPlan, saveDeploymentPlan } from "./state.ts";
 
 const originalLocalAppData = process.env.LOCALAPPDATA;
+const originalXdgStateHome = process.env.XDG_STATE_HOME;
 let temporaryRoot: string | undefined;
 afterEach(async () => {
   if (originalLocalAppData === undefined) delete process.env.LOCALAPPDATA;
   else process.env.LOCALAPPDATA = originalLocalAppData;
+  if (originalXdgStateHome === undefined) delete process.env.XDG_STATE_HOME;
+  else process.env.XDG_STATE_HOME = originalXdgStateHome;
   if (temporaryRoot) await rm(temporaryRoot, { recursive: true, force: true });
   temporaryRoot = undefined;
 });
+
+function setStateHome(path: string): void {
+  if (process.platform === "win32") {
+    process.env.LOCALAPPDATA = path;
+    delete process.env.XDG_STATE_HOME;
+  } else {
+    process.env.XDG_STATE_HOME = path;
+    delete process.env.LOCALAPPDATA;
+  }
+}
+
+function stateRoot(): string {
+  return process.platform === "win32"
+    ? join(process.env.LOCALAPPDATA!, "NOVA", "deployment-manager")
+    : join(process.env.XDG_STATE_HOME!, "nova", "deployment-manager");
+}
 
 const inventory: LocalDeploymentInventory = {
   environmentSource: "test",
@@ -27,7 +46,7 @@ const inventory: LocalDeploymentInventory = {
 
 test("plans persist outside the checkout with a random ID and private file mode", async () => {
   temporaryRoot = await mkdtemp(join(tmpdir(), "nova-deployment-plan-"));
-  process.env.LOCALAPPDATA = join(temporaryRoot, "state");
+  setStateHome(join(temporaryRoot, "state"));
   const repo = join(temporaryRoot, "repo");
   const preview = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "supabase" }, [
     {
@@ -53,22 +72,22 @@ test("plans persist outside the checkout with a random ID and private file mode"
   expect(stored.id).toMatch(/^plan-[0-9a-f-]{36}$/i);
   expect(stored.preview).toMatchObject({ persisted: true, applyEnabled: false, previewId: stored.id });
   expect(await loadDeploymentPlan(repo, stored.id)).toEqual(stored);
-  const stateRoot = join(process.env.LOCALAPPDATA!, "NOVA", "deployment-manager");
-  const hashDirs = await readdir(stateRoot);
+  const root = stateRoot();
+  const hashDirs = await readdir(root);
   expect(hashDirs).toHaveLength(1);
-  const files = await readdir(join(stateRoot, hashDirs[0]!));
+  const files = await readdir(join(root, hashDirs[0]!));
   expect(files).toEqual([`${stored.id}.json`]);
   expect(JSON.stringify(stored)).not.toContain("SUPABASE_ACCESS_TOKEN");
   expect(JSON.stringify(stored)).not.toContain("DATABASE_URL");
   if (process.platform !== "win32") {
-    const info = await stat(join(stateRoot, hashDirs[0]!, `${stored.id}.json`));
+    const info = await stat(join(root, hashDirs[0]!, `${stored.id}.json`));
     expect(info.mode & 0o777).toBe(0o600);
   }
 });
 
 test("plan loading is bound to the checkout, expires, and rejects added credential fields", async () => {
   temporaryRoot = await mkdtemp(join(tmpdir(), "nova-deployment-expiry-"));
-  process.env.LOCALAPPDATA = join(temporaryRoot, "state");
+  setStateHome(join(temporaryRoot, "state"));
   const repo = join(temporaryRoot, "repo");
   const preview = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "supabase" });
   const stored = await saveDeploymentPlan(repo, preview, new Date(Date.now() - 48 * 60 * 60 * 1000));
@@ -76,11 +95,11 @@ test("plan loading is bound to the checkout, expires, and rejects added credenti
   await expect(loadDeploymentPlan(join(temporaryRoot, "other-repo"), stored.id)).rejects.toThrow("DEPLOYMENT_PLAN_NOT_FOUND");
 
   const fresh = await saveDeploymentPlan(repo, preview);
-  const stateRoot = join(process.env.LOCALAPPDATA!, "NOVA", "deployment-manager");
-  const hashDirs = await readdir(stateRoot);
+  const root = stateRoot();
+  const hashDirs = await readdir(root);
   let path = "";
   for (const hashDir of hashDirs) {
-    const candidate = join(stateRoot, hashDir, `${fresh.id}.json`);
+    const candidate = join(root, hashDir, `${fresh.id}.json`);
     try { await readFile(candidate); path = candidate; break; }
     catch { /* This directory belongs to another checkout in the test. */ }
   }
