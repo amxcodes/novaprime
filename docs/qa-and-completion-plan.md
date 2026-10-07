@@ -23,6 +23,26 @@ project-bound database URLs are validated before bootstrap writes or preflight
 connections. Current local QA env drift is blocked by this guard. GitHub
 Actions passed the full `Verify NOVA` workflow for commit `cfb3c761`.
 
+Production follow-up — 2026-10-07, 10:15 IST: after `adfb26c` was published,
+new Netlify function logs still report password authentication failure for
+`nova_app` (`28P01`) on GET/POST requests and on the background tick. The
+reported failed-request durations are about 3.0 seconds and the background tick
+is about 1.8 seconds; these are failure-path measurements, not healthy API
+latency. The API now maps PostgreSQL authentication/connectivity failures to
+HTTP 503, but changing the response cannot repair a rejected database
+credential. The supplied Netlify settings screenshot shows four separate
+`DATABASE_URL` deploy-context values and scopes the variable to Builds,
+Functions, and Runtime; it does not expose the values, so the production value
+cannot be verified from the screenshot. Reconcile the Production Functions
+value with the `nova_app` credential for the confirmed `owfgvojdaxafayutbcuf`
+project, then check the other deploy contexts independently. Keep hosted
+application secrets scoped to Functions as described in
+`docs/deployment-operations.md`. The Netlify settings page in this session
+redirects to login, so no provider secret was changed. After reconciliation,
+verify `/api/ready`, auth session/sign-in, and the scheduled background tick
+before recording a healthy performance baseline. No migration is needed to fix
+`28P01`.
+
 Deployment-assistant follow-up on 2026-09-27: the UI now gives a six-part
 “You do / Then / Confirm” map and a simple source → runtime ↔ database diagram,
 while collapsing the repeated service cards and full action/effect table behind

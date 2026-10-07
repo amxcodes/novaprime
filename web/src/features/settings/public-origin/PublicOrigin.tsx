@@ -125,6 +125,7 @@ export function PublicOrigin({ readState, onRetry, onSave }: PublicOriginProps) 
                 name="origin"
                 value={selectedOrigin}
                 options={options}
+                searchMode="local"
                 placeholder="Choose an approved origin"
                 emptyMessage="No matching approved origin."
                 hint="Selecting the deployment fallback clears the custom origin setting."

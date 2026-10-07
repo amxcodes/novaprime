@@ -176,6 +176,7 @@ export function WorkspaceEditor({
               hint={!homeIsAvailable ? "Your saved page is unavailable to this role. It stays saved until you choose another page." : undefined}
               value={homeIsAvailable ? homeView : "unavailable"}
               options={homeOptions}
+              searchMode="local"
               placeholder="Search available pages"
               emptyMessage="No available pages match this search."
               disabled={disabled}

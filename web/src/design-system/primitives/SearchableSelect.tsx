@@ -49,8 +49,8 @@ interface SearchableSelectBaseProps {
 
 export type SearchableSelectProps = SearchableSelectBaseProps & (
   | {
-    /** Local filtering is the default; use remote mode for permission-scoped records. */
-    searchMode?: "local";
+    /** Local filtering is for explicitly bounded, already-authorized static choices only. */
+    searchMode: "local";
     onSearch?: never;
     selectedOption?: never;
   }
@@ -87,7 +87,7 @@ export function SearchableSelect({
   required = false,
   value,
   options,
-  searchMode = "local",
+  searchMode,
   onSearch,
   selectedOption,
   searchDebounceMs = 180,

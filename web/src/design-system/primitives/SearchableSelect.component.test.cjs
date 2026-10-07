@@ -35,6 +35,7 @@ function render(value = "assignment-1") {
     hint: "Choose an eligible assignment.",
     required: true,
     value,
+    searchMode: "local",
     options: [
       { value: "assignment-1", label: "Prepare report", description: "Client · Delivery" },
       { value: "assignment-2", label: "Review request" },
@@ -144,9 +145,11 @@ test("Home and End navigate options only when they cannot steal a nonempty query
   assert.match(source, /canNavigateBoundary && event\.key === "End"/);
 });
 
-test("remote search is opt-in, debounced, race guarded, and displays server results without local filtering", () => {
+test("search mode is explicit and remote results are debounced, race guarded, and shown without local filtering", () => {
   const source = fs.readFileSync(require.resolve("./SearchableSelect.tsx"), "utf8");
+  assert.match(source, /searchMode: "local"/);
   assert.match(source, /searchMode: "remote"/);
+  assert.doesNotMatch(source, /searchMode\s*=\s*"local"/);
   assert.match(source, /onSearch: \(query: string\) => Promise<readonly SearchableSelectOption\[\]>/);
   assert.match(source, /searchMode === "remote"\s*\? currentRemoteState\?\.status === "ready" \? currentRemoteState\.options : \[\]/);
   assert.match(source, /window\.setTimeout\(\(\) =>/);

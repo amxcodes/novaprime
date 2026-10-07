@@ -282,6 +282,7 @@ export function UiWorkbench() {
                   hint="Type a name, then use the arrow keys to choose."
                   value={selectedPerson}
                   options={peopleOptions}
+                  searchMode="local"
                   placeholder="Search people"
                   emptyMessage="No people match this search."
                   onChange={setSelectedPerson}
