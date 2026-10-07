@@ -16,21 +16,29 @@ The Super Admin session had already completed sign-in successfully, and its
 People and access page loaded. This supersedes the earlier production
 `28P01`/500 status below; there is no current sign-in blocker.
 
-The healthy path still needs latency work. Netlify's function-region panel says
-CMH (Ohio, US East), and the disposable Supabase primary is in Seoul
-(`ap-northeast-2`); this cross-region path is a plausible source of added round
-trips, but has not been isolated in a controlled benchmark. A small post-fix
-sample from the local Windows runner made three serial requests per route over
-one persistent HTTP client: `/api/health` median 369 ms (first 1,058 ms),
-`/api/ready` median 523 ms (first 1,580 ms), and `/api/auth/get-session` median
-851 ms (first 2,022 ms). All returned 200. These unauthenticated end-to-end
-samples do not establish authenticated p95 latency or separate browser/network,
-function, and database time. Netlify currently locks custom function regions
-for this project, so region changes require a deliberate hosting/database plan.
-The browser bootstrap already overlaps its permission-grant and UI-preference
-reads after the session response; authenticated navigation traces are still
-needed to identify further safe reductions without weakening permission checks
-or duplicating route data loads.
+The healthy path still needs latency work. Netlify runs in CMH (Ohio, US East),
+while the disposable Supabase primary is in Seoul (`ap-northeast-2`), so the
+current path crosses regions. A post-fix sample from the local Windows runner
+made eight serial requests per route over one persistent HTTP client. All
+returned 200. Warm medians were 515 ms end-to-end / 164 ms in NOVA for
+`/api/ready`, and 864 ms / 508 ms for `/api/auth/get-session`. The first sample
+was 2,109 ms / 1,141 ms and 2,042 ms / 1,695 ms respectively. The app timing
+comes from the existing `Server-Timing: nova-app` header; it includes route
+work, including its database/Better Auth calls, but starts after the Netlify
+function imports the server module. The remaining gap includes client network,
+Netlify gateway, and startup work, which this probe cannot separate. These are
+unauthenticated samples, not authenticated p95. The browser bootstrap already
+overlaps permission-grant and UI-preference reads after the session response;
+authenticated navigation traces are still needed before changing that
+security-sensitive flow. The Netlify dashboard gates region selection behind
+a plan upgrade. Netlify documents Singapore (`sin`) and Tokyo (`nrt`) as
+available regions for Pro/Enterprise
+([region documentation](https://docs.netlify.com/build/functions/configuration/)).
+A controlled near-database canary is the next high-value experiment if the
+plan permits it. Changing a Supabase project's region requires a new project
+and data migration
+([Supabase guidance](https://supabase.com/docs/guides/troubleshooting/change-project-region));
+do not move the database without a separate backup-and-migration plan.
 
 Commit `0bca141` includes the Netlify adapter fix for Better Auth's client IP:
 it derives the private IP header only from trusted Function `context.ip` and
