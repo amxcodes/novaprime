@@ -32,6 +32,30 @@ pool waiting, and application work.
   function logs ranged from about 5.09 s to 4.9 ms, with many neighboring
   calls around 50–175 ms. These are invocation durations without route labels;
   they show variability, not which requests or pages account for it.
+- The first authenticated production pass after deploy `6ac6178f` (Oct 7,
+  15:28–15:35 IST) produced one privacy-safe aggregate record for each slow
+  request. On warm calls, `/api/people` took about 1.50 s in NOVA, with 1.16 s
+  of NOVA query round trips across seven queries and 0.33 s across two auth
+  queries. A repeated call with the same warmed pools was also about 1.50 s.
+- During that pass, My Day reads took about 3.3–3.8 s in NOVA; People and
+  access reads took about 3.5–4.5 s; Work reads took about 3.3–4.7 s, with a
+  5.2 s task-catalog read. These longer calls had 6–14 NOVA queries (about
+  1.0–2.4 s aggregate query time). With a warm auth pool, two auth queries
+  took about 0.33 s; on fresher instances the auth queries reached 2.4 s.
+  Per-query maxima were usually around 165–190 ms, with isolated calls near
+  500–600 ms. A fresh/idle pool added roughly 1 s of summed acquisition time
+  per pool; a warmed pool showed zero acquisition time. Pool and query totals
+  are aggregate durations and can overlap across concurrent operations.
+- On those slower requests, entry-module loading stayed around 3–16 ms, and
+  `app_ms` nearly matched `handler_ms`. Netlify’s invocation duration was
+  usually within tens of milliseconds of the handler on those samples. One
+  earlier cold session request had about 1.7 s outside NOVA, so platform
+  startup can hurt cold requests but does not explain sustained warm latency.
+- My Day returned HTTP 409 for attendance because the page reported that an
+  active office assignment is required. This is a setup/business-state issue,
+  not a latency or database-authentication failure. Work’s sampled reads
+  returned HTTP 200, while its page displayed a generic unavailable state;
+  that client/page error needs a separate investigation.
 - The Admin loader starts its authorized read batch with `Promise.all`; the
 Work loader also starts its independent authorized reads with `Promise.all`.
 That avoids serializing independent API calls, but each page still waits for
@@ -44,12 +68,15 @@ multi-second individual API responses.
 calculation from six serial database trips to one statement. Further query
 changes should follow the measurements below.
 
-**Working diagnosis:** the Ohio-to-Seoul database path is a strong contributor
-because many independent requests each perform server-side PostgreSQL work.
-It is not yet proven to be the only cause. The next deployment adds
-request-scoped aggregate pool-acquisition and SQL round-trip metrics for the
-NOVA and Better Auth pools. Those metrics, together with database-side
-statistics and an Asia-region comparison, will separate the remaining causes.
+**Working diagnosis:** the production evidence points to database round trips
+and, on fresh/idle instances, connection acquisition as the main sustained
+latency sources. Repeated 165–190 ms query round trips are consistent with
+the Ohio-to-Seoul network path, while a few requests include roughly 1 s of
+pool acquisition per pool. Netlify cold-start overhead appears on some cold
+requests but is small on the sampled warm ones. The existing metrics cannot
+separate PostgreSQL execution from network latency; validate with
+`pg_stat_statements` and compare an Asia-region runtime before choosing a
+permanent hosting change.
 
 ## Checklist
 
@@ -62,8 +89,8 @@ statistics and an Asia-region comparison, will separate the remaining causes.
   count, query round-trip total, maximum query time, and failures, separately
   for the NOVA and Better Auth pools. The counters use request-local async
   context; they do not retain SQL or query parameters.
-- [ ] Commit and publish this instrumentation, then confirm one slow request
-  emits exactly one aggregate record.
+- [x] Commit and publish this instrumentation, then confirm slow requests emit
+  one aggregate record each (deploy `6ac6178f`, commit `056fb6a`).
 - [ ] After a fresh user sign-in, collect at least ten warm requests per route
   group and repeat after an idle interval for cold-start samples. Include
   session, permission grants, People directory, organisation, roles,
