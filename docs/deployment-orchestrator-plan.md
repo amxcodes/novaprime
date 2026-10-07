@@ -4,9 +4,11 @@
 read-only local status/doctor, optional explicitly targeted remote provider
 inventory, immutable per-checkout plans stored outside the repository, plan
 readback, and the protected deployment-identity endpoint. Provider mutations,
-operation resume/rollback, complete scheduler inventory/handover, project
-provisioning, and database moves remain unimplemented. The existing updater and
-setup commands remain separate tools.
+operation resume/rollback execution, complete scheduler inventory/handover,
+project provisioning, and database moves remain unimplemented. A private,
+plan-bound journal store now validates sequenced operation events, but no
+executor uses it yet. The existing updater and setup commands remain separate
+tools.
 **Plan prepared:** 7 October 2026.
 **Repository delivery rule:** changes for this repository stay on `main` and
 push only to `origin/main`; do not create, switch to, or push another branch.
@@ -162,12 +164,13 @@ plan. With `--remote`, the plan includes sanitized provider facts and a verified
 live NOVA identity fingerprint when available. The plan is still a local
 proposal: it does not yet bind verified remote account resources, database
 migration head, complete scheduler inventory, DNS, or secret scopes. `apply`
-deliberately refuses because provider write adapters and
-operation journaling have not been implemented. Once full provider inventory
-and durable operation journals are implemented, a plan will bind the source
-commit, provider account/resource IDs, database identity, scheduler identity,
-domain, required permissions, and planned actions. Apply will revalidate that
-exact plan before writing. It asks for one clear review/confirmation before the first
+deliberately refuses because provider write adapters and an operation executor
+have not been implemented. A private journal store is present, but it is not
+yet connected to a CLI operation. Once full provider inventory and confirmation
+evidence are implemented, a plan will bind the source commit, provider
+account/resource IDs, database identity, scheduler identity, domain, required
+permissions, and planned actions. Apply will revalidate that exact plan before
+writing. It asks for one clear review/confirmation before the first
 external mutation and asks for exact resource confirmation before a database
 copy, production promotion, domain change, or deletion. A non-interactive mode
 must require an explicit protected policy and a recorded approval; a bare
@@ -180,9 +183,11 @@ and print the supported recovery runbook. `cleanup` is a later, separate
 command with exact resource IDs and a second confirmation; it is never a
 normal completion side effect.
 
-The future operation journal stores phase, resource IDs, release SHA, database
-fingerprints, safe provider operation IDs, and verification outcomes. It never
-stores access tokens, database URLs/passwords, auth keys, or secret values.
+The current journal foundation stores the plan and source fingerprints, an
+allowlist of planned action IDs, operation state, and ordered sanitized event
+metadata. The executor must extend it with verified resource IDs, release SHA,
+database fingerprints, safe provider operation IDs, and verification outcomes.
+It never stores access tokens, database URLs/passwords, auth keys, or secret values.
 Secrets are entered or resolved through a provider CLI/credential store for the
 single operation, kept in memory, redacted from output, and written directly to
 the destination provider. If a provider cannot return a secret value, the
@@ -229,7 +234,7 @@ adding a provider SDK.
 ```text
 scripts/deployment-manager.ts              argument parsing and presentation
 scripts/deployment/plan.ts                  pure topology validation/action graph
-scripts/deployment/journal.ts               private operation state and lock
+scripts/deployment/journal.ts               private plan-bound operation journal
 scripts/deployment/approval.ts              typed confirmation and plan binding
 scripts/deployment/credentials.ts            masked prompt/CLI-session resolution
 scripts/deployment/diagnostics.ts            shared read-only checks
@@ -651,11 +656,14 @@ plan's documented phase bounds and observed provider behavior.
    truthful, specify resource identities, approvals, state transitions,
    failure behavior, and acceptance tests before provider writes are added.
 1. **Read-only foundation — partially implemented.** The nova:deployment CLI
-   now provides local status, the existing doctor with explicit env-file
-   isolation, and fail-closed preview plans. The protected identity endpoint
-   does not expand nova_app privileges. Remaining: remote provider
-   account/resource inventory, durable immutable plans, and provider-backed
-   confirmation evidence. Keep apply unavailable until those checks exist.
+   provides local status, the existing doctor with explicit env-file
+   isolation, provider-specific read adapters, project-bound Supabase Cron
+   inspection, durable immutable plans, and fail-closed previews. The
+   protected identity endpoint does not expand nova_app privileges. A private
+   journal store binds events to a persisted plan fingerprint and enforces
+   ordered revisions; there is not yet a CLI operation executor. Remaining:
+   complete provider/account inventory and provider-backed confirmation
+   evidence. Keep apply unavailable until those checks exist.
 2. **First execution path: Netlify + Supabase → Cloudflare + same Supabase.**
    Implement read/write/status adapters for Netlify and Cloudflare; secure
    Hyperdrive creation; secret entry; preview Worker deployment; readiness and

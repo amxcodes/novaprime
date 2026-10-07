@@ -34,9 +34,8 @@ export function databaseIdentityFingerprint(connectionString: string, projectRef
     // Trust it only when the connection endpoint itself identifies that Supabase
     // project; otherwise fingerprint the actual PostgreSQL host and port below.
     const endpointRef = directRef ?? (poolerRef && projectRefPattern.test(poolerRef) ? poolerRef : undefined);
-    const verifiedRef = endpointRef;
-    const canonical = verifiedRef
-      ? JSON.stringify({ provider: "supabase", projectRef: verifiedRef, databaseName })
+    const canonical = endpointRef
+      ? JSON.stringify({ provider: "supabase", projectRef: endpointRef, databaseName })
       : JSON.stringify({
           provider: "postgresql",
           hostname: url.hostname.toLowerCase(),

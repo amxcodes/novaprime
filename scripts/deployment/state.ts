@@ -35,7 +35,7 @@ function repoKey(repoRoot: string): string {
   return createHash("sha256").update(identity, "utf8").digest("hex");
 }
 
-async function ensureRepoDirectory(repoRoot: string): Promise<string> {
+export async function ensureDeploymentRepositoryDirectory(repoRoot: string): Promise<string> {
   const directory = join(resolve(stateDirectory()), repoKey(repoRoot));
   await mkdir(directory, { recursive: true, mode: 0o700 });
   if (process.platform !== "win32") await chmod(directory, 0o700);
@@ -127,7 +127,7 @@ export async function saveDeploymentPlan(
   preview: DeploymentPreview,
   now = new Date(),
 ): Promise<StoredDeploymentPlan> {
-  const directory = await ensureRepoDirectory(repoRoot);
+  const directory = await ensureDeploymentRepositoryDirectory(repoRoot);
   const id = `plan-${randomUUID()}`;
   const createdAt = now.toISOString();
   const stored: StoredDeploymentPlan = {
@@ -162,7 +162,7 @@ export async function loadDeploymentPlan(
   options: { allowExpired?: boolean } = {},
 ): Promise<StoredDeploymentPlan> {
   if (!planIdPattern.test(id)) throw new Error("DEPLOYMENT_PLAN_ID_INVALID");
-  const path = join(await ensureRepoDirectory(repoRoot), `${id}.json`);
+  const path = join(await ensureDeploymentRepositoryDirectory(repoRoot), `${id}.json`);
   let raw: string;
   try { raw = await readFile(path, "utf8"); }
   catch (error) {
@@ -179,7 +179,7 @@ export async function loadDeploymentPlan(
 }
 
 export async function acquireDeploymentLock(repoRoot: string): Promise<() => Promise<void>> {
-  const directory = await ensureRepoDirectory(repoRoot);
+  const directory = await ensureDeploymentRepositoryDirectory(repoRoot);
   const path = join(directory, "deployment.lock");
   const id = randomUUID();
   let handle;
