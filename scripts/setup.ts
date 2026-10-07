@@ -2,7 +2,11 @@ import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { resolveSupabasePoolerHost, selectSupabasePoolerHost } from "../server/src/supabase-pooler.ts";
+import {
+  assertSupabaseAppPasswordProjectBinding,
+  resolveSupabasePoolerHost,
+  selectSupabasePoolerHost,
+} from "../server/src/supabase-pooler.ts";
 import { isSecretsEncryptionKeyValid } from "../server/src/secrets.ts";
 import { confirmSupabaseProject } from "../server/src/supabase-project-confirmation.ts";
 import { promptSecret } from "./update/terminal.ts";
@@ -130,6 +134,12 @@ async function configureSupabaseEnvironment(): Promise<Record<string, string>> {
   const accessToken = optionalArgument("--access-token") ?? process.env.SUPABASE_ACCESS_TOKEN ??
     existing.SUPABASE_ACCESS_TOKEN ?? await promptSecret("Supabase project-scoped access token");
   const rotateAppRolePassword = process.argv.includes("--rotate-app-role-password");
+  assertSupabaseAppPasswordProjectBinding({
+    projectRef,
+    previousProjectRef: existing.NOVA_SUPABASE_PROJECT_REF,
+    previousDatabaseUrl: existing.DATABASE_URL,
+    rotateExistingPassword: rotateAppRolePassword,
+  });
   const requestedAppPassword = optionalArgument("--app-password") ?? process.env.NOVA_APP_PASSWORD;
   const savedAppPassword = existing.NOVA_APP_PASSWORD;
   if (

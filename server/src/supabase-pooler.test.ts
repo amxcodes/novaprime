@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  assertSupabaseAppPasswordProjectBinding,
   assertSupabaseDatabaseUrlBinding,
   resolveSupabasePoolerHost,
   selectSupabasePoolerHost,
@@ -74,6 +75,39 @@ describe("Supabase transaction pooler discovery", () => {
 
 describe("Supabase database project binding", () => {
   const projectRef = "abcdefghijklmnopqrst";
+
+  test("requires an explicit app-role password rotation when saved settings bind another project", () => {
+    expect(() => assertSupabaseAppPasswordProjectBinding({
+      projectRef,
+      previousProjectRef: "zyxwvutsrqponmlkjihg",
+      rotateExistingPassword: false,
+    })).toThrow("NOVA_APP_PASSWORD_PROJECT_SWITCH_REQUIRES_ROTATION_FLAG");
+
+    expect(() => assertSupabaseAppPasswordProjectBinding({
+      projectRef,
+      previousDatabaseUrl: "postgresql://nova_app.zyxwvutsrqponmlkjihg:private@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres",
+      rotateExistingPassword: false,
+    })).toThrow("NOVA_APP_PASSWORD_PROJECT_SWITCH_REQUIRES_ROTATION_FLAG");
+  });
+
+  test("allows project-bound or local saved settings and explicit rotation", () => {
+    expect(() => assertSupabaseAppPasswordProjectBinding({
+      projectRef,
+      previousProjectRef: projectRef,
+      previousDatabaseUrl: `postgresql://nova_app.${projectRef}:private@aws-2-us-east-1.pooler.supabase.com:6543/postgres`,
+      rotateExistingPassword: false,
+    })).not.toThrow();
+    expect(() => assertSupabaseAppPasswordProjectBinding({
+      projectRef,
+      previousDatabaseUrl: "postgresql://nova_app:private@localhost:5432/nova",
+      rotateExistingPassword: false,
+    })).not.toThrow();
+    expect(() => assertSupabaseAppPasswordProjectBinding({
+      projectRef,
+      previousProjectRef: "zyxwvutsrqponmlkjihg",
+      rotateExistingPassword: true,
+    })).not.toThrow();
+  });
 
   test("accepts an app-role pooler URL bound to the selected project", () => {
     expect(() => assertSupabaseDatabaseUrlBinding(

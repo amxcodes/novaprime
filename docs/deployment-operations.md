@@ -42,6 +42,10 @@ Guided first path:
   `nova_app` password, add `--rotate-app-role-password` only when you can also
   update the API host with the newly generated `DATABASE_URL` from that same
   selected file. On Netlify, update Production Functions before serving traffic.
+  The setup command refuses to carry a saved app password to a different
+  Supabase project; pass the rotation flag deliberately so the target role and
+  generated URL are changed together. Netlify snapshots function environment
+  variables per deploy, so trigger a new deploy after saving `DATABASE_URL`.
 - an already-provisioned VPS/direct PostgreSQL: set `.env` and run
   `bun run setup -- --mode external`.
 

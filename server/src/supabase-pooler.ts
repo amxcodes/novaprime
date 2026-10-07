@@ -72,6 +72,47 @@ export function assertSupabaseDatabaseUrlBinding(
   }
 }
 
+function projectRefFromDatabaseUrl(databaseUrl: string): string | undefined {
+  try {
+    const url = new URL(databaseUrl);
+    if (!/^(postgres|postgresql):$/.test(url.protocol)) return undefined;
+
+    const pooler = poolerHostPattern.test(url.hostname.toLowerCase());
+    if (pooler) {
+      const roleParts = decodeURIComponent(url.username).split(".");
+      return roleParts.length === 2 && /^[a-z0-9]{20}$/.test(roleParts[1])
+        ? roleParts[1]
+        : undefined;
+    }
+
+    return url.hostname.toLowerCase().match(/^db\.([a-z0-9]{20})\.supabase\.co$/)?.[1];
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A saved app-role password belongs to the Supabase project that provisioned
+ * it. Don't silently carry it to another project's existing nova_app role.
+ */
+export function assertSupabaseAppPasswordProjectBinding(input: Readonly<{
+  projectRef: string;
+  previousProjectRef?: string;
+  previousDatabaseUrl?: string;
+  rotateExistingPassword: boolean;
+}>): void {
+  const previousUrlProjectRef = input.previousDatabaseUrl
+    ? projectRefFromDatabaseUrl(input.previousDatabaseUrl)
+    : undefined;
+  const projectChanged =
+    (input.previousProjectRef !== undefined && input.previousProjectRef !== input.projectRef) ||
+    (previousUrlProjectRef !== undefined && previousUrlProjectRef !== input.projectRef);
+
+  if (projectChanged && !input.rotateExistingPassword) {
+    throw new Error("NOVA_APP_PASSWORD_PROJECT_SWITCH_REQUIRES_ROTATION_FLAG");
+  }
+}
+
 export function selectSupabasePoolerHost(input: Readonly<{
   verifiedHost: string;
   explicitHost?: string;
