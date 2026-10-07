@@ -139,7 +139,7 @@ async function currentAvailability(
   transaction: PoolClient,
   context: DatabaseRequestContext,
 ): Promise<AvailabilityContext | "OFFICE_ASSIGNMENT_REQUIRED"> {
-  const office = await transaction.query<{
+  const result = await transaction.query<{
     office_id: string;
     office_name: string;
     timezone: string;
@@ -147,129 +147,132 @@ async function currentAvailability(
     latitude: string | null;
     longitude: string | null;
     geofence_radius_meters: number;
-  }>(
-    `SELECT offices.id AS office_id,
-            offices.name AS office_name,
-            offices.timezone,
-            (now() AT TIME ZONE offices.timezone)::date::text AS business_date,
-            offices.latitude, offices.longitude,
-            offices.attendance_geofence_radius_meters AS geofence_radius_meters
-     FROM nova.person_office_assignments assignments
-     JOIN nova.offices offices ON offices.id = assignments.office_id
-     WHERE assignments.person_id = $1
-       AND assignments.effective_on <= (now() AT TIME ZONE offices.timezone)::date
-       AND (
-         assignments.effective_until IS NULL
-         OR assignments.effective_until >= (now() AT TIME ZONE offices.timezone)::date
-       )
-       AND offices.archived_at IS NULL
-     ORDER BY assignments.effective_on DESC
-     LIMIT 1`,
-    [context.userId],
-  );
-  const currentOffice = office.rows[0];
-  if (!currentOffice) return "OFFICE_ASSIGNMENT_REQUIRED";
-
-  const calendar = await transaction.query<{
-    calendar_id: string;
-    is_working: boolean;
+    calendar_id: string | null;
+    is_working: boolean | null;
     shift_id: string | null;
-  }>(
-    `SELECT calendars.id AS calendar_id,
-            rules.is_working,
-            shifts.id AS shift_id
-     FROM nova.office_calendar_assignments assignments
-     JOIN nova.working_calendars calendars ON calendars.id = assignments.calendar_id
-       AND calendars.archived_at IS NULL
-     LEFT JOIN nova.working_calendar_rules rules
-       ON rules.calendar_id = calendars.id
-      AND rules.weekday = EXTRACT(DOW FROM $2::date)::smallint
-      AND rules.ordinal IN (0, ((EXTRACT(DAY FROM $2::date)::integer - 1) / 7) + 1)
-     LEFT JOIN nova.shifts shifts
-       ON shifts.id = rules.shift_id AND shifts.archived_at IS NULL
-     WHERE assignments.office_id = $1
-       AND assignments.effective_on <= $2::date
-       AND (assignments.effective_until IS NULL OR assignments.effective_until >= $2::date)
-     ORDER BY assignments.effective_on DESC, rules.ordinal DESC
-     LIMIT 1`,
-    [currentOffice.office_id, currentOffice.business_date],
-  );
-  const rule = calendar.rows[0];
-  const holiday = await transaction.query(
-    `SELECT 1 FROM nova.office_holidays
-     WHERE office_id = $1 AND holiday_date = $2::date`,
-    [currentOffice.office_id, currentOffice.business_date],
-  );
-  const rolePolicy = await transaction.query<{ wfh_allowed: boolean }>(
-    `SELECT policies.wfh_allowed
-     FROM nova.person_role_assignments assignments
-     JOIN nova.roles roles ON roles.id = assignments.role_id
-     JOIN nova.role_operational_policies policies ON policies.role_id = roles.id
-     WHERE assignments.person_id = $1
-       AND assignments.effective_on <= $2::date
-       AND (assignments.effective_until IS NULL OR assignments.effective_until >= $2::date)
-       AND roles.archived_at IS NULL
-     ORDER BY assignments.effective_on DESC
-     LIMIT 1`,
-    [context.userId, currentOffice.business_date],
-  );
-  const attendancePolicy = await transaction.query<{
-    mode: "hour_based" | "scheduled";
+    is_holiday: boolean;
+    attendance_mode: "hour_based" | "scheduled";
     required_attendance_minutes: number;
+    role_wfh_allowed: boolean | null;
+    override_wfh_allowed: boolean | null;
   }>(
-    `SELECT mode, required_attendance_minutes
-     FROM nova.organisation_attendance_policies
-     WHERE organisation_id = $1
-       AND effective_on <= $2::date
-       AND (effective_until IS NULL OR effective_until >= $2::date)
-     ORDER BY effective_on DESC
-     LIMIT 1`,
-    [context.organisationId, currentOffice.business_date],
-  );
-  const wfhOverride = await transaction.query<{ allowed: boolean }>(
-    `SELECT overrides.allowed
-     FROM nova.wfh_policy_overrides overrides
-     WHERE overrides.organisation_id = $1
-       AND overrides.effective_on <= $3::date
-       AND (overrides.effective_until IS NULL OR overrides.effective_until >= $3::date)
-       AND (
-         (overrides.target_type = 'person' AND overrides.target_id = $2)
-         OR (
-           overrides.target_type = 'organisation_department'
-           AND EXISTS (
-             SELECT 1 FROM nova.person_department_assignments departments
-             WHERE departments.person_id = $2
-               AND departments.organisation_department_id = overrides.target_id
-               AND departments.effective_on <= $3::date
-               AND (departments.effective_until IS NULL OR departments.effective_until >= $3::date)
+    `WITH current_office AS (
+       SELECT offices.id AS office_id,
+              offices.name AS office_name,
+              offices.timezone,
+              (now() AT TIME ZONE offices.timezone)::date AS business_date,
+              offices.latitude, offices.longitude,
+              offices.attendance_geofence_radius_meters AS geofence_radius_meters
+       FROM nova.person_office_assignments assignments
+       JOIN nova.offices offices ON offices.id = assignments.office_id
+       WHERE assignments.person_id = $1
+         AND assignments.effective_on <= (now() AT TIME ZONE offices.timezone)::date
+         AND (assignments.effective_until IS NULL OR
+              assignments.effective_until >= (now() AT TIME ZONE offices.timezone)::date)
+         AND offices.archived_at IS NULL
+       ORDER BY assignments.effective_on DESC
+       LIMIT 1
+     )
+     SELECT office.office_id, office.office_name, office.timezone,
+            office.business_date::text AS business_date,
+            office.latitude, office.longitude, office.geofence_radius_meters,
+            calendar.calendar_id, calendar.is_working, calendar.shift_id,
+            holiday.is_holiday,
+            COALESCE(attendance_policy.mode, 'hour_based'::nova.attendance_policy_mode) AS attendance_mode,
+            COALESCE(attendance_policy.required_attendance_minutes, 480) AS required_attendance_minutes,
+            role_policy.wfh_allowed AS role_wfh_allowed,
+            wfh_override.allowed AS override_wfh_allowed
+     FROM current_office office
+     LEFT JOIN LATERAL (
+       SELECT calendars.id AS calendar_id, rules.is_working, shifts.id AS shift_id
+       FROM nova.office_calendar_assignments assignments
+       JOIN nova.working_calendars calendars
+         ON calendars.id = assignments.calendar_id AND calendars.archived_at IS NULL
+       LEFT JOIN nova.working_calendar_rules rules
+         ON rules.calendar_id = calendars.id
+        AND rules.weekday = EXTRACT(DOW FROM office.business_date)::smallint
+        AND rules.ordinal IN (0, ((EXTRACT(DAY FROM office.business_date)::integer - 1) / 7) + 1)
+       LEFT JOIN nova.shifts shifts ON shifts.id = rules.shift_id AND shifts.archived_at IS NULL
+       WHERE assignments.office_id = office.office_id
+         AND assignments.effective_on <= office.business_date
+         AND (assignments.effective_until IS NULL OR assignments.effective_until >= office.business_date)
+       ORDER BY assignments.effective_on DESC, rules.ordinal DESC
+       LIMIT 1
+     ) calendar ON true
+     CROSS JOIN LATERAL (
+       SELECT EXISTS (
+         SELECT 1 FROM nova.office_holidays
+         WHERE office_id = office.office_id AND holiday_date = office.business_date
+       ) AS is_holiday
+     ) holiday
+     LEFT JOIN LATERAL (
+       SELECT policies.wfh_allowed
+       FROM nova.person_role_assignments assignments
+       JOIN nova.roles roles ON roles.id = assignments.role_id
+       JOIN nova.role_operational_policies policies ON policies.role_id = roles.id
+       WHERE assignments.person_id = $1
+         AND assignments.effective_on <= office.business_date
+         AND (assignments.effective_until IS NULL OR assignments.effective_until >= office.business_date)
+         AND roles.archived_at IS NULL
+       ORDER BY assignments.effective_on DESC
+       LIMIT 1
+     ) role_policy ON true
+     LEFT JOIN LATERAL (
+       SELECT mode, required_attendance_minutes
+       FROM nova.organisation_attendance_policies
+       WHERE organisation_id = $2
+         AND effective_on <= office.business_date
+         AND (effective_until IS NULL OR effective_until >= office.business_date)
+       ORDER BY effective_on DESC
+       LIMIT 1
+     ) attendance_policy ON true
+     LEFT JOIN LATERAL (
+       SELECT overrides.allowed
+       FROM nova.wfh_policy_overrides overrides
+       WHERE overrides.organisation_id = $2
+         AND overrides.effective_on <= office.business_date
+         AND (overrides.effective_until IS NULL OR overrides.effective_until >= office.business_date)
+         AND (
+           (overrides.target_type = 'person' AND overrides.target_id = $1)
+           OR (
+             overrides.target_type = 'organisation_department'
+             AND EXISTS (
+               SELECT 1 FROM nova.person_department_assignments departments
+               WHERE departments.person_id = $1
+                 AND departments.organisation_department_id = overrides.target_id
+                 AND departments.effective_on <= office.business_date
+                 AND (departments.effective_until IS NULL OR departments.effective_until >= office.business_date)
+             )
            )
+           OR (overrides.target_type = 'office' AND overrides.target_id = office.office_id)
          )
-         OR (overrides.target_type = 'office' AND overrides.target_id = $4)
-       )
-     ORDER BY CASE overrides.target_type
-       WHEN 'person' THEN 1
-       WHEN 'organisation_department' THEN 2
-       ELSE 3
-     END
-     LIMIT 1`,
-    [context.organisationId, context.userId, currentOffice.business_date, currentOffice.office_id],
+       ORDER BY CASE overrides.target_type
+         WHEN 'person' THEN 1
+         WHEN 'organisation_department' THEN 2
+         ELSE 3
+       END
+       LIMIT 1
+     ) wfh_override ON true`,
+    [context.userId, context.organisationId],
   );
+  const row = result.rows[0];
+  if (!row) return "OFFICE_ASSIGNMENT_REQUIRED";
 
   return {
-    attendanceMode: attendancePolicy.rows[0]?.mode ?? "hour_based",
-    requiredAttendanceMinutes: attendancePolicy.rows[0]?.required_attendance_minutes ?? 480,
-    businessDate: currentOffice.business_date,
-    calendarId: rule?.calendar_id ?? null,
-    isHoliday: holiday.rows.length > 0,
-    isWorkingDay: rule?.is_working === true,
-    officeId: currentOffice.office_id,
-    officeLatitude: currentOffice.latitude === null ? null : Number(currentOffice.latitude),
-    officeLongitude: currentOffice.longitude === null ? null : Number(currentOffice.longitude),
-    geofenceRadiusMeters: currentOffice.geofence_radius_meters,
-    officeName: currentOffice.office_name,
-    shiftId: rule?.shift_id ?? null,
-    timezone: currentOffice.timezone,
-    wfhAllowed: wfhOverride.rows[0]?.allowed ?? (rolePolicy.rows[0]?.wfh_allowed === true),
+    attendanceMode: row.attendance_mode,
+    requiredAttendanceMinutes: row.required_attendance_minutes,
+    businessDate: row.business_date,
+    calendarId: row.calendar_id,
+    isHoliday: row.is_holiday,
+    isWorkingDay: row.is_working === true,
+    officeId: row.office_id,
+    officeLatitude: row.latitude === null ? null : Number(row.latitude),
+    officeLongitude: row.longitude === null ? null : Number(row.longitude),
+    geofenceRadiusMeters: row.geofence_radius_meters,
+    officeName: row.office_name,
+    shiftId: row.shift_id,
+    timezone: row.timezone,
+    wfhAllowed: row.override_wfh_allowed ?? (row.role_wfh_allowed === true),
   };
 }
 

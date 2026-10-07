@@ -41,16 +41,29 @@ latency. The API now maps PostgreSQL authentication/connectivity failures to
 HTTP 503, but changing the response cannot repair a rejected database
 credential. The supplied Netlify settings screenshot shows four separate
 `DATABASE_URL` deploy-context values and scopes the variable to Builds,
-Functions, and Runtime; it does not expose the values, so the production value
-cannot be verified from the screenshot. Reconcile the Production Functions
-value with the `nova_app` credential for the confirmed `owfgvojdaxafayutbcuf`
-project, then check the other deploy contexts independently. Keep hosted
-application secrets scoped to Functions as described in
+Functions, and Runtime. The Production URL subsequently supplied by the user
+uses a project-qualified pooler username for `hrlvietbqvkdovulzcie`, not the
+confirmed target project `owfgvojdaxafayutbcuf`, explaining the authentication
+failure. Replace it with the `nova_app` URL, current password, and the
+confirmed project's transaction pooler endpoint. Keep `DATABASE_URL` scoped to
+Functions as described in
 `docs/deployment-operations.md`. The Netlify settings page in this session
 redirects to login, so no provider secret was changed. After reconciliation,
 verify `/api/ready`, auth session/sign-in, and the scheduled background tick
 before recording a healthy performance baseline. No migration is needed to fix
 `28P01`.
+
+Attendance availability follow-up — 2026-10-07: `currentAvailability` now
+resolves the effective office, local business date, calendar/shift, holiday,
+attendance policy, role WFH policy, and most-specific WFH override in one SQL
+statement instead of six serial PostgreSQL round trips. The isolated PostgreSQL
+QA run passed all 78 migrations, 53 rollback/RLS fixtures, 614 lifecycle
+assertions, specialized attendance/WFH/leave/geofence smoke, application-role
+preflight, and the 0072→0074 billing upgrade rehearsal; its disposable resources
+were removed. `bun run typecheck` and the updater suite (60 tests / 233
+assertions) also passed. This verifies the query against the isolated database,
+not healthy hosted latency; Production still needs the Netlify credential repair
+above before a comparable timing baseline is possible.
 
 Deployment-assistant follow-up on 2026-09-27: the UI now gives a six-part
 “You do / Then / Confirm” map and a simple source → runtime ↔ database diagram,

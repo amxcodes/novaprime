@@ -58,11 +58,14 @@ also passed the full GitHub Actions checks and PostgreSQL lifecycle gate
 ([run 37522254064](https://github.com/amxcodes/novaprime/actions/runs/37522254064)).
 
 The hosted app is still not ready: the live readiness/session checks remain
-503/500. An operator must set Netlify Functions `DATABASE_URL` to a credential
-and connection URL for the same confirmed Supabase project, deploy, and repeat
-the readiness/auth smoke before healthy-route latency or Super Admin workflows
-can be accepted. The observed migration sequence has no pending schema change
-for this incident.
+503/500. The Production URL subsequently supplied by the user contains a
+project-qualified pooler username for `hrlvietbqvkdovulzcie`, while the
+confirmed NOVA target is `owfgvojdaxafayutbcuf`; Netlify is pointed at the wrong
+Supabase project. Set Functions `DATABASE_URL` to the matching `nova_app`
+credential and transaction-pooler endpoint for the confirmed project, deploy,
+and repeat readiness/auth smoke before accepting healthy-route latency or
+Super Admin workflows. The observed migration sequence has no pending schema
+change for this incident.
 
 The supplied detailed Supabase export confirms migrations 0075–0078 completed
 and `ALTER ROLE nova_app ... PASSWORD` succeeded at 18:44 UTC; the earlier
@@ -83,6 +86,17 @@ blocked until its Functions `DATABASE_URL` is updated to the current
 target-project `nova_app` credentials and exact transaction-pooler endpoint,
 then redeployed and checked through readiness and sign-in. Do not rotate the
 role password again until the hosted secret can be updated in the same change.
+
+The attendance `currentAvailability` read was consolidated from six serial
+PostgreSQL statements into one query that preserves effective-date, office
+timezone, calendar/shift, holiday, and WFH override precedence. `bun run
+typecheck` and `bun test scripts/update` passed (60 tests / 233 assertions).
+The isolated PostgreSQL 17 lifecycle run passed 78 migrations, 53 rollback/RLS
+fixtures, 614 lifecycle assertions, specialized attendance/WFH/leave/geofence
+smoke, application-role preflight, and the 0072→0074 billing upgrade rehearsal;
+its database and containers were removed afterward. These are local query and
+schema correctness checks. They do not provide a hosted latency measurement or
+resolve the Production `28P01` credential failure.
 
 ## Verified evidence (database and host-local scopes)
 
