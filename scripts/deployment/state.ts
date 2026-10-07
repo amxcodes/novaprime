@@ -94,7 +94,7 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
       }) || !Array.isArray(preview.blockers) || !preview.blockers.every((item) => typeof item === "string") ||
       (providerInventory !== undefined && (!Array.isArray(providerInventory) || !providerInventory.every((item) => {
         const provider = typeof item === "object" && item !== null && !Array.isArray(item) ? item as Record<string, unknown> : null;
-        return provider !== null && hasOnly(provider, ["provider", "state", "target", "runtime", "release", "origin", "databaseVersion", "databaseFingerprint", "schemaReady", "migrationLedgerPresent", "configuredScheduler", "schedulerInventory", "detail"]) &&
+        return provider !== null && hasOnly(provider, ["provider", "state", "target", "runtime", "release", "origin", "databaseVersion", "databaseFingerprint", "schemaReady", "migrationLedgerPresent", "configuredScheduler", "schedulerInventory", "migrationInventory", "detail"]) &&
           ["netlify", "cloudflare", "vercel", "supabase", "nova"].includes(String(provider.provider)) &&
           ["identified", "target-required", "not-configured", "unavailable"].includes(String(provider.state)) &&
           ["target", "runtime", "release", "origin", "databaseVersion", "detail"].every((key) => provider[key] === undefined || typeof provider[key] === "string") &&
@@ -116,6 +116,17 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
                   (trigger.schedule === null || typeof trigger.schedule === "string") &&
                   (trigger.active === null || typeof trigger.active === "boolean");
               });
+          })()) &&
+          (provider.migrationInventory === undefined || (() => {
+            const migration = typeof provider.migrationInventory === "object" && provider.migrationInventory !== null && !Array.isArray(provider.migrationInventory)
+              ? provider.migrationInventory as Record<string, unknown> : null;
+            const validFilename = (value: unknown) => value === null || (typeof value === "string" && /^\d{4}_[a-z0-9_]+\.sql$/.test(value));
+            return migration !== null && hasOnly(migration, ["state", "appliedCount", "migrationHead", "expectedHead", "checksumsVerified", "detail"]) &&
+              ["current", "behind", "ahead", "diverged", "unverified", "not-installed", "target-required", "unavailable"].includes(String(migration.state)) &&
+              (migration.appliedCount === null || (Number.isInteger(migration.appliedCount) && (migration.appliedCount as number) >= 0)) &&
+              validFilename(migration.migrationHead) && validFilename(migration.expectedHead) &&
+              typeof migration.checksumsVerified === "boolean" &&
+              (migration.detail === undefined || typeof migration.detail === "string");
           })());
       })))) return corrupt();
   return value as StoredDeploymentPlan;

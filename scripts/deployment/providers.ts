@@ -5,7 +5,7 @@ import { inspectSupabase } from "./providers/supabase.ts";
 import { inspectVercel } from "./providers/vercel.ts";
 import type { ProviderFetcher, ProviderResource } from "./providers/types.ts";
 
-export type { ProviderFetcher, ProviderName, ProviderResource, SchedulerTriggerInventory } from "./providers/types.ts";
+export type { DatabaseMigrationInventory, ProviderFetcher, ProviderName, ProviderResource, SchedulerTriggerInventory } from "./providers/types.ts";
 
 /** Discover only explicitly targeted resources; each provider owns its response parsing. */
 export async function discoverProviderResources(

@@ -59,9 +59,16 @@ export function buildDeploymentPreview(
   if (providerInventory) {
     const runtimeState = providerInventory.find(({ provider }) => provider === request.runtime);
     if (runtimeState?.state !== "identified") blockers.push("TARGET_RUNTIME_NOT_VERIFIED");
+    const databaseState = providerInventory.find(({ provider }) => provider === "supabase");
     if (request.database === "keep" && inventory.database.providerHint === "supabase" &&
-        providerInventory.find(({ provider }) => provider === "supabase")?.state !== "identified") {
+        databaseState?.state !== "identified") {
       blockers.push("DATABASE_PROVIDER_NOT_VERIFIED");
+    }
+    if (runtimeChanges && request.database === "keep") {
+      const migrationState = databaseState?.migrationInventory?.state;
+      if (migrationState === "behind") blockers.push("DATABASE_MIGRATIONS_REQUIRED_BEFORE_RUNTIME_CHANGE");
+      else if (migrationState === "ahead" || migrationState === "diverged") blockers.push("DATABASE_MIGRATION_HISTORY_DIVERGED");
+      else if (migrationState !== "current") blockers.push("DATABASE_MIGRATION_STATE_UNVERIFIED");
     }
     if (request.scheduler !== "keep" &&
         providerInventory.find(({ provider }) => provider === request.scheduler)?.state !== "identified") {

@@ -143,8 +143,12 @@ function reportStatus(
       const scheduler = provider.schedulerInventory
         ? `Cron inventory ${provider.schedulerInventory.state}/${provider.schedulerInventory.completeness} (${provider.schedulerInventory.triggers.length} observed)`
         : undefined;
+      const migrations = provider.migrationInventory
+        ? `Migrations ${provider.migrationInventory.state} (${provider.migrationInventory.appliedCount ?? "?"} applied; head ${provider.migrationInventory.migrationHead ?? "none"}; expected ${provider.migrationInventory.expectedHead ?? "unknown"})`
+        : undefined;
       const summary = [provider.provider, provider.state, provider.target, provider.configuredScheduler
-        ? `configured scheduler ${provider.configuredScheduler}` : undefined, scheduler, provider.schedulerInventory?.detail, provider.detail]
+        ? `configured scheduler ${provider.configuredScheduler}` : undefined, scheduler, provider.schedulerInventory?.detail,
+        migrations, provider.migrationInventory?.detail, provider.detail]
         .filter(Boolean).join(" — ");
       write("  " + summary);
     }

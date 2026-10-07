@@ -8,6 +8,15 @@ export interface SchedulerTriggerInventory {
   detail?: string;
 }
 
+export interface DatabaseMigrationInventory {
+  state: "current" | "behind" | "ahead" | "diverged" | "unverified" | "not-installed" | "target-required" | "unavailable";
+  appliedCount: number | null;
+  migrationHead: string | null;
+  expectedHead: string | null;
+  checksumsVerified: boolean;
+  detail?: string;
+}
+
 export interface ProviderResource {
   provider: ProviderName;
   state: "identified" | "target-required" | "not-configured" | "unavailable";
@@ -21,6 +30,7 @@ export interface ProviderResource {
   migrationLedgerPresent?: boolean;
   configuredScheduler?: string;
   schedulerInventory?: SchedulerTriggerInventory;
+  migrationInventory?: DatabaseMigrationInventory;
   detail?: string;
 }
 

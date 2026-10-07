@@ -40,6 +40,13 @@ test("plans persist outside the checkout with a random ID and private file mode"
         completeness: "project-scoped" as const,
         triggers: [{ id: "12", name: "nova-background-tick", schedule: "*/5 * * * *", active: true }],
       },
+      migrationInventory: {
+        state: "current" as const,
+        appliedCount: 79,
+        migrationHead: "0079_permission_customer_role_assignability.sql",
+        expectedHead: "0079_permission_customer_role_assignability.sql",
+        checksumsVerified: true,
+      },
     },
   ]);
   const stored = await saveDeploymentPlan(repo, preview, new Date("2026-10-07T00:00:00.000Z"));

@@ -85,7 +85,39 @@ test("remote planning binds provider inventory and blocks an unverified runtime 
   expect(preview.providerInventory).toEqual(providers);
   expect(preview.blockers).toContain("TARGET_RUNTIME_NOT_VERIFIED");
   expect(preview.blockers).toContain("GLOBAL_SCHEDULER_INVENTORY_INCOMPLETE");
+  expect(preview.blockers).toContain("DATABASE_MIGRATION_STATE_UNVERIFIED");
   expect(preview.blockers).not.toContain("DATABASE_PROVIDER_NOT_VERIFIED");
+});
+
+test("remote plans stop on pending or diverged database migrations before a runtime change", () => {
+  const providers = [
+    { provider: "netlify" as const, state: "identified" as const, target: "site-1" },
+    { provider: "cloudflare" as const, state: "identified" as const, target: "account/worker" },
+    {
+      provider: "supabase" as const,
+      state: "identified" as const,
+      target: "abcdefghijklmnopqrst",
+      migrationInventory: {
+        state: "behind" as const,
+        appliedCount: 76,
+        migrationHead: "0076_operator_update_checksums.sql",
+        expectedHead: "0079_permission_customer_role_assignability.sql",
+        checksumsVerified: true,
+      },
+    },
+    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", configuredScheduler: "supabase" },
+  ];
+  const behind = buildDeploymentPreview(inventory, {
+    runtime: "cloudflare", database: "keep", scheduler: "supabase",
+  }, providers);
+  expect(behind.blockers).toContain("DATABASE_MIGRATIONS_REQUIRED_BEFORE_RUNTIME_CHANGE");
+
+  const diverged = buildDeploymentPreview(inventory, {
+    runtime: "cloudflare", database: "keep", scheduler: "supabase",
+  }, providers.map((provider) => provider.provider === "supabase"
+    ? { ...provider, migrationInventory: { ...provider.migrationInventory, state: "diverged" as const } }
+    : provider));
+  expect(diverged.blockers).toContain("DATABASE_MIGRATION_HISTORY_DIVERGED");
 });
 
 test("remote plan detects duplicate or missing active NOVA schedulers", () => {

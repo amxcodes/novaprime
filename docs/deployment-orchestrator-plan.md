@@ -3,9 +3,10 @@
 **Status:** product requirement and implementation plan. Implemented foundation:
 read-only local status/doctor, optional explicitly targeted remote provider
 inventory, immutable per-checkout plans stored outside the repository, plan
-readback, and the protected deployment-identity endpoint. Provider mutations,
-operation resume/rollback execution, complete scheduler inventory/handover,
-project provisioning, and database moves remain unimplemented. A private,
+readback, protected deployment identity, and a read-only Supabase migration
+ledger comparison. Provider mutations, operation resume/rollback execution,
+complete scheduler inventory/handover, project provisioning, and database
+moves remain unimplemented. A private,
 plan-bound journal store now validates sequenced operation events, but no
 executor uses it yet. The existing updater and setup commands remain separate
 tools.
@@ -65,9 +66,10 @@ recovery behavior, and live rehearsal exist.
   `/api/internal/deployment/identity` route now reports a password-free
   database fingerprint, runtime/release identity when configured,
   schema-readiness booleans, and configured scheduler. `nova_app` cannot read
-  the owner-only migration ledger; verify migration head separately through
-  the explicitly selected migration-owner connection or Supabase Management
-  API. Do not widen app-role grants to make deployment introspection easier.
+  the owner-only migration ledger; the deployment manager uses the explicitly
+  selected `MIGRATOR_DATABASE_URL`, pinned to the same database fingerprint,
+  for read-only filename/checksum comparison. Do not widen app-role grants to
+  make deployment introspection easier.
   Never return URLs, config values, or secrets.
 - The scheduler selector is process configuration, not a database-wide
   ownership lock. Each deployment checks its own
@@ -139,8 +141,12 @@ Netlify site and latest production deploy, Cloudflare Worker and its Cron
 expressions, Vercel project and latest production deployment, and Supabase
 project/service health. With an explicitly selected `MIGRATOR_DATABASE_URL`
 that fingerprints to the same database as `DATABASE_URL`, it also lists only
-NOVA-targeting `cron.job` rows inside a PostgreSQL read-only transaction; it
-does not return cron command text or Vault secrets. When both `NOVA_PUBLIC_ORIGIN` (or `BETTER_AUTH_URL`)
+NOVA-targeting `cron.job` rows and compares `public.nova_schema_migrations`
+filenames and SHA-256 checksums against the verified local release manifest,
+inside a PostgreSQL read-only transaction. It does not return cron command
+text or Vault secrets. The plan labels the migration state as current, behind,
+ahead, diverged, unverified, or unavailable; a runtime move that keeps this
+database is blocked unless that state is verified current. When both `NOVA_PUBLIC_ORIGIN` (or `BETTER_AUTH_URL`)
 and `NOVA_BACKGROUND_JOB_SECRET` are selected, it also calls the protected NOVA
 identity endpoint over HTTPS and retains only its allowlisted runtime, release,
 database fingerprint/readiness, and scheduler fields. It sends read-only
@@ -153,17 +159,21 @@ blocker until every live triggering surface is accounted for. Absence in this
 inventory is not proof that no trigger or domain exists.
 The supported read-only target variables are `NETLIFY_SITE_ID`,
 `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_WORKER_NAME`, `VERCEL_PROJECT_ID` (and
-optional `VERCEL_TEAM_ID`), and `NOVA_SUPABASE_PROJECT_REF`. Their matching
-provider tokens and `NOVA_PUBLIC_ORIGIN` + `NOVA_BACKGROUND_JOB_SECRET` must
-come from the same explicitly selected environment file or operator process.
+optional `VERCEL_TEAM_ID`), and `NOVA_SUPABASE_PROJECT_REF`. Supabase Cron and
+migration-ledger inspection also require `MIGRATOR_DATABASE_URL`, which must
+fingerprint to the same database as `DATABASE_URL`; it is used only for
+read-only inventory. Matching provider tokens and `NOVA_PUBLIC_ORIGIN` +
+`NOVA_BACKGROUND_JOB_SECRET` must come from the same explicitly selected
+environment file or operator process.
 Run the focused checks with `bun run test:deployment-manager`.
 
 `plan` stores an immutable, expiring plan under the OS per-user state directory,
 bound to this checkout and the current local source snapshot. `show` reads that
-plan. With `--remote`, the plan includes sanitized provider facts and a verified
-live NOVA identity fingerprint when available. The plan is still a local
-proposal: it does not yet bind verified remote account resources, database
-migration head, complete scheduler inventory, DNS, or secret scopes. `apply`
+plan. With `--remote`, the plan includes sanitized provider facts, the inspected
+database migration head and checksum state, and a verified live NOVA identity
+fingerprint when available. The plan is still a local proposal: it does not yet
+bind verified remote account resources, complete scheduler inventory, DNS, or
+secret scopes. `apply`
 deliberately refuses because provider write adapters and an operation executor
 have not been implemented. A private journal store is present, but it is not
 yet connected to a CLI operation. Once full provider inventory and confirmation
@@ -658,8 +668,9 @@ plan's documented phase bounds and observed provider behavior.
 1. **Read-only foundation — partially implemented.** The nova:deployment CLI
    provides local status, the existing doctor with explicit env-file
    isolation, provider-specific read adapters, project-bound Supabase Cron
-   inspection, durable immutable plans, and fail-closed previews. The
-   protected identity endpoint does not expand nova_app privileges. A private
+   and migration-ledger inspection, durable immutable plans, and fail-closed
+   previews. The protected identity endpoint does not expand nova_app
+   privileges. A private
    journal store binds events to a persisted plan fingerprint and enforces
    ordered revisions; there is not yet a CLI operation executor. Remaining:
    complete provider/account inventory and provider-backed confirmation
