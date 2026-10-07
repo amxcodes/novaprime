@@ -5,7 +5,7 @@ import {
   peopleDirectoryReadSql,
   projectPeopleDirectoryPage,
   projectPersonDirectoryRecord,
-  peopleDirectoryPermissionReadSql,
+  projectAuthorizedPeopleDirectoryRows,
 } from "./people-directory-model.js";
 
 const personId = "00000000-0000-4000-8000-000000000001";
@@ -48,11 +48,10 @@ test("directory authorization uses only catalogue scopes and filters the target 
   expect(peopleDirectoryPermissionScopes).toEqual([
     "organisation", "office", "organisation_department",
   ]);
-  expect(peopleDirectoryPermissionReadSql).toContain("grants.scope = ANY(ARRAY['organisation','office','organisation_department']::nova.permission_scope[])");
-  expect(peopleDirectoryPermissionReadSql).not.toContain("own_record");
-  expect(peopleDirectoryPermissionReadSql).toContain("roles.organisation_id = $2");
-
   const sql = peopleDirectoryReadSql.toUpperCase();
+  expect(sql).toContain("ACTOR_PERMISSION_GRANTS AS MATERIALIZED");
+  expect(sql).toContain("SELECT ACTOR_PERMISSION.PERMITTED AS PERMISSION_GRANTED");
+  expect(sql).toContain("LEFT JOIN PAGE_PEOPLE ON ACTOR_PERMISSION.PERMITTED");
   expect(sql).toContain("ACTOR_ROLES.ORGANISATION_ID = $1");
   expect(sql).toContain("ACTOR_GRANTS.PERMISSION_KEY = 'PEOPLE.VIEW'");
   expect(sql).toContain("ACTOR_GRANTS.SCOPE = ANY(ARRAY['ORGANISATION','OFFICE','ORGANISATION_DEPARTMENT']::NOVA.PERMISSION_SCOPE[])");
@@ -72,7 +71,87 @@ test("directory authorization uses only catalogue scopes and filters the target 
   expect(cursor).toBeLessThan(limit);
   expect(sql).toContain("ELIGIBLE_PEOPLE AS (");
   expect(sql).toContain("PAGE_PEOPLE AS MATERIALIZED");
-  expect(sql.lastIndexOf('ORDER BY SORT_NAME COLLATE "C", ID')).toBeGreaterThan(limit);
+  const pageOrder = sql.indexOf('ORDER BY SORT_NAME COLLATE "C", ID');
+  expect(pageOrder).toBeGreaterThan(cursor);
+  expect(pageOrder).toBeLessThan(limit);
+  expect(sql).toContain('ORDER BY PAGE_PEOPLE.SORT_NAME COLLATE "C", PAGE_PEOPLE.ID');
+});
+
+test("one directory query preserves denied, empty, and populated access results", () => {
+  const denied = projectAuthorizedPeopleDirectoryRows([{
+    permission_granted: false,
+    id: null,
+    display_name: null,
+    email: null,
+    status: null,
+    designation: null,
+    employment_starts_on: null,
+    manager_name: null,
+    office_id: null,
+    office_name: null,
+    department_id: null,
+    department_name: null,
+    role_id: null,
+    role_name: null,
+    sort_name: null,
+  }]);
+  expect(denied).toEqual({ permissionGranted: false, people: [] });
+
+  const empty = projectAuthorizedPeopleDirectoryRows([{
+    permission_granted: true,
+    id: null,
+    display_name: null,
+    email: null,
+    status: null,
+    designation: null,
+    employment_starts_on: null,
+    manager_name: null,
+    office_id: null,
+    office_name: null,
+    department_id: null,
+    department_name: null,
+    role_id: null,
+    role_name: null,
+    sort_name: null,
+  }]);
+  expect(empty).toEqual({ permissionGranted: true, people: [] });
+
+  const person = {
+    id: personId,
+    display_name: "Aman",
+    email: "aman@example.test",
+    status: "active",
+    designation: "Engineer",
+    employment_starts_on: "2026-01-01",
+    manager_name: null,
+    office_id: null,
+    office_name: null,
+    department_id: null,
+    department_name: null,
+    role_id: null,
+    role_name: null,
+    sort_name: "Aman",
+    permission_granted: true,
+  };
+  expect(projectAuthorizedPeopleDirectoryRows([person])).toEqual({
+    permissionGranted: true,
+    people: [{
+      id: person.id,
+      display_name: person.display_name,
+      email: person.email,
+      status: person.status,
+      designation: person.designation,
+      employment_starts_on: person.employment_starts_on,
+      manager_name: person.manager_name,
+      office_id: person.office_id,
+      office_name: person.office_name,
+      department_id: person.department_id,
+      department_name: person.department_name,
+      role_id: person.role_id,
+      role_name: person.role_name,
+      sort_name: person.sort_name,
+    }],
+  });
 });
 
 test("directory SQL and projection expose only bounded directory fields", () => {

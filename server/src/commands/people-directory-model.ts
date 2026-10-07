@@ -56,21 +56,29 @@ export function parsePeopleDirectoryPage(request: Request): PeopleDirectoryPageF
   return { limit, query, searchPattern, cursorName: name, cursorPersonId: personId, cursorBinding: binding };
 }
 
-export const peopleDirectoryPermissionReadSql = `SELECT EXISTS (
-  SELECT 1
-  FROM nova.people actor
-  JOIN nova.person_role_assignments assignments ON assignments.person_id = actor.id
-  JOIN nova.roles roles ON roles.id = assignments.role_id AND roles.organisation_id = $2
-  JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
-  WHERE actor.id = $1 AND actor.organisation_id = $2
-    AND assignments.effective_on <= nova.person_business_date($1)
-    AND (assignments.effective_until IS NULL OR assignments.effective_until >= nova.person_business_date($1))
-    AND roles.archived_at IS NULL
-    AND grants.permission_key = 'people.view'
-    AND grants.scope = ANY(${directoryPermissionScopeArraySql})
-) AS permitted`;
+function directoryPermissionGrantRows(actorId: string, organisationId: string): string {
+  return `SELECT actor_grants.scope, actor_grants.office_id,
+                 actor_grants.organisation_department_id
+          FROM nova.people actor
+          JOIN nova.person_role_assignments actor_assignments
+            ON actor_assignments.person_id = actor.id
+          JOIN nova.roles actor_roles ON actor_roles.id = actor_assignments.role_id
+            AND actor_roles.organisation_id = ${organisationId}
+          JOIN nova.role_permission_grants actor_grants ON actor_grants.role_id = actor_roles.id
+          WHERE actor.id = ${actorId} AND actor.organisation_id = ${organisationId}
+            AND actor_assignments.effective_on <= nova.person_business_date(${actorId})
+            AND (actor_assignments.effective_until IS NULL
+              OR actor_assignments.effective_until >= nova.person_business_date(${actorId}))
+            AND actor_roles.archived_at IS NULL
+            AND actor_grants.permission_key = 'people.view'
+            AND actor_grants.scope = ANY(${directoryPermissionScopeArraySql})`;
+}
 
-export const peopleDirectoryReadSql = `WITH eligible_people AS (
+export const peopleDirectoryReadSql = `WITH actor_permission_grants AS MATERIALIZED (
+  ${directoryPermissionGrantRows("$2", "$1")}
+), actor_permission AS MATERIALIZED (
+  SELECT EXISTS (SELECT 1 FROM actor_permission_grants) AS permitted
+), eligible_people AS (
   SELECT people.id, people.display_name, people.email, status_period.status,
          employment.designation, employment.employment_starts_on, manager.display_name AS manager_name,
          office.id AS office_id, office.name AS office_name,
@@ -127,25 +135,18 @@ export const peopleDirectoryReadSql = `WITH eligible_people AS (
     ORDER BY assignments.effective_on DESC, assignments.id DESC
     LIMIT 1
   ) role ON true
-  WHERE people.organisation_id = $1
+  CROSS JOIN actor_permission access
+  WHERE access.permitted
+    AND people.organisation_id = $1
     AND ($7::uuid IS NULL OR people.id = $7::uuid)
     AND EXISTS (
       SELECT 1
-      FROM nova.person_role_assignments actor_assignments
-      JOIN nova.roles actor_roles ON actor_roles.id = actor_assignments.role_id
-        AND actor_roles.organisation_id = $1
-      JOIN nova.role_permission_grants actor_grants ON actor_grants.role_id = actor_roles.id
-      WHERE actor_assignments.person_id = $2
-        AND actor_assignments.effective_on <= nova.person_business_date($2)
-        AND (actor_assignments.effective_until IS NULL OR actor_assignments.effective_until >= nova.person_business_date($2))
-        AND actor_roles.archived_at IS NULL
-        AND actor_grants.permission_key = 'people.view'
-        AND actor_grants.scope = ANY(${directoryPermissionScopeArraySql})
-        AND (
-          actor_grants.scope = 'organisation'
-          OR (actor_grants.scope = 'office' AND actor_grants.office_id = office.id)
-          OR (actor_grants.scope = 'organisation_department'
-            AND actor_grants.organisation_department_id = department.id)
+      FROM actor_permission_grants actor_grants
+      WHERE (
+        actor_grants.scope = 'organisation'
+        OR (actor_grants.scope = 'office' AND actor_grants.office_id = office.id)
+        OR (actor_grants.scope = 'organisation_department'
+          AND actor_grants.organisation_department_id = department.id)
         )
     )
 ), page_people AS MATERIALIZED (
@@ -157,10 +158,14 @@ export const peopleDirectoryReadSql = `WITH eligible_people AS (
   ORDER BY sort_name COLLATE "C", id
   LIMIT $6
 )
-SELECT id, display_name, email, status, designation, employment_starts_on, manager_name,
-       office_id, office_name, department_id, department_name, role_id, role_name, sort_name
-FROM page_people
-ORDER BY sort_name COLLATE "C", id`;
+SELECT actor_permission.permitted AS permission_granted,
+       page_people.id, page_people.display_name, page_people.email, page_people.status,
+       page_people.designation, page_people.employment_starts_on, page_people.manager_name,
+       page_people.office_id, page_people.office_name, page_people.department_id,
+       page_people.department_name, page_people.role_id, page_people.role_name, page_people.sort_name
+FROM actor_permission
+LEFT JOIN page_people ON actor_permission.permitted
+ORDER BY page_people.sort_name COLLATE "C", page_people.id`;
 
 export type PeopleDirectoryRow = Readonly<{
   id: string;
@@ -178,6 +183,22 @@ export type PeopleDirectoryRow = Readonly<{
   role_name: string | null;
   sort_name: string;
 }>;
+
+export type PeopleDirectoryReadRow = Omit<PeopleDirectoryRow, "id" | "email" | "sort_name"> & Readonly<{
+  id: string | null;
+  email: string | null;
+  sort_name: string | null;
+  permission_granted: boolean;
+}>;
+
+export function projectAuthorizedPeopleDirectoryRows(rows: readonly PeopleDirectoryReadRow[]) {
+  const permissionGranted = rows[0]?.permission_granted === true;
+  const people = permissionGranted
+    ? rows.filter((row) => row.id !== null).map(({ permission_granted: _permissionGranted, ...person }) =>
+      person as PeopleDirectoryRow)
+    : [];
+  return { permissionGranted, people };
+}
 
 export function projectPeopleDirectoryPage(
   rows: readonly PeopleDirectoryRow[],

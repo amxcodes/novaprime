@@ -5,21 +5,21 @@ import { isNormalOperationalActor, requestActor } from "../request-actor.js";
 import {
   peopleDirectoryCursorBinding,
   peopleDirectoryPersonIdPattern,
-  peopleDirectoryPermissionReadSql,
   peopleDirectoryReadSql,
   parsePeopleDirectoryPage,
+  projectAuthorizedPeopleDirectoryRows,
   projectPeopleDirectoryPage,
   projectPersonDirectoryRecord,
 } from "./people-directory-model.js";
-import type { PeopleDirectoryPageFilters, PeopleDirectoryRow } from "./people-directory-model.js";
+import type { PeopleDirectoryPageFilters, PeopleDirectoryReadRow, PeopleDirectoryRow } from "./people-directory-model.js";
 
 export {
   peopleDirectoryCursorBinding,
   peopleDirectoryPersonIdPattern,
   peopleDirectoryPermissionScopes,
-  peopleDirectoryPermissionReadSql,
   peopleDirectoryReadSql,
   parsePeopleDirectoryPage,
+  projectAuthorizedPeopleDirectoryRows,
   projectPeopleDirectoryPage,
   projectPersonDirectoryRecord,
 } from "./people-directory-model.js";
@@ -28,7 +28,7 @@ export type { PeopleDirectoryPageFilters, PeopleDirectoryRow } from "./people-di
 const json = (body: unknown, status = 200) =>
   Response.json(body, { status, headers: { "cache-control": "no-store" } });
 
-async function withPeopleDirectoryPermission<T>(
+async function withPeopleDirectoryActor<T>(
   request: Request,
   operation: (transaction: PoolClient, organisationId: string, actorId: string) => Promise<T | Response>,
 ): Promise<Response> {
@@ -44,14 +44,8 @@ async function withPeopleDirectoryPermission<T>(
 
   try {
     const result = await withDatabaseRequest(actor.context, async (transaction) => {
-      const permission = await transaction.query<{ permitted: boolean }>(
-        peopleDirectoryPermissionReadSql,
-        [actor.context.userId, actor.context.organisationId],
-      );
-      if (permission.rows[0]?.permitted !== true) return "PERMISSION_DENIED" as const;
       return operation(transaction, actor.context.organisationId, actor.context.userId);
     });
-    if (result === "PERMISSION_DENIED") return json({ error: result }, 403);
     if (result instanceof Response) return result;
     return json(result);
   } catch {
@@ -66,7 +60,7 @@ function peopleDirectoryRows(
   filters: PeopleDirectoryPageFilters,
   targetPersonId: string | null = null,
 ) {
-  return transaction.query<PeopleDirectoryRow>(peopleDirectoryReadSql, [
+  return transaction.query<PeopleDirectoryReadRow>(peopleDirectoryReadSql, [
     organisationId,
     actorId,
     filters.searchPattern,
@@ -81,9 +75,11 @@ export async function readPeopleDirectory(request: Request): Promise<Response> {
   const filters = parsePeopleDirectoryPage(request);
   if (!filters) return json({ error: "PEOPLE_DIRECTORY_QUERY_INVALID" }, 400);
 
-  return withPeopleDirectoryPermission(request, async (transaction, organisationId, actorId) => {
+  return withPeopleDirectoryActor(request, async (transaction, organisationId, actorId) => {
     const rows = await peopleDirectoryRows(transaction, organisationId, actorId, filters);
-    return projectPeopleDirectoryPage(rows.rows, filters);
+    const projected = projectAuthorizedPeopleDirectoryRows(rows.rows);
+    if (!projected.permissionGranted) return json({ error: "PERMISSION_DENIED" }, 403);
+    return projectPeopleDirectoryPage(projected.people, filters);
   });
 }
 
@@ -98,8 +94,10 @@ export async function readPersonDirectoryRecord(request: Request, personId: stri
     cursorBinding: peopleDirectoryCursorBinding(""),
   };
 
-  return withPeopleDirectoryPermission(request, async (transaction, organisationId, actorId) => {
+  return withPeopleDirectoryActor(request, async (transaction, organisationId, actorId) => {
     const rows = await peopleDirectoryRows(transaction, organisationId, actorId, filters, personId);
-    return projectPersonDirectoryRecord(rows.rows, filters);
+    const projected = projectAuthorizedPeopleDirectoryRows(rows.rows);
+    if (!projected.permissionGranted) return json({ error: "PERMISSION_DENIED" }, 403);
+    return projectPersonDirectoryRecord(projected.people, filters);
   });
 }

@@ -211,6 +211,13 @@ permanent hosting change.
 
 ### 4. Check request fan-out and UI critical paths
 
+- [x] Merge the People directory's `people.view` grant gate and bounded,
+  target-scope-filtered read into one SQL statement. It still returns 403 when
+  access is absent, returns an empty page for permitted actors with no matches,
+  and performs search and scope filtering in PostgreSQL.
+- [ ] After deployment, compare the People directory query count and
+  end-to-end p50/p95 with the recorded baseline; the code change alone does
+  not prove a production latency improvement.
 - [ ] Use browser traces to count API requests per page and identify true
   dependencies. Preserve server permission checks; optimize only requests
   proven to be redundant or independent.
