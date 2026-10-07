@@ -71,6 +71,13 @@ test("protects the background tick behind the deployment-only secret", async () 
   expect(await response.json()).toEqual({ error: "BACKGROUND_JOB_UNAUTHORIZED" });
 });
 
+test("protects deployment identity behind the deployment-only bearer secret", async () => {
+  process.env.NOVA_BACKGROUND_JOB_SECRET = "tick-secret";
+  const response = await handleRequest(new Request("http://nova.test/api/internal/deployment/identity"));
+  expect(response.status).toBe(401);
+  expect(await response.json()).toEqual({ error: "DEPLOYMENT_IDENTITY_UNAUTHORIZED" });
+});
+
 test("blocks a valid scheduler secret from an unselected provider", async () => {
   process.env.NOVA_BACKGROUND_JOB_SECRET = "tick-secret";
   process.env.NOVA_BACKGROUND_SCHEDULER = "supabase";

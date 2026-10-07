@@ -1,8 +1,12 @@
 # NOVA deployment manager
 
-**Status:** product requirement and implementation plan. The provider-management
-workflow described here is not implemented yet. The current updater, setup
-commands, deployment guide, and doctor remain separate tools.
+**Status:** product requirement and implementation plan. Implemented foundation:
+read-only local status/doctor, optional explicitly targeted remote provider
+inventory, immutable per-checkout plans stored outside the repository, plan
+readback, and the protected deployment-identity endpoint. Provider mutations,
+operation resume/rollback, complete scheduler inventory/handover, project
+provisioning, and database moves remain unimplemented. The existing updater and
+setup commands remain separate tools.
 **Plan prepared:** 7 October 2026.
 **Repository delivery rule:** changes for this repository stay on `main` and
 push only to `origin/main`; do not create, switch to, or push another branch.
@@ -53,15 +57,16 @@ recovery behavior, and live rehearsal exist.
   `NOVA_SECRETS_ENCRYPTION_KEY`. A host move or data copy must preserve that key
   or run a deliberate decrypt/re-encrypt procedure. `BETTER_AUTH_SECRET` also
   must remain stable to preserve existing auth behavior and sessions.
-- `/api/ready` currently reports readiness and the local scheduler selector;
-  it does not identify the deployed commit or prove which database project a
-  remote runtime is using. The manager needs a protected deployment-identity
-  check (or an equivalent provider-verifiable proof) before it can claim that
-  a candidate is bound to the planned commit and database. Add a read-only
-  `/api/internal/deployment/identity` route authenticated with the existing
-  deployment-only background bearer secret; return only release/runtime IDs,
-  a password-free database fingerprint, migration head, and configured
-  scheduler. Never return URLs, config values, or secrets.
+- `/api/ready` reports readiness and the local scheduler selector; it does
+  not identify the deployed commit or prove which database project a remote
+  runtime is using. The protected read-only
+  `/api/internal/deployment/identity` route now reports a password-free
+  database fingerprint, runtime/release identity when configured,
+  schema-readiness booleans, and configured scheduler. `nova_app` cannot read
+  the owner-only migration ledger; verify migration head separately through
+  the explicitly selected migration-owner connection or Supabase Management
+  API. Do not widen app-role grants to make deployment introspection easier.
+  Never return URLs, config values, or secrets.
 - The scheduler selector is process configuration, not a database-wide
   ownership lock. Each deployment checks its own
   `NOVA_BACKGROUND_SCHEDULER`. A stale Netlify deployment can still accept its
@@ -115,32 +120,60 @@ provider-management powers in the hosted application or a browser session.
 
 ```text
 bun run nova:deployment status
+bun run nova:deployment status --env-file .env --remote
 bun run nova:deployment doctor
-bun run nova:deployment plan --runtime cloudflare --database keep --scheduler supabase
+bun run nova:deployment plan --runtime cloudflare --database keep --scheduler supabase --env-file .env --remote
 bun run nova:deployment plan --runtime netlify --database provision-supabase --scheduler supabase
+bun run nova:deployment show <plan-id>
 bun run nova:deployment apply <plan-id>
 bun run nova:deployment resume <operation-id>
 bun run nova:deployment verify <operation-id>
 bun run nova:deployment rollback <operation-id>
 ```
 
-`status`, `doctor`, and `plan` are read-only. `plan` binds the source commit,
-provider account/resource IDs, database identity, scheduler identity, domain,
-required permissions, and planned actions. `apply` revalidates that exact plan
-before writing. It asks for one clear review/confirmation before the first
+`status --remote` currently contacts only the providers for which both an
+explicit target ID and credential are present in the selected environment:
+Netlify site and latest production deploy, Cloudflare Worker and its Cron
+expressions, Vercel project and latest production deployment, and Supabase
+project/service health. When both `NOVA_PUBLIC_ORIGIN` (or `BETTER_AUTH_URL`)
+and `NOVA_BACKGROUND_JOB_SECRET` are selected, it also calls the protected NOVA
+identity endpoint over HTTPS and retains only its allowlisted runtime, release,
+database fingerprint/readiness, and scheduler fields. It sends read-only
+requests, does not enumerate an entire account, and reports only sanitized
+metadata or permission status. Scheduler and DNS coverage is incomplete;
+absence in this inventory is not proof that no trigger or domain exists.
+The supported read-only target variables are `NETLIFY_SITE_ID`,
+`CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_WORKER_NAME`, `VERCEL_PROJECT_ID` (and
+optional `VERCEL_TEAM_ID`), and `NOVA_SUPABASE_PROJECT_REF`. Their matching
+provider tokens and `NOVA_PUBLIC_ORIGIN` + `NOVA_BACKGROUND_JOB_SECRET` must
+come from the same explicitly selected environment file or operator process.
+Run the focused checks with `bun run test:deployment-manager`.
+
+`plan` stores an immutable, expiring plan under the OS per-user state directory,
+bound to this checkout and the current local source snapshot. `show` reads that
+plan. With `--remote`, the plan includes sanitized provider facts and a verified
+live NOVA identity fingerprint when available. The plan is still a local
+proposal: it does not yet bind verified remote account resources, database
+migration head, complete scheduler inventory, DNS, or secret scopes. `apply`
+deliberately refuses because provider write adapters and
+operation journaling have not been implemented. Once full provider inventory
+and durable operation journals are implemented, a plan will bind the source
+commit, provider account/resource IDs, database identity, scheduler identity,
+domain, required permissions, and planned actions. Apply will revalidate that
+exact plan before writing. It asks for one clear review/confirmation before the first
 external mutation and asks for exact resource confirmation before a database
 copy, production promotion, domain change, or deletion. A non-interactive mode
 must require an explicit protected policy and a recorded approval; a bare
 `--yes` must not bypass target binding.
 
-`rollback` executes only compensations listed in that operation's plan and
+`rollback` will execute only compensations listed in that operation's plan and
 revalidated against current state. It must refuse after the recorded
 irreversible boundary (for example, the first accepted target-database write)
 and print the supported recovery runbook. `cleanup` is a later, separate
 command with exact resource IDs and a second confirmation; it is never a
 normal completion side effect.
 
-The operation journal stores phase, resource IDs, release SHA, database
+The future operation journal stores phase, resource IDs, release SHA, database
 fingerprints, safe provider operation IDs, and verification outcomes. It never
 stores access tokens, database URLs/passwords, auth keys, or secret values.
 Secrets are entered or resolved through a provider CLI/credential store for the
@@ -607,14 +640,15 @@ plan's documented phase bounds and observed provider behavior.
 
 ## Implementation sequence
 
-0. **Plan and capability contract — current work.** Keep the support matrix
+0. **Plan and capability contract — complete.** Keep the support matrix
    truthful, specify resource identities, approvals, state transitions,
    failure behavior, and acceptance tests before provider writes are added.
-1. **Read-only foundation.** Promote the doctor to `nova:deployment doctor`,
-   add `status`, provider-account/resource discovery, and the protected
-   deployment-identity endpoint (commit/runtime/database fingerprint/schema
-   head/scheduler identity). Make `plan` produce a secret-free immutable action
-   graph and prove it has no provider/DB writes. Do not advertise `apply` yet.
+1. **Read-only foundation — partially implemented.** The nova:deployment CLI
+   now provides local status, the existing doctor with explicit env-file
+   isolation, and fail-closed preview plans. The protected identity endpoint
+   does not expand nova_app privileges. Remaining: remote provider
+   account/resource inventory, durable immutable plans, and provider-backed
+   confirmation evidence. Keep apply unavailable until those checks exist.
 2. **First execution path: Netlify + Supabase → Cloudflare + same Supabase.**
    Implement read/write/status adapters for Netlify and Cloudflare; secure
    Hyperdrive creation; secret entry; preview Worker deployment; readiness and
@@ -654,3 +688,10 @@ Do not fold this into `nova:update`: that command owns release source and
 schema upgrade. The deployment manager owns moving a running installation
 between infrastructure providers. They can call shared preflight and migration
 libraries, but have different plans, approvals, journals, and rollback models.
+
+### Read-only API references used for the first inventory slice
+
+- [Netlify API — list sites and retrieve a site](https://open-api.netlify.com/)
+- [Cloudflare API — list Worker scripts and schedules](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/)
+- [Vercel REST API reference](https://vercel.com/docs/rest-api)
+- [Supabase Management API — list projects and health](https://supabase.com/docs/reference/api/introduction)

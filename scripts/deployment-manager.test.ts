@@ -1,0 +1,40 @@
+import { expect, test } from "bun:test";
+import {
+  parseDeploymentManagerArguments,
+  runDeploymentManager,
+} from "./deployment-manager.ts";
+
+test("command parsing requires a target runtime and keeps apply as an explicit unavailable boundary", () => {
+  expect(parseDeploymentManagerArguments(["--help"]).command).toBe("help");
+  expect(() => parseDeploymentManagerArguments(["plan"])).toThrow("DEPLOYMENT_PLAN_RUNTIME_REQUIRED");
+  expect(parseDeploymentManagerArguments(["apply", "plan-123e4567-e89b-42d3-a456-426614174000"]))
+    .toMatchObject({ command: "apply", planId: "plan-123e4567-e89b-42d3-a456-426614174000" });
+  expect(() => parseDeploymentManagerArguments(["apply", "preview-123"])).toThrow("DEPLOYMENT_PLAN_ID_REQUIRED");
+  expect(() => parseDeploymentManagerArguments(["show", "plan-123e4567-e89b-42d3-a456-426614174000", "--json"]))
+    .toThrow("DEPLOYMENT_PLAN_ID_REQUIRED");
+  expect(parseDeploymentManagerArguments(["plan", "--runtime", "cloudflare", "--scheduler", "supabase"]))
+    .toMatchObject({ command: "plan", runtime: "cloudflare", scheduler: "supabase", database: "keep" });
+  expect(parseDeploymentManagerArguments(["status", "--remote", "--json"]))
+    .toMatchObject({ command: "status", remote: true, json: true });
+  expect(() => parseDeploymentManagerArguments(["plan", "--runtime", "netlify", "--runtime", "cloudflare"]))
+    .toThrow("DEPLOYMENT_OPTION_DUPLICATE:--runtime");
+});
+
+test("status only prints credential presence and never values", async () => {
+  const output: string[] = [];
+  const password = "local-test-db-password-must-not-appear";
+  const token = "provider-token-must-not-appear";
+  const code = await runDeploymentManager(["status", "--json"], {
+    environment: {
+      DATABASE_URL: "postgresql://nova_app:" + password + "@127.0.0.1:5432/nova",
+      CLOUDFLARE_API_TOKEN: token,
+      NOVA_BACKGROUND_SCHEDULER: "supabase",
+    },
+    write: (line) => output.push(line),
+  });
+  expect(code).toBe(0);
+  expect(output.join("\n")).not.toContain(password);
+  expect(output.join("\n")).not.toContain(token);
+  expect(output.join("\n")).toContain('"configured": true');
+  expect(output.join("\n")).toContain('"schedulerHint": "supabase"');
+});

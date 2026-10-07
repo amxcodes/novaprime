@@ -20,6 +20,8 @@ type CloudflareEnvironment = Readonly<{
   NOVA_BACKGROUND_SCHEDULER: string;
   NOVA_BOOTSTRAP_TOKEN: string;
   NOVA_PUBLIC_ORIGIN?: string;
+  NOVA_RELEASE_SHA?: string;
+  NOVA_RUNTIME_ID?: string;
   NOVA_SECRETS_ENCRYPTION_KEY: string;
   NOVA_TRUST_PROXY_HEADERS?: string;
 }>;
@@ -50,6 +52,9 @@ function configureNodeEnvironment(environment: CloudflareEnvironment): void {
     NOVA_BACKGROUND_SCHEDULER: environment.NOVA_BACKGROUND_SCHEDULER,
     NOVA_BOOTSTRAP_TOKEN: environment.NOVA_BOOTSTRAP_TOKEN,
     NOVA_DATABASE_REQUEST_SCOPED: "true",
+    NOVA_RUNTIME_ADAPTER: "cloudflare",
+    ...(environment.NOVA_RELEASE_SHA ? { NOVA_RELEASE_SHA: environment.NOVA_RELEASE_SHA } : {}),
+    ...(environment.NOVA_RUNTIME_ID ? { NOVA_RUNTIME_ID: environment.NOVA_RUNTIME_ID } : {}),
     NOVA_SECRETS_ENCRYPTION_KEY: environment.NOVA_SECRETS_ENCRYPTION_KEY,
     // Cloudflare supplies cf-connecting-ip at the trusted edge. Direct/VPS
     // deployments leave this opt-in disabled unless their proxy is hardened.

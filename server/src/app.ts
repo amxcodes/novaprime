@@ -170,6 +170,7 @@ import {
   configuredBackgroundScheduler,
   runBackgroundTick,
 } from "./maintenance-worker.js";
+import { deploymentIdentityHandler } from "./deployment-identity.js";
 
 const json = (body: unknown, status = 200) =>
   Response.json(body, {
@@ -263,6 +264,10 @@ async function dispatchRequest(
       console.error(`[NOVA background] endpoint tick failed: ${error instanceof Error ? error.message : "BACKGROUND_JOB_FAILED"}`);
       return json({ error: "BACKGROUND_JOB_FAILED" }, 503);
     }
+  }
+
+  if (request.method === "GET" && commandPath === "/internal/deployment/identity") {
+    return deploymentIdentityHandler(request);
   }
 
   const requestSecurityError = stateChangingRequestError(request);
