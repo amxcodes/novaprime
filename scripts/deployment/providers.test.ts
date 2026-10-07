@@ -42,6 +42,27 @@ test("provider discovery requires explicit target IDs and sanitizes API failure 
   expect(JSON.stringify(rejected)).not.toContain("token response");
 });
 
+test("Cloudflare inventory distinguishes one Worker's Cron triggers from global scheduler coverage", async () => {
+  const fetcher: ProviderFetcher = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/schedules")) {
+      return Response.json({ success: true, result: { schedules: [{ cron: "*/5 * * * *" }] } });
+    }
+    return Response.json({ success: true, result: { id: "nova-api", modified_on: "2026-10-07T00:00:00Z" } });
+  };
+  const resources = await discoverProviderResources({
+    CLOUDFLARE_API_TOKEN: "cloudflare-token",
+    CLOUDFLARE_ACCOUNT_ID: "a".repeat(32),
+    CLOUDFLARE_WORKER_NAME: "nova-api",
+  }, fetcher);
+  expect(resources.find(({ provider }) => provider === "cloudflare")?.schedulerInventory).toEqual({
+    scope: "target-runtime",
+    state: "verified",
+    completeness: "resource-only",
+    triggers: [{ id: "nova-api/schedule-1", name: "cloudflare-cron-trigger", schedule: "*/5 * * * *", active: true }],
+  });
+});
+
 test("live deployment identity sends its bearer only to the configured HTTPS origin and allowlists the result", async () => {
   const requests: Array<{ url: string; authorization: string | null }> = [];
   const fetcher: ProviderFetcher = async (input, init) => {
@@ -71,6 +92,7 @@ test("live deployment identity sends its bearer only to the configured HTTPS ori
     release: "a".repeat(40),
     databaseFingerprint: "b".repeat(64),
     schemaReady: true,
+    configuredScheduler: "supabase",
   }));
   expect(JSON.stringify(resources)).not.toContain(secret);
   expect(JSON.stringify(resources)).not.toContain("should never be retained");

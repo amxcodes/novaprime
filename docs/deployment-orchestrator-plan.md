@@ -135,13 +135,20 @@ bun run nova:deployment rollback <operation-id>
 explicit target ID and credential are present in the selected environment:
 Netlify site and latest production deploy, Cloudflare Worker and its Cron
 expressions, Vercel project and latest production deployment, and Supabase
-project/service health. When both `NOVA_PUBLIC_ORIGIN` (or `BETTER_AUTH_URL`)
+project/service health. With an explicitly selected `MIGRATOR_DATABASE_URL`
+that fingerprints to the same database as `DATABASE_URL`, it also lists only
+NOVA-targeting `cron.job` rows inside a PostgreSQL read-only transaction; it
+does not return cron command text or Vault secrets. When both `NOVA_PUBLIC_ORIGIN` (or `BETTER_AUTH_URL`)
 and `NOVA_BACKGROUND_JOB_SECRET` are selected, it also calls the protected NOVA
 identity endpoint over HTTPS and retains only its allowlisted runtime, release,
 database fingerprint/readiness, and scheduler fields. It sends read-only
 requests, does not enumerate an entire account, and reports only sanitized
-metadata or permission status. Scheduler and DNS coverage is incomplete;
-absence in this inventory is not proof that no trigger or domain exists.
+metadata or permission status. The Supabase result is project-scoped; the
+Cloudflare result covers only the selected Worker. Netlify and Vercel scheduler
+inventory is not verified by this adapter, and other Cloudflare Workers or VPS
+instances may exist. Plans therefore carry a global scheduler-inventory
+blocker until every live triggering surface is accounted for. Absence in this
+inventory is not proof that no trigger or domain exists.
 The supported read-only target variables are `NETLIFY_SITE_ID`,
 `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_WORKER_NAME`, `VERCEL_PROJECT_ID` (and
 optional `VERCEL_TEAM_ID`), and `NOVA_SUPABASE_PROJECT_REF`. Their matching
@@ -694,4 +701,5 @@ libraries, but have different plans, approvals, journals, and rollback models.
 - [Netlify API — list sites and retrieve a site](https://open-api.netlify.com/)
 - [Cloudflare API — list Worker scripts and schedules](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/)
 - [Vercel REST API reference](https://vercel.com/docs/rest-api)
+- [Vercel cron configuration and production behavior](https://vercel.com/docs/project-configuration/vercel-json)
 - [Supabase Management API — list projects and health](https://supabase.com/docs/reference/api/introduction)

@@ -94,13 +94,29 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
       }) || !Array.isArray(preview.blockers) || !preview.blockers.every((item) => typeof item === "string") ||
       (providerInventory !== undefined && (!Array.isArray(providerInventory) || !providerInventory.every((item) => {
         const provider = typeof item === "object" && item !== null && !Array.isArray(item) ? item as Record<string, unknown> : null;
-        return provider !== null && hasOnly(provider, ["provider", "state", "target", "runtime", "release", "origin", "databaseVersion", "databaseFingerprint", "schemaReady", "migrationLedgerPresent", "scheduler", "detail"]) &&
+        return provider !== null && hasOnly(provider, ["provider", "state", "target", "runtime", "release", "origin", "databaseVersion", "databaseFingerprint", "schemaReady", "migrationLedgerPresent", "configuredScheduler", "schedulerInventory", "detail"]) &&
           ["netlify", "cloudflare", "vercel", "supabase", "nova"].includes(String(provider.provider)) &&
           ["identified", "target-required", "not-configured", "unavailable"].includes(String(provider.state)) &&
           ["target", "runtime", "release", "origin", "databaseVersion", "detail"].every((key) => provider[key] === undefined || typeof provider[key] === "string") &&
+          (provider.configuredScheduler === undefined || ["cloudflare", "netlify", "vercel", "supabase", "vps"].includes(String(provider.configuredScheduler))) &&
           (provider.databaseFingerprint === undefined || (typeof provider.databaseFingerprint === "string" && /^[a-f0-9]{64}$/.test(provider.databaseFingerprint))) &&
           ["schemaReady", "migrationLedgerPresent"].every((key) => provider[key] === undefined || typeof provider[key] === "boolean") &&
-          (provider.scheduler === undefined || (Array.isArray(provider.scheduler) && provider.scheduler.every((value) => typeof value === "string")));
+          (provider.schedulerInventory === undefined || (() => {
+            const scheduler = typeof provider.schedulerInventory === "object" && provider.schedulerInventory !== null && !Array.isArray(provider.schedulerInventory)
+              ? provider.schedulerInventory as Record<string, unknown> : null;
+            return scheduler !== null && hasOnly(scheduler, ["scope", "state", "completeness", "triggers", "detail"]) &&
+              ["target-runtime", "database-project"].includes(String(scheduler.scope)) &&
+              ["verified", "not-installed", "target-required", "unavailable"].includes(String(scheduler.state)) &&
+              ["resource-only", "project-scoped", "partial", "not-inspected"].includes(String(scheduler.completeness)) &&
+              (scheduler.detail === undefined || typeof scheduler.detail === "string") && Array.isArray(scheduler.triggers) &&
+              scheduler.triggers.every((value) => {
+                const trigger = typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
+                return trigger !== null && hasOnly(trigger, ["id", "name", "schedule", "active"]) &&
+                  typeof trigger.id === "string" && typeof trigger.name === "string" &&
+                  (trigger.schedule === null || typeof trigger.schedule === "string") &&
+                  (trigger.active === null || typeof trigger.active === "boolean");
+              });
+          })());
       })))) return corrupt();
   return value as StoredDeploymentPlan;
 }

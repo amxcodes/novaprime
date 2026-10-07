@@ -26,8 +26,23 @@ test("a preview is deterministic, secret-free and never claims apply is enabled"
   expect(first.previewId).toBe(second.previewId);
   expect(first.persisted).toBe(false);
   expect(first.applyEnabled).toBe(false);
+  expect(first.blockers).toContain("GLOBAL_SCHEDULER_INVENTORY_NOT_REQUESTED");
   expect(first.actions.some(({ resource, execution }) => resource === "runtime" && execution === "not-implemented")).toBe(true);
   expect(JSON.stringify(first)).not.toMatch(/password|secret-value|token-value/i);
+});
+
+test("an unchanged topology does not propose a runtime deploy, scheduler handover, or origin promotion", () => {
+  const preview = buildDeploymentPreview({ ...inventory, runtimeHint: "netlify" }, {
+    runtime: "netlify",
+    database: "keep",
+    scheduler: "keep",
+  });
+  const actionIds = preview.actions.map(({ id }) => id);
+  expect(actionIds).toContain("verify-runtime");
+  expect(actionIds).toContain("verify-scheduler");
+  expect(actionIds).not.toContain("deploy-candidate");
+  expect(actionIds).not.toContain("handover-scheduler");
+  expect(actionIds).not.toContain("promote-origin");
 });
 
 test("unknown global scheduler inventory blocks a proposed move", () => {
@@ -69,5 +84,50 @@ test("remote planning binds provider inventory and blocks an unverified runtime 
   }, providers);
   expect(preview.providerInventory).toEqual(providers);
   expect(preview.blockers).toContain("TARGET_RUNTIME_NOT_VERIFIED");
+  expect(preview.blockers).toContain("GLOBAL_SCHEDULER_INVENTORY_INCOMPLETE");
   expect(preview.blockers).not.toContain("DATABASE_PROVIDER_NOT_VERIFIED");
+});
+
+test("remote plan detects duplicate or missing active NOVA schedulers", () => {
+  const baseProviders = [
+    {
+      provider: "cloudflare" as const,
+      state: "identified" as const,
+      target: "account/worker",
+      schedulerInventory: {
+        scope: "target-runtime" as const,
+        state: "verified" as const,
+        completeness: "resource-only" as const,
+        triggers: [],
+      },
+    },
+    {
+      provider: "supabase" as const,
+      state: "identified" as const,
+      target: "abcdefghijklmnopqrst",
+      schedulerInventory: {
+        scope: "database-project" as const,
+        state: "verified" as const,
+        completeness: "project-scoped" as const,
+        triggers: [
+          { id: "12", name: "nova-background-tick", schedule: "*/5 * * * *", active: true },
+          { id: "13", name: "custom-nova-tick", schedule: "*/2 * * * *", active: true },
+        ],
+      },
+    },
+    { provider: "netlify" as const, state: "identified" as const, target: "site-id" },
+    { provider: "vercel" as const, state: "identified" as const, target: "project-id" },
+    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", configuredScheduler: "supabase" },
+  ];
+  const duplicate = buildDeploymentPreview(inventory, {
+    runtime: "cloudflare", database: "keep", scheduler: "supabase",
+  }, baseProviders);
+  expect(duplicate.blockers).toContain("DUPLICATE_SUPABASE_NOVA_CRON_TRIGGERS");
+
+  const missing = buildDeploymentPreview(inventory, {
+    runtime: "cloudflare", database: "keep", scheduler: "supabase",
+  }, baseProviders.map((provider) => provider.provider === "supabase"
+    ? { ...provider, schedulerInventory: { ...provider.schedulerInventory, triggers: [] } }
+    : provider));
+  expect(missing.blockers).toContain("CONFIGURED_SUPABASE_SCHEDULER_HAS_NO_ACTIVE_NOVA_JOB");
 });

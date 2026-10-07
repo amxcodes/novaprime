@@ -18,6 +18,15 @@ test("database fingerprints are password-free and stable across password rotatio
   expect(databaseIdentityFingerprint(first, "zbcdefghijklmnopqrst")).toBeNull();
 });
 
+test("configured Supabase project ref cannot override an unidentifiable PostgreSQL endpoint", () => {
+  const genericPostgres = "postgresql://nova_app:password@db.customer.example:5432/postgres";
+  const supabase = "postgresql://nova_app:password@db." + projectRef + ".supabase.co:5432/postgres";
+  expect(databaseIdentityFingerprint(genericPostgres, projectRef))
+    .toBe(databaseIdentityFingerprint(genericPostgres));
+  expect(databaseIdentityFingerprint(genericPostgres, projectRef))
+    .not.toBe(databaseIdentityFingerprint(supabase, projectRef));
+});
+
 test("identity endpoint requires the deployment bearer secret and avoids migration-owner data", async () => {
   let reads = 0;
   const environment = {

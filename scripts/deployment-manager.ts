@@ -140,7 +140,12 @@ function reportStatus(
   else {
     write("Remote provider inventory (read-only):");
     for (const provider of remote) {
-      const summary = [provider.provider, provider.state, provider.target, provider.detail].filter(Boolean).join(" — ");
+      const scheduler = provider.schedulerInventory
+        ? `Cron inventory ${provider.schedulerInventory.state}/${provider.schedulerInventory.completeness} (${provider.schedulerInventory.triggers.length} observed)`
+        : undefined;
+      const summary = [provider.provider, provider.state, provider.target, provider.configuredScheduler
+        ? `configured scheduler ${provider.configuredScheduler}` : undefined, scheduler, provider.schedulerInventory?.detail, provider.detail]
+        .filter(Boolean).join(" — ");
       write("  " + summary);
     }
   }
@@ -257,7 +262,9 @@ export async function runDeploymentManager(
     }, providerInventory);
     const stored = await saveDeploymentPlan(repoRoot, preview);
     write(JSON.stringify(stored, null, 2));
-    write("Saved immutable, private plan; no provider was contacted. Review with `bun run nova:deployment show " + stored.id + "`. Apply remains disabled until provider write adapters and live transition verification are implemented.");
+    write("Saved immutable, private plan; " + (options.remote
+      ? "only explicitly targeted read-only provider inventory was requested"
+      : "no provider was contacted") + "; no provider resource was changed. Review with `bun run nova:deployment show " + stored.id + "`. Apply remains disabled until provider write adapters and live transition verification are implemented.");
     return preview.blockers.length > 0 || preview.actions.some(({ execution }) => execution !== "locally-verified") ? 2 : 0;
   } catch (error) {
     const message = error instanceof Error && /^DEPLOYMENT_[A-Z0-9_:-]+$/.test(error.message)

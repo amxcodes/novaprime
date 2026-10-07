@@ -30,9 +30,11 @@ export function databaseIdentityFingerprint(connectionString: string, projectRef
       : undefined;
     if ((projectRef && directRef && projectRef !== directRef) ||
         (projectRef && poolerRef && projectRef !== poolerRef)) return null;
-    const verifiedRef = projectRefPattern.test(projectRef ?? "")
-      ? projectRef
-      : directRef ?? (poolerRef && projectRefPattern.test(poolerRef) ? poolerRef : undefined);
+    // A configured project ref is a consistency check, not database identity.
+    // Trust it only when the connection endpoint itself identifies that Supabase
+    // project; otherwise fingerprint the actual PostgreSQL host and port below.
+    const endpointRef = directRef ?? (poolerRef && projectRefPattern.test(poolerRef) ? poolerRef : undefined);
+    const verifiedRef = endpointRef;
     const canonical = verifiedRef
       ? JSON.stringify({ provider: "supabase", projectRef: verifiedRef, databaseName })
       : JSON.stringify({

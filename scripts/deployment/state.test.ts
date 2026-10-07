@@ -29,7 +29,19 @@ test("plans persist outside the checkout with a random ID and private file mode"
   temporaryRoot = await mkdtemp(join(tmpdir(), "nova-deployment-plan-"));
   process.env.LOCALAPPDATA = join(temporaryRoot, "state");
   const repo = join(temporaryRoot, "repo");
-  const preview = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "supabase" });
+  const preview = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "supabase" }, [
+    {
+      provider: "supabase" as const,
+      state: "identified" as const,
+      target: "abcdefghijklmnopqrst",
+      schedulerInventory: {
+        scope: "database-project" as const,
+        state: "verified" as const,
+        completeness: "project-scoped" as const,
+        triggers: [{ id: "12", name: "nova-background-tick", schedule: "*/5 * * * *", active: true }],
+      },
+    },
+  ]);
   const stored = await saveDeploymentPlan(repo, preview, new Date("2026-10-07T00:00:00.000Z"));
   expect(stored.id).toMatch(/^plan-[0-9a-f-]{36}$/i);
   expect(stored.preview).toMatchObject({ persisted: true, applyEnabled: false, previewId: stored.id });
@@ -58,8 +70,14 @@ test("plan loading is bound to the checkout, expires, and rejects added credenti
 
   const fresh = await saveDeploymentPlan(repo, preview);
   const stateRoot = join(process.env.LOCALAPPDATA!, "NOVA", "deployment-manager");
-  const hashDir = (await readdir(stateRoot))[0]!;
-  const path = join(stateRoot, hashDir, `${fresh.id}.json`);
+  const hashDirs = await readdir(stateRoot);
+  let path = "";
+  for (const hashDir of hashDirs) {
+    const candidate = join(stateRoot, hashDir, `${fresh.id}.json`);
+    try { await readFile(candidate); path = candidate; break; }
+    catch { /* This directory belongs to another checkout in the test. */ }
+  }
+  expect(path).not.toBe("");
   const edited = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
   edited.SUPABASE_ACCESS_TOKEN = "unexpected credential";
   await writeFile(path, JSON.stringify(edited));
