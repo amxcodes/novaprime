@@ -571,7 +571,7 @@ function journalForResume(journal: UpdateJournal, checkout: GitCheckoutInfo, rel
 function assertAttemptTarget(journal: UpdateJournal, target: DatabaseTarget): void {
   const fingerprint = updateTargetFingerprint(target.label);
   if (journal.database && journal.database.targetFingerprint !== fingerprint) {
-    throw new Error("UPDATE_RESUME_DATABASE_TARGET_MISMATCH: choose the same confirmed database target as the incomplete attempt");
+    throw new Error("UPDATE_RESUME_DATABASE_TARGET_MISMATCH: no operation was performed on the newly selected target. Resume against the exact recorded target to reconcile it. If that target is unavailable, preserve the attempt journal and candidate for operator recovery; do not delete or edit migration history.");
   }
 }
 

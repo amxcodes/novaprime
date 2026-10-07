@@ -286,7 +286,7 @@ describe("update coordinator integration", () => {
     const selectedTarget = databaseTarget("different unbound target");
     const harness = makeRuntime(fixture, { journal, target: selectedTarget });
     await expect(runGuided({ mode: "apply", resume: true, help: false }, harness.runtime))
-      .rejects.toThrow("UPDATE_RESUME_DATABASE_TARGET_MISMATCH");
+      .rejects.toThrow("UPDATE_RESUME_DATABASE_TARGET_MISMATCH: no operation was performed on the newly selected target");
     expect(harness.releaseSelections).toEqual([fixture.release.tag]);
     expect(harness.counts()).toMatchObject({ planCalls: 0, databaseWriteCalls: 0, pushCalls: 0 });
     expect(git(fixture.root, ["rev-parse", "HEAD"])).toBe(fixture.baselineCommit);

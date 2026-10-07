@@ -222,8 +222,10 @@ export async function acquireUpdateLock(repoRoot: string): Promise<() => Promise
   };
 }
 
-export async function loadUpdateJournal(repoRoot: string): Promise<UpdateJournal | undefined> {
-  const path = join(await ensureRepoDirectory(repoRoot), "attempt.json");
+/** Read an attempt without creating updater state; used by read-only diagnostics. */
+export async function readExistingUpdateJournal(repoRoot: string): Promise<UpdateJournal | undefined> {
+  const stateRoot = resolve(stateDirectory());
+  const path = join(stateRoot, repoKey(repoRoot), "attempt.json");
   let raw: string;
   try {
     raw = await readFile(path, "utf8");
@@ -237,8 +239,13 @@ export async function loadUpdateJournal(repoRoot: string): Promise<UpdateJournal
   } catch {
     throw new Error("UPDATE_JOURNAL_CORRUPT: preserve the file and inspect it before retrying");
   }
-  const worktreeRoot = join(await ensureDirectory(), "worktrees", repoKey(repoRoot).slice(0, 24));
+  const worktreeRoot = join(stateRoot, "worktrees", repoKey(repoRoot).slice(0, 24));
   return validateUpdateJournal(value, repoRoot, worktreeRoot);
+}
+
+export async function loadUpdateJournal(repoRoot: string): Promise<UpdateJournal | undefined> {
+  await ensureRepoDirectory(repoRoot);
+  return readExistingUpdateJournal(repoRoot);
 }
 
 export async function saveUpdateJournal(journal: UpdateJournal): Promise<void> {

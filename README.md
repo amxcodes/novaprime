@@ -91,7 +91,11 @@ Calendar detail plus CSV exports from those canonical read responses.
 For Supabase Cloud without installing PostgreSQL locally, run
 `bun run setup:supabase`. It asks for the exact project ref and
 project-scoped management token (create one from the [Supabase account token
-page](https://supabase.com/dashboard/account/tokens)), resolves the
+page](https://supabase.com/dashboard/account/tokens)). A scoped token needs
+`database_pooling_config_read`, `database_read`, `database_write`, and
+`database_migrations_write` access to that project; see the
+[deployment runbook](docs/deployment-operations.md) for scope details and 403
+troubleshooting. Setup resolves the
 transaction-pooler host from that project's read-only configuration endpoint,
 applies the canonical migrations, creates the restricted `nova_app` login if
 absent,
@@ -131,13 +135,14 @@ endpoint. Set `NOVA_BACKGROUND_SCHEDULER` to exactly one of `cloudflare`,
 `netlify`, `vercel`, `supabase`, or `vps` on every NOVA runtime sharing that
 database. Each built-in adapter identifies itself; NOVA rejects a tick from a
 different provider. Still disable unused provider schedules: NOVA cannot
-detect duplicate schedules configured for the same provider. Cloudflare +
-Supabase is the preferred hosted adapter (`cloudflare/`) with a five-minute
-Cron Trigger; Netlify uses its source-declared scheduled function (remove that
-schedule export and redeploy when choosing Supabase Cron); Vercel uses the
-build-time `vercel.ts` config, which registers Cron only when its production
-selector is `vercel`; Supabase Cron/pg_net is an alternative; and VPS/Docker
-uses the identical protected endpoint. To switch away from Supabase Cron, run
+detect duplicate schedules configured for the same provider. Netlify +
+Supabase is the current hosted reference path. Its build plugin includes the
+Netlify scheduled function only when `NOVA_BACKGROUND_SCHEDULER=netlify`; when
+`supabase` is selected, it publishes the API without Netlify's schedule, so no
+source edit is needed. Cloudflare and Vercel remain supported hosted adapters;
+Vercel's build-time `vercel.ts` config registers Cron only when its production
+selector is `vercel`. Supabase Cron/pg_net and VPS/Docker use the identical
+protected endpoint. To switch away from Supabase Cron, run
 `bun run supabase:scheduler:disable` from a trusted operator machine.
 The Supabase adapter enables `pg_cron`/`pg_net` and uses Supabase's
 `supabase_vault` extension (which exposes the `vault` schema) for its two
@@ -147,6 +152,12 @@ The scheduler command reads the target project and tick secret from the private
 prompts for the management token with hidden input if setup has already removed
 it from the file. Confirm the displayed project ref before entering a token;
 the token is used only for that operator command and is not saved.
+
+The guided assistant and current scripts do not yet move a running installation
+between hosting providers or copy a populated database. That requires a local
+deployment manager with provider-management adapters, a reviewed plan, and a
+resumable cutover. See the [deployment manager plan](docs/deployment-orchestrator-plan.md)
+for the current support boundary and implementation sequence.
 
 ## Updating an existing checkout
 
@@ -172,9 +183,18 @@ Useful checks:
 
 ```powershell
 curl http://localhost:3001/api/health
+bun run deployment:doctor -- --api-origin https://your-nova-domain.example
 bun run deployment:preflight
 docker compose --env-file .env -f docker/compose.yaml run --rm migrate bun run --cwd server db:test
 ```
+
+The deployment doctor is read-only. It checks the operator's selected database
+and, when `--api-origin` is provided, probes the deployed liveness and
+readiness endpoints without sending credentials. It reports the matching
+supported repair path; database target changes, role-password rotation,
+migrations, host-secret edits, and scheduler changes remain explicit operator
+actions. For QA, load only that target's settings, for example
+`bun --env-file=.env.qa-supabase run deployment:doctor -- --api-origin https://your-qa-domain.example`.
 
 Keep the local volume when restarting. For a schema change, run the migration
 service before recreating the API:
@@ -200,16 +220,18 @@ has been verified. Never use the Supabase `postgres` owner or
 
 ## Cloudflare, Netlify, Vercel, and VPS
 
-Cloudflare is the preferred hosted adapter for Supabase Cloud
-(`cloudflare/worker.ts`) and supplies both static assets and the scheduled
-tick. Netlify remains available (`netlify/functions/nova.mts`); Vercel uses
-the shared handler through `api/[...path].ts`. Both serve the dependency-free
-static `web/` client and keep domain logic in the shared API. A VPS can run the
-same API and static client behind a reverse proxy with direct PostgreSQL. See
+Netlify + Supabase Cloud is the current hosted reference path
+(`netlify/functions/nova.mts`). Cloudflare (`cloudflare/worker.ts`) and Vercel
+(`api/[...path].ts`) are supported alternative adapters that use the same API
+and PostgreSQL schema. Each keeps domain logic in the shared API. A VPS can
+run the same API and static client behind a reverse proxy with direct
+PostgreSQL. See
 [`docs/foundation-design.md`](docs/foundation-design.md) for the portability,
 RLS, role, email-adapter, and module-boundary rules.
 See [`docs/deployment-operations.md`](docs/deployment-operations.md) for
 backup/restore, upgrades, secret rotation, readiness and scheduled maintenance.
+See [`docs/deployment-orchestrator-plan.md`](docs/deployment-orchestrator-plan.md)
+for the planned orchestration of runtime, database, scheduler, and domain moves.
 
 NOVA is open source. Checkout, trials, subscriptions, license activation and
 mandatory call-home services are not required. A hosted operator may provide

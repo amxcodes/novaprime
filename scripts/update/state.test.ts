@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
-import { acquireUpdateLock, getUpdateWorktreeDirectory, loadUpdateJournal, newUpdateJournal, saveUpdateJournal } from "./state.ts";
+import { acquireUpdateLock, getUpdateWorktreeDirectory, loadUpdateJournal, newUpdateJournal, readExistingUpdateJournal, saveUpdateJournal } from "./state.ts";
 
 const temporaryRoots: string[] = [];
 const originalLocalAppData = process.env.LOCALAPPDATA;
@@ -28,6 +29,18 @@ afterEach(async () => {
 });
 
 describe("per-checkout updater recovery state", () => {
+  test("read-only journal inspection reports absence without creating operator state", async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), "nova-update-doctor-readonly-"));
+    temporaryRoots.push(stateRoot);
+    process.env.LOCALAPPDATA = stateRoot;
+    process.env.XDG_STATE_HOME = stateRoot;
+
+    const repoRoot = join(stateRoot, "checkout");
+    expect(await readExistingUpdateJournal(repoRoot)).toBeUndefined();
+    expect(existsSync(join(stateRoot, "NOVA"))).toBe(false);
+    expect(existsSync(join(stateRoot, "nova"))).toBe(false);
+  });
+
   test("keeps concurrent locks and attempt journals independent for separate NOVA clones", async () => {
     const stateRoot = await mkdtemp(join(tmpdir(), "nova-update-state-test-"));
     temporaryRoots.push(stateRoot);

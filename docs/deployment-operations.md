@@ -1,5 +1,10 @@
 # NOVA deployment operations
 
+This runbook documents the current supported setup and repair commands. They
+do not yet provision or migrate provider infrastructure as one operation; see
+the [deployment manager plan](deployment-orchestrator-plan.md) for the wider
+runtime, database, scheduler, and domain migration workflow.
+
 This runbook applies to both supported runtime shapes:
 
 ```text
@@ -233,6 +238,51 @@ container healthcheck.
 
 Never run normal API traffic through the migration owner, a PostgreSQL
 superuser, or a Supabase `service_role` connection.
+
+## Diagnose and recover an existing deployment
+
+Run `bun run deployment:doctor` from the trusted operator checkout. It checks
+the selected local database's `nova_app` role, required schema objects, and
+migration ledger. Add `-- --api-origin https://your-domain.example` to make
+credential-free GET probes to the deployed `/api/health` and `/api/ready`
+routes. For a separate environment, load only that environment's file, for
+example `bun --env-file=.env.qa-supabase run deployment:doctor -- --api-origin
+https://your-qa-domain.example`. The doctor is read-only: it does not print
+connection URLs, change a project binding, run migrations, rotate secrets, or
+edit host settings. It reports the supported repair step for known failures.
+
+Use the repair tool that owns the failed layer:
+
+- **Supabase project changed:** confirm the new project ref, run
+  `bun run setup:supabase -- --project-ref REF --rotate-app-role-password`
+  against its private environment, then set that generated `DATABASE_URL` in
+  the host's production Functions/runtime settings and redeploy. Keep the old
+  database until `/api/ready`, sign-in, and a representative read pass against
+  the intended project. Setup never silently reuses a `nova_app` password
+  across projects or edits Netlify/Vercel/Cloudflare secrets.
+- **Database password changed or returns 28P01:** use the same coordinated
+  role-password rotation, host-secret update, and redeploy sequence. Avoid
+  rotating the database role while the host still serves with the old URL.
+- **Migration ledger is behind:** inspect the selected project's migration
+  state and backup first, then use `bun run nova:update` when a supported
+  stable release is available. Never repair this by editing ledger rows or
+  copying a migration-owner URL into the runtime host.
+- **Supabase scheduler is wrong:** choose one scheduler, set the matching
+  runtime selector, and use `bun run supabase:scheduler` or
+  `bun run supabase:scheduler:disable` for the Supabase job. Verify the host
+  build and `/api/ready` afterward.
+- **A prior updater attempt reports a different database target:** do not
+  delete its journal or choose a replacement target to bypass the check. Run
+  `bun run nova:update --resume` against the exact recorded target so the
+  ledger can reconcile any in-flight migration. If that project is retired or
+  unavailable, stop and preserve the journal and candidate for operator
+  recovery; never guess whether a timed-out migration committed.
+
+The doctor cannot inspect provider-only settings or prove which scheduler is
+active when the provider does not expose it to the operator process. Compare
+its result with the hosting provider's deployment/function logs and scheduler
+inventory. A successful local database preflight is not proof that the hosted
+runtime uses that same URL; the deployed readiness probe is a separate check.
 
 ## Public origin and custom-domain setup
 

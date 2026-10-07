@@ -29,6 +29,7 @@ require.extensions[".css"] = (module) => {
 
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
+const { DEPLOYMENT_PATHS } = require("./catalog.ts");
 const { DeploymentAssistant } = require("./DeploymentAssistant.tsx");
 
 function render(overrides = {}) {
@@ -61,6 +62,21 @@ test("deployment assistant owns its outer surface and uses the shared action but
   assert.match(markup, /data-deployment-reset/);
   assert.doesNotMatch(markup, /class="panel deployment-assistant"/);
   assert.doesNotMatch(markup, /class="button secondary/);
+});
+
+test("deployment assistant recommends the current Netlify and Supabase reference path", () => {
+  assert.equal(DEPLOYMENT_PATHS[0]?.id, "netlify-supabase");
+  assert.equal(DEPLOYMENT_PATHS[0]?.badge, "Recommended");
+  assert.equal(DEPLOYMENT_PATHS.find((path) => path.id === "cloudflare-supabase")?.badge, "Hosted");
+});
+
+test("Supabase setup tells customers which project token permissions it needs", () => {
+  const markup = render({ pathId: "netlify-supabase", scheduler: "supabase", stage: 1 });
+
+  for (const scope of ["database_pooling_config_read", "database_read", "database_write", "database_migrations_write"]) {
+    assert.ok(markup.includes(scope), `deployment instructions should name ${scope}`);
+  }
+  assert.match(markup, /denied pooler lookup stops before database setup/);
 });
 
 test("deployment stage actions stay inside the feature-owned action row", () => {

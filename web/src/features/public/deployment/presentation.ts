@@ -165,6 +165,7 @@ function stageCopy(path: DeploymentPath | null, scheduler: DeploymentScheduler |
       items: id.endsWith("-supabase")
         ? [
             "Create/select the Supabase Cloud project, then run `bun run setup:supabase` on a trusted computer. It applies migrations, prepares `nova_app`, checks preflight and writes generated values to the private local `.env`.",
+            "A scoped Supabase token needs `database_pooling_config_read`, `database_read`, `database_write`, and `database_migrations_write` access to this project. If setup reports a 403, check both token scopes and your Supabase project role; a denied pooler lookup stops before database setup.",
             id === "cloudflare-supabase"
               ? "Create Cloudflare Hyperdrive from Supabase's Direct connection endpoint using the generated restricted `nova_app` credentials. Do not paste the transaction-pooler `DATABASE_URL` into Hyperdrive; Hyperdrive supplies pooling."
               : "Use the generated transaction-pooler `DATABASE_URL` for this Node API host. Keep the owner URL and Supabase management token on the trusted setup computer.",

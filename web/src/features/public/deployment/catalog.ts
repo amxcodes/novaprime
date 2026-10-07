@@ -2,16 +2,16 @@ import type { DeploymentPath, DeploymentPathId, DeploymentScheduler, DeploymentS
 
 export const DEPLOYMENT_PATHS: readonly DeploymentPath[] = [
   {
-    id: "cloudflare-supabase",
-    title: "Cloudflare + Supabase Cloud",
-    badge: "Recommended",
-    text: "Cloudflare hosts the NOVA Worker and client; Supabase Cloud provides managed PostgreSQL.",
-  },
-  {
     id: "netlify-supabase",
     title: "Netlify + Supabase Cloud",
-    badge: "Hosted",
+    badge: "Recommended",
     text: "Netlify hosts the NOVA API and client; Supabase Cloud provides managed PostgreSQL.",
+  },
+  {
+    id: "cloudflare-supabase",
+    title: "Cloudflare + Supabase Cloud",
+    badge: "Hosted",
+    text: "Cloudflare hosts the NOVA Worker and client; Supabase Cloud provides managed PostgreSQL.",
   },
   {
     id: "vercel-supabase",
