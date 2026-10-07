@@ -33,9 +33,9 @@ application feature permissions.
 | --- | --- | --- |
 | Runtime adapters | Netlify Functions, Vercel Functions, Cloudflare Worker, and VPS/Docker run the NOVA API through provider-specific entry points. | The adapters do not create or configure customer provider projects. |
 | PostgreSQL | Supabase Cloud bootstrap and direct PostgreSQL setup apply migrations and create/check the restricted runtime role. The update manager migrates an existing pinned target. | There is no automated database provisioning or cross-database data-copy/cutover workflow. A new target is not a schema migration. |
-| Scheduler | Cloudflare, Netlify, Vercel, Supabase Cron, and VPS use the shared protected tick contract. The Supabase command creates/removes its schedule. Provider build configuration selects the other hosted schedules. | There is no one command that inventories, switches, and verifies every provider's schedule. A scheduler selector does not discover duplicate schedules with the same identity. |
+| Scheduler | Cloudflare, Netlify, Vercel, Supabase Cron, and VPS use the shared protected tick contract. The Supabase command creates/removes its schedule. Provider build configuration selects the other hosted schedules. `nova:deployment status --remote` can inspect selected Cloudflare and Supabase schedules. | There is no complete inventory across every account, runtime, and external trigger, nor a scheduler handover executor. A selector does not discover every duplicate schedule targeting the database. |
 | Source and release | `nova:update` prepares a pinned source candidate, applies approved migrations, and can offer a Git push. | A successful push is not proof that a host built, deployed, or serves that candidate. |
-| Diagnosis | `deployment:preflight` checks the configured local database/schema; `deployment:doctor` adds safe repair guidance and optional public health/readiness probes. | These checks do not read provider project state, secrets, deployments, custom domains, or scheduler inventory. |
+| Diagnosis | `deployment:preflight` checks the configured database/schema; `deployment:doctor` adds safe repair guidance and optional public health/readiness probes. `nova:deployment status --remote` reads explicitly targeted provider metadata and, when the owner URL is selected, Supabase migration and Cron inventory. | The manager does not yet verify all account resources, secret bindings/presence, custom domains or DNS, or every scheduler. Its inventory is not proof that unselected resources do not exist. |
 | First install | The public deployment assistant describes supported combinations and the operator actions. | It is a guide, not a control plane; selecting a path does not change an account. |
 
 The supported topology vocabulary today is narrower than “any platform”: runtime
@@ -322,7 +322,7 @@ postcondition of `apply`.
 | --- | --- | --- |
 | GitHub source | Existing updater can inspect a Git checkout and optionally push an explicit customer repository update. | Read the connected repo, production branch, and commit/status. No silent Git remote changes, branch creation, force push, or commit. Connecting a provider's GitHub App/deploy key may still require explicit account consent. |
 | Netlify Functions | `netlify/functions/nova.mts`; build plugin selects the API and optional native scheduled function. | Read site/deploy/environment metadata; write scoped Functions/Build variables; trigger/poll deploy. Secret values may be unavailable for readback. The native scheduler is selected by production build context; branch/preview builds intentionally omit it. Environment changes require a new deploy. |
-| Cloudflare Worker | `cloudflare/worker.ts`; Hyperdrive binding; `wrangler.toml` or `wrangler.supabase-cron.toml`. | Create/verify Hyperdrive, set Worker secrets/vars, deploy a version, bind custom domain/route, inspect activation. For a Wrangler-managed Worker, change Cron through Wrangler config and deploy—not a second API writer. Cron propagation can take up to 15 minutes, so wait and re-read before claiming schedule readiness. |
+| Cloudflare Worker | `cloudflare/worker.ts`; Hyperdrive binding; `wrangler.toml` or `wrangler.supabase-cron.toml`. | Create/verify Hyperdrive, set Worker secrets/vars, upload a candidate version, verify, then promote; bind custom domain/route and inspect activation. A Version URL may be public and uses the uploaded version's bindings; it is not an isolated database or secret environment. Candidate verification must use protected access and non-mutating checks, or an explicitly isolated Worker and data target. For a Wrangler-managed Worker, change Cron through Wrangler configuration and deploy—not a second API writer. Cron propagation can take up to 15 minutes, so wait and re-read before claiming schedule readiness. |
 | Vercel Functions | `api/[...path].ts`; `vercel.ts` renders Cron configuration from the production selector. | Read project/deploy/environment metadata; set variables; deploy and promote; verify aliases. Cron changes are source/config changes and take effect on deployment. The five-minute NOVA Cron is not supported on the Vercel Hobby frequency limit; use Supabase Cron or an eligible plan. |
 | Supabase Cloud | `scripts/setup.ts`, `server/src/supabase-bootstrap.ts`, `scripts/supabase-scheduler.ts`. | Supabase is the PostgreSQL database and optional Cron provider in the current NOVA topology; it is **not** the current HTTP API/functions runtime. Scoped Management API can inspect/configure supported project/database resources; migration endpoint availability/scopes vary. SQL bootstrap provisions NOVA schema/roles; it does not copy a populated database. Supabase Edge Functions need a separate Deno/Better Auth/PostgreSQL runtime adapter and parity suite before they can be offered as a runtime target. Supabase Cron is SQL-backed and must be inventoried from the exact project. |
 | Direct PostgreSQL/VPS | Setup/migrate/preflight and Docker Compose; no hosting control adapter. | Verify and operate a reachable PostgreSQL server; do not claim provider provisioning. Remote VPS service control needs a separately reviewed SSH/agent capability and is outside the first release. |
@@ -367,13 +367,16 @@ same Supabase PostgreSQL project.
    explicitly. A missing source secret is `unknown`, never an empty value to
    copy. Changing the encryption key requires a tested re-encryption path for
    the encrypted email provider settings.
-5. Deploy the pinned commit to a Cloudflare preview hostname with Cloudflare
-   Cron disabled and the intended `supabase` selector. Confirm deployment
-   status and commit identity; check `/api/health`, `/api/ready`, static asset
-   delivery, and the protected database-identity/readiness check. Do only
-   read-only production smoke tests before traffic promotion. Run any
-   write/auth-flow tests against a disposable staging database, not customer
-   records.
+5. Upload the pinned commit as a candidate Worker version without promoting
+   it; do not use the default `wrangler deploy` path for this step because it
+   deploys the new version to 100% of traffic. Protect the candidate Version
+   URL with Cloudflare Access before issuing it to an operator. A Version URL
+   uses that version's bindings and may be public; it is not a separate
+   database or secret environment. Keep Cron disabled and the intended
+   `supabase` selector. Confirm upload status and commit identity; check only
+   `/api/health`, `/api/ready`, static asset delivery, and the protected
+   read-only database-identity/readiness endpoint. Run write or auth-flow
+   tests against a disposable staging database, not customer records.
 6. Keep one scheduler active. If Supabase Cron is already selected, leave its
    one confirmed job in place. If Netlify Cron is selected, first deploy the
    Netlify production functions with `NOVA_BACKGROUND_SCHEDULER=supabase` so
@@ -670,18 +673,50 @@ plan's documented phase bounds and observed provider behavior.
    isolation, provider-specific read adapters, project-bound Supabase Cron
    and migration-ledger inspection, durable immutable plans, and fail-closed
    previews. The protected identity endpoint does not expand nova_app
-   privileges. A private
-   journal store binds events to a persisted plan fingerprint and enforces
-   ordered revisions; there is not yet a CLI operation executor. Remaining:
-   complete provider/account inventory and provider-backed confirmation
-   evidence. Keep apply unavailable until those checks exist.
+   privileges. A private journal store binds events to a persisted plan
+   fingerprint and enforces ordered revisions; there is not yet a CLI
+   operation executor. Finish this phase in this order:
+   - Reconcile Netlify and Vercel scheduler state with the exact selected
+     deploy/source and deploy-context configuration; inspect selected Worker
+     Cron and Supabase Cron; keep any source that cannot be inspected as an
+     explicit blocker. Never infer that an absent API row means no schedule.
+   - Inventory custom-domain/route ownership and required runtime binding
+     names. Record secret presence and scope/context only; do not retrieve or
+     persist secret values. Verify API token permissions before implementing
+     writes, with 401/403 stopping the plan.
+   - Bind a saved plan to the exact source commit, provider resource IDs,
+     database fingerprint and migration head/checksums, scheduler IDs,
+     runtime origin/domain, selected deploy context, and expiry. Re-read all
+     those facts immediately before a mutation.
+   - Connect the journal to an executor only after each action has a provider
+     adapter, precondition, read-after-write verifier, timeout reconciliation,
+     and tested compensation or explicit manual-recovery boundary.
+   - Keep `bun run test:deployment-manager` as a required CI check beside the
+     full server suite; the deployment-manager tests are a separate root
+     script and are not included by the server test command.
+
+   **Exit gate:** read-only status and plan tests prove secrets never enter
+   output/state; every supported resource is either identified or reported as
+   an explicit blocker; stale plans cannot execute; all schedule surfaces in
+   the selected transition are accounted for. Keep `apply` unavailable until
+   this gate and the first transition rehearsal pass.
 2. **First execution path: Netlify + Supabase → Cloudflare + same Supabase.**
-   Implement read/write/status adapters for Netlify and Cloudflare; secure
-   Hyperdrive creation; secret entry; preview Worker deployment; readiness and
-   commit/database-identity checks; production hostname promotion; stable
-   Supabase Cron; Netlify rollback retention. Require a customer-owned domain
-   for transparent hostname retention. Rehearse each action against disposable
-   resources before exposing `apply` for this path.
+   Implement narrowly scoped Netlify and Cloudflare adapters, the journaled
+   executor, protected candidate upload, Hyperdrive configuration, and
+   context-aware secret entry. Verify candidate commit, runtime identity,
+   database fingerprint, read-only readiness, assets, and TLS before
+   promotion. Keep Supabase Cron stable; if Netlify Cron is active, its
+   disable/readback and successful Supabase tick are separate gated actions.
+   Promote only a customer-owned hostname after its exact DNS zone/route and
+   TLS state are verified. Keep the Netlify deploy for rollback and report its
+   remaining default hostname. Rehearse each action and crash boundary against
+   disposable resources before exposing `apply` for this transition only.
+
+   **Exit gate:** the fault-injection, least-privilege, secret-capture,
+   duplicate-scheduler, delayed-DNS/TLS, stable-origin auth, and rollback tests
+   pass on a disposable site/Worker/database. The journal resumes only after
+   provider readback; an ambiguous write stops for reconciliation instead of
+   blindly retrying. All other transition pairs remain guided.
 3. **Other runtime adapters.** Add Vercel and VPS/Docker operations one at a
    time. Vercel requires plan-aware Cron validation; VPS automation requires a
    separate verified host identity, restricted agent/SSH model, and service
@@ -715,10 +750,16 @@ schema upgrade. The deployment manager owns moving a running installation
 between infrastructure providers. They can call shared preflight and migration
 libraries, but have different plans, approvals, journals, and rollback models.
 
-### Read-only API references used for the first inventory slice
+### Official provider references used by this plan
 
 - [Netlify API — list sites and retrieve a site](https://open-api.netlify.com/)
 - [Cloudflare API — list Worker scripts and schedules](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/)
+- [Cloudflare Workers versions and deployments](https://developers.cloudflare.com/workers/versions-and-deployments/)
+- [Cloudflare Worker Version URLs and access controls](https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/)
+- [Cloudflare Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
+- [Cloudflare Cron Triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/)
+- [Netlify environment variable contexts and deploy effects](https://docs.netlify.com/api-and-cli-guides/cli-guides/get-started-with-cli/)
+- [Netlify programmatic deploys](https://docs.netlify.com/deploy/create-deploys/)
 - [Vercel REST API reference](https://vercel.com/docs/rest-api)
 - [Vercel cron configuration and production behavior](https://vercel.com/docs/project-configuration/vercel-json)
 - [Supabase Management API — list projects and health](https://supabase.com/docs/reference/api/introduction)
