@@ -114,7 +114,11 @@ schema access before running the canonical migration; it must not use a
 The same migration/API/RLS contract is required for every deployment. The API
 and Better Auth pools are bounded but no longer single-connection bottlenecks;
 `NOVA_DB_POOL_MAX` (1–50, default 10) and `NOVA_AUTH_POOL_MAX` (1–25, default 5)
-can be tuned to the provider's connection budget.
+can be tuned to the provider's connection budget. The three Better Auth
+policies share one process-local auth pool on Node hosts, so the default
+per-instance ceiling is ten NOVA plus five auth connections, multiplied by
+concurrent function instances. Request-scoped Hyperdrive connections continue
+to use the existing per-request database adapter.
 
 ### Open-source deployment and first-run handoff
 

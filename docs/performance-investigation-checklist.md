@@ -51,11 +51,41 @@ pool waiting, and application work.
   usually within tens of milliseconds of the handler on those samples. One
   earlier cold session request had about 1.7 s outside NOVA, so platform
   startup can hurt cold requests but does not explain sustained warm latency.
-- The QA database has `pg_stat_statements` installed in the `extensions`
-  schema, but the `nova_app` database role cannot read that view (PostgreSQL
-  `42501`). No grants or database settings were changed. Query execution
-  statistics therefore need the Supabase dashboard or an authorized
-  monitoring role; do not broaden the runtime app role for profiling.
+- A direct read-only Supabase dashboard inspection found the live database
+  using a small fraction of its connection limit: 13/60 connections, zero
+  active queries, zero blocked queries, zero idle-in-transaction sessions, and
+  no blocker or long-running query at that snapshot. The project overview
+  showed 2% CPU, 14% disk, and 56% RAM. This rules out saturation at the time
+  checked, but one live snapshot cannot rule out historical spikes.
+- Supabase Query Performance, filtered to the `nova_app` role, showed a
+  99.99% cache-hit rate and 3.2 average rows per call. Its counters are
+  `pg_stat_statements` aggregates since the last statistics reset, not a
+  selected time-window sample or a per-request p95. The highest cumulative
+  NOVA statements include a Better Auth PostgreSQL schema-introspection query
+  (68 s across 1,284 calls; maximum 196 ms), permission and actor checks
+  (maximum 227 ms and 132 ms), and boundary-maintenance functions (maximum
+  189 ms or less). These maxima and averages do not show a single multi-second
+  PostgreSQL query; the largest totals are driven partly by repeated calls.
+  The metadata query matches Better Auth's Kysely schema check in the installed
+  adapter. Better Auth caches a successful check per adapter instance, so this
+  is a cold-instance/startup cost, not a query on every warm API request.
+- The code constructs three Better Auth configurations and previously made a
+  separate `pg.Pool` for each one. A warm Netlify instance could therefore
+  allow up to 10 NOVA plus 15 auth connections (25 total). All three policies
+  use the same database URL, so they now share one process-local auth pool;
+  the maximum is 10 + 5 (15 total) without changing sessions, schema
+  validation, or permission checks. This reduces unnecessary pool creation
+  and connection churn, but it does not remove the Ohio-to-Seoul distance.
+- `nova.configured_public_origins()` is also a high-call-count statement in
+  the cumulative report. It is deliberately read by Better Auth's dynamic
+  trusted-origin callback on relevant auth requests. It returns a low
+  per-call maximum in the report, so preserve the dynamic allow-list contract;
+  only consider a cache after measuring the request path and designing a
+  reliable invalidation rule.
+- The runtime `nova_app` role still cannot read `pg_stat_statements`
+  (PostgreSQL `42501`). The dashboard was used for the read-only review; no
+  grants or database settings were changed. Do not broaden the runtime role
+  for profiling.
 - My Day returned HTTP 409 for attendance because the page reported that an
   active office assignment is required. This is a setup/business-state issue,
   not a latency or database-authentication failure. Work’s sampled reads
@@ -73,14 +103,18 @@ multi-second individual API responses.
 calculation from six serial database trips to one statement. Further query
 changes should follow the measurements below.
 
-**Working diagnosis:** the production evidence points to database round trips
-and, on fresh/idle instances, connection acquisition as the main sustained
-latency sources. Repeated 165–190 ms query round trips are consistent with
-the Ohio-to-Seoul network path, while a few requests include roughly 1 s of
-pool acquisition per pool. Netlify cold-start overhead appears on some cold
-requests but is small on the sampled warm ones. The existing metrics cannot
-separate PostgreSQL execution from network latency; validate with
-`pg_stat_statements` and compare an Asia-region runtime before choosing a
+**Working diagnosis:** the strongest evidence is the repeated server/database
+round-trip cost across several API queries on a Netlify function in Ohio and a
+PostgreSQL database in Seoul. On warm routes, most observed PostgreSQL
+statements have sub-230 ms maximum execution time in the cumulative Supabase
+report, while NOVA measures about 150–190 ms per application-side query
+round-trip and 1.0–2.4 s across 6–14 queries. The database had no current
+blocking or resource saturation when inspected. This makes cross-region
+network latency plus query fan-out the leading explanation, with query
+execution and cold pool acquisition still contributing. Netlify startup adds
+some cold latency but is not the main warm-request cost. The present evidence
+is not a matched per-request database timing sample; collect a delta from
+`pg_stat_statements` and compare an Asia-region runtime before selecting a
 permanent hosting change.
 
 ## Checklist
@@ -130,23 +164,34 @@ permanent hosting change.
 
 ### 3. Inspect PostgreSQL and connection capacity
 
-- [ ] In the matching time window, inspect Supabase `pg_stat_statements` for
-  high mean/max execution time and high total time; snapshot cumulative stats
-  before and after the same controlled workload. The runtime `nova_app` role
-  currently lacks SELECT on the view (`42501`); use dashboard/monitoring
-  access instead of widening the application role.
-- [ ] Inspect active sessions, blocked/long-running queries, connection counts
-  by role, cache hit rate, sequential scans, and index usage.
+- [x] Inspect aggregate Supabase `pg_stat_statements` data in the dashboard
+  without widening `nova_app` access. The dashboard counters are cumulative;
+  they identify candidates but are not a matched request-window sample.
+- [x] Inspect the live Supabase Database Connections report as a
+  read-only super-admin: 13/60 connections, no active or blocked queries, no
+  idle-in-transaction sessions, and no blocker or long-running query. This
+  single live snapshot does not exclude a past peak.
+- [x] Review the Query Performance report for `nova_app`. It shows a 99.99%
+  cache-hit rate and 3.2 average rows per call; statement counters are
+  cumulative since the last `pg_stat_statements` reset, not a timed sample.
+- [ ] Capture before/after `pg_stat_statements` snapshots around the same
+  controlled authenticated workload; compare call count, mean/max execution,
+  total execution, and synchronous I/O without resetting global statistics.
+- [ ] Inspect sequential scans and index usage for any selected route query;
+  only inspect plans for statements shown to matter in the controlled sample.
 - [ ] Explain the selected slow statements in a safe environment. Add an index
   only when a real filter/join/order path and query plan justify it; review
   write cost and migration rollback before release.
 - [ ] Confirm the Netlify runtime uses the target project's transaction-mode
   pooler endpoint (port 6543) and the exact host from Supabase Connect. The
   driver options must remain compatible with transaction pooling.
+- [x] Share one process-local Better Auth pool among the three auth
+  configurations that use the same database URL. This corrects the previous
+  per-instance maximum from 25 connections (10 NOVA + three 5-connection auth
+  pools) to 15 (10 NOVA + one 5-connection auth pool) in `server/src/auth.ts`.
 - [ ] Reconcile per-instance pool sizes with Netlify concurrency and Supabase
-  limits. Current defaults allow up to ten NOVA plus five Better Auth client
-  connections per warm function instance; establish aggregate peak capacity
-  before increasing either value.
+  limits. The live 13/60 snapshot is healthy; measure peak concurrent
+  instances and pooled connections before changing either pool size.
 
 ### 4. Check request fan-out and UI critical paths
 
@@ -237,5 +282,6 @@ complexity.
 - [Supabase regional invocations](https://supabase.com/features/regional-invocations)
 - [Supabase database inspection](https://supabase.com/docs/guides/observability/inspect)
 - [Supabase `pg_stat_statements`](https://supabase.com/docs/guides/database/extensions/pg_stat_statements)
+- [PostgreSQL `pg_stat_statements` reference](https://www.postgresql.org/docs/current/pgstatstatements.html)
 - [Supabase database functions](https://supabase.com/docs/guides/database/functions)
 - [Better Auth installation and request-handler integration](https://better-auth.com/docs/installation)

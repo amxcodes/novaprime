@@ -22,6 +22,7 @@ import {
 
 const configuration = authenticationConfiguration();
 const authenticationHandoffTtlSeconds = 60 * 60;
+let sharedAuthenticationPool: Pool | undefined;
 
 function invitationTokenHash(token: string): Buffer {
   return createHash("sha256").update(token).digest();
@@ -37,13 +38,14 @@ function authPoolSize(): number {
 function authenticationDatabasePool(): Pool {
   // Hyperdrive is already the connection pool for Workers. The database proxy
   // resolves to a request-scoped client there; Node hosts keep Better Auth's
-  // independently bounded pool.
-  return process.env.NOVA_DATABASE_REQUEST_SCOPED === "true"
-    ? database()
-    : instrumentDatabasePool(
-      new Pool({ connectionString: configuration.databaseUrl, max: authPoolSize() }),
-      "auth",
-    );
+  // independently bounded pool. All Better Auth policies use the same URL and
+  // can safely share one process-local pool instead of each opening its own.
+  if (process.env.NOVA_DATABASE_REQUEST_SCOPED === "true") return database();
+  sharedAuthenticationPool ??= instrumentDatabasePool(
+    new Pool({ connectionString: configuration.databaseUrl, max: authPoolSize() }),
+    "auth",
+  );
+  return sharedAuthenticationPool;
 }
 
 function trustProxyHeaders(): boolean {
