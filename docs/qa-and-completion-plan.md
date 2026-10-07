@@ -8,36 +8,34 @@ test alone does not count as an end-to-end workflow.
 
 ## Current result
 
-Latest production check — 2026-10-07, 13:08 IST: Netlify's Production
-`DATABASE_URL` was changed after the previous published deploy, so I triggered a
-fresh production deploy of the same `d78b472` code at 13:07:08 IST. It
-published successfully at 13:07:34 IST. Read-only live checks returned
-`/api/ready` 200 (`status=ready`, `scheduler=supabase`) and
-`/api/auth/get-session` 200 (`null` while signed out). The user then retried
-the normal sign-in and confirmed success. This supersedes the earlier
-production `28P01`/500 status below; there is no sign-in blocker now.
+Latest production check — 2026-10-07, 13:46 IST: commit `0bca141` was pushed
+to `main` and Netlify published Production deploy
+`6ac5fff0e8df1d00088b4f0e` in 25 seconds. Read-only live checks returned
+`/api/ready` 200 and `/api/auth/get-session` 200 (`null` without a session).
+The Super Admin session had already completed sign-in successfully, and its
+People and access page loaded. This supersedes the earlier production
+`28P01`/500 status below; there is no current sign-in blocker.
 
 The healthy path still needs latency work. Netlify's function-region panel says
 CMH (Ohio, US East), and the disposable Supabase primary is in Seoul
 (`ap-northeast-2`); this cross-region path is a plausible source of added round
-trips, but has not been isolated in a controlled benchmark. Five unauthenticated
-session samples had 1.315 s median total time / 512 ms median `nova-app` time;
-the cold first sample was 2.439 s / 1,753 ms. Three additional samples from
-this runner were 1.65–2.15 s total. These do not establish authenticated p95
-latency. Netlify currently locks custom function regions for this project, so
-region changes require a deliberate hosting/database plan. A code-level
-startup finding remains: the browser waits for the session request, then for
-permission and UI-preference reads before its first complete render, while
-protected API calls repeat session and actor-state resolution. Measure that
-path with an authenticated browser trace before consolidating requests or
-changing session-cache semantics.
+trips, but has not been isolated in a controlled benchmark. A small post-fix
+sample from the local Windows runner made three serial requests per route over
+one persistent HTTP client: `/api/health` median 369 ms (first 1,058 ms),
+`/api/ready` median 523 ms (first 1,580 ms), and `/api/auth/get-session` median
+851 ms (first 2,022 ms). All returned 200. These unauthenticated end-to-end
+samples do not establish authenticated p95 latency or separate browser/network,
+function, and database time. Netlify currently locks custom function regions
+for this project, so region changes require a deliberate hosting/database plan.
+The browser bootstrap already overlaps its permission-grant and UI-preference
+reads after the session response; authenticated navigation traces are still
+needed to identify further safe reductions without weakening permission checks
+or duplicating route data loads.
 
-The production function logs no longer show `28P01`, but Better Auth warns that
-it cannot resolve a client IP and uses one shared rate-limit bucket per path.
-The Netlify adapter change is implemented and locally verified: it derives the
-private Better Auth IP header only from the trusted Function `context.ip`,
-replacing any caller-supplied value. It has not yet been deployed; verify the
-warning disappears from function logs after the next deployment.
+Commit `0bca141` includes the Netlify adapter fix for Better Auth's client IP:
+it derives the private IP header only from trusted Function `context.ip` and
+overwrites caller-supplied values. The fix is now deployed; inspect fresh
+function logs to confirm the shared per-path rate-limit warning is gone.
 
 The Supabase setup tool now serializes changes per environment file and records
 `pending`, `applying`, and `applied` rotation checkpoints. Ambiguous password
@@ -47,8 +45,10 @@ document the directory-ACL requirement for atomic `.env` replacement.
 
 Migration 0079's `customer_role_assignable` column is already present on the
 disposable database, but the app role cannot read the ledger and the available
-management token returned 403. Do not replay the SQL directly; verify its
-ledger entry with the migration-owner path before the next schema upgrade.
+management token returned 403. The Supabase dashboard redirects this session
+to sign-in, so the ledger entry is still unverified. Do not replay the SQL
+directly; verify its ledger entry with the migration-owner path before the
+next schema upgrade.
 Complete Admin/Work permission scenarios and live responsive device/browser
 checks remain open. See `docs/verification-matrix.md` for dated evidence.
 
