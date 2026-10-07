@@ -67,6 +67,15 @@ and repeat readiness/auth smoke before accepting healthy-route latency or
 Super Admin workflows. The observed migration sequence has no pending schema
 change for this incident.
 
+Later Netlify logs at 11:30 IST still report `28P01` for requests and the
+background tick; failed API request durations remain about 3 seconds. The
+target database screenshot shows Seoul (`ap-northeast-2`), but the shared
+pooler host's cluster index cannot be inferred from the region. Copy the exact
+host from the target project's Connect → Transaction pooler dialog. The
+supplied Production URL points by username suffix at a different project. No
+live setting change or successful hosted auth check is evidenced by these
+logs.
+
 The supplied detailed Supabase export confirms migrations 0075–0078 completed
 and `ALTER ROLE nova_app ... PASSWORD` succeeded at 18:44 UTC; the earlier
 `42P01` missing-table events precede those migrations. Netlify then reported
@@ -97,6 +106,13 @@ smoke, application-role preflight, and the 0072→0074 billing upgrade rehearsal
 its database and containers were removed afterward. These are local query and
 schema correctness checks. They do not provide a hosted latency measurement or
 resolve the Production `28P01` credential failure.
+
+Phone navigation was refined so a role with bottom quick navigation has one
+drawer trigger at phone widths: “More” remains and the duplicate top-bar menu
+is hidden through 639px. Tablet widths retain the top-bar trigger, and roles
+with no quick destinations retain it on phones. Responsive behavior tests
+(11/11), shell component tests (7/7), UI typecheck, and production Vite build
+passed. No authenticated live-browser or physical-device visual check was run.
 
 ## Verified evidence (database and host-local scopes)
 

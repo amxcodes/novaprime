@@ -53,6 +53,17 @@ verify `/api/ready`, auth session/sign-in, and the scheduled background tick
 before recording a healthy performance baseline. No migration is needed to fix
 `28P01`.
 
+Production follow-up — 2026-10-07, 11:30 IST: later Netlify logs still show
+`nova_app` password authentication failures (`28P01`) on GET/POST requests and
+the background tick, with failed API requests around 3.01–3.08 seconds. This
+confirms hosted auth is still failing; the log lines alone do not establish
+whether the environment value changed after the supplied URL. That URL named a
+different project. The target database screenshot identifies Seoul
+`ap-northeast-2`, but that does not identify the shared pooler's cluster index.
+Copy the exact host from the target project's Connect → Transaction pooler
+dialog; the deployment setting also needs that project's project-qualified
+`nova_app` username and current password. No secret was changed.
+
 Attendance availability follow-up — 2026-10-07: `currentAvailability` now
 resolves the effective office, local business date, calendar/shift, holiday,
 attendance policy, role WFH policy, and most-specific WFH override in one SQL

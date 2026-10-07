@@ -7,6 +7,7 @@ export interface TopBarProps {
   currentPageLabel: string;
   actions?: ReactNode;
   drawerId: string;
+  hasMobileQuickNavigation: boolean;
   navigationOpen: boolean;
   onOpenNavigation: (event: MouseEvent<HTMLButtonElement>) => void;
 }
@@ -16,6 +17,7 @@ export function TopBar({
   currentPageLabel,
   actions,
   drawerId,
+  hasMobileQuickNavigation,
   navigationOpen,
   onOpenNavigation,
 }: TopBarProps) {
@@ -23,6 +25,7 @@ export function TopBar({
     <header className={styles.topBar}>
       <div className={styles.start}>
         <NavigationMenuButton
+          className={hasMobileQuickNavigation ? styles.menuButtonWithBottomNavigation : undefined}
           controls={drawerId}
           expanded={navigationOpen}
           onClick={onOpenNavigation}

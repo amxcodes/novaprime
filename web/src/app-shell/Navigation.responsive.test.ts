@@ -174,4 +174,13 @@ describe("responsive navigation focus", () => {
     expect(readFileSync(new URL("./ContentFrame.module.css", import.meta.url), "utf8"))
       .toContain("env(safe-area-inset-left)");
   });
+
+  test("uses the bottom More action as the single phone drawer trigger when quick navigation exists", () => {
+    const phoneRules = topBarStyles.match(/@media \(max-width: 639px\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+
+    expect(appShellSource).toContain("selectMobileNavigation(navigation, mobilePrimaryIds).length > 0");
+    expect(phoneRules).toContain(".menuButtonWithBottomNavigation");
+    expect(phoneRules).toContain("display: none");
+    expect(topBarStyles).toContain("@media (max-width: 1199px)");
+  });
 });

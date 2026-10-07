@@ -173,6 +173,20 @@ test("exposes only supplied navigation in quick links and wires More to the comp
   assert.match(markup, /aria-controls="nova-navigation-[^"]+-desktop"/);
   assert.match(markup, /aria-haspopup="dialog"/);
   assert.match(markup, /aria-expanded="false"/);
+  assert.match(markup, /class="button iconButton menuButtonWithBottomNavigation"/);
   assert.match(markup, /More/);
   assert.doesNotMatch(markup, /missing-feature|secret-feature/);
+});
+
+test("keeps the top-bar drawer control when a role has no bottom quick navigation", () => {
+  const markup = renderToStaticMarkup(React.createElement(AppShell, {
+    brand: "NOVA",
+    navigation: [{ id: "empty", label: "Workspace", items: [] }],
+    currentPageLabel: "Workspace",
+    children: React.createElement("p", null, "No destinations"),
+  }));
+
+  assert.doesNotMatch(markup, /aria-label="Quick navigation"/);
+  assert.match(markup, /aria-label="Open navigation"/);
+  assert.doesNotMatch(markup, /menuButtonWithBottomNavigation/);
 });

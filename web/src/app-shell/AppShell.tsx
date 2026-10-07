@@ -3,6 +3,7 @@ import { ContentFrame } from "./ContentFrame";
 import { DesktopSidebar, MobileBottomNavigation, NavigationDrawer } from "./Navigation";
 import type { AppShellProps } from "./contracts";
 import { EXPANDED_NAVIGATION_MEDIA_QUERY } from "./breakpoints";
+import { selectMobileNavigation } from "./navigation-model";
 import { TopBar } from "./TopBar";
 import styles from "./AppShell.module.css";
 
@@ -21,6 +22,7 @@ export function AppShell({
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [navigationCompact, setNavigationCompact] = useState(false);
   const navigationTriggerRef = useRef<HTMLElement | null>(null);
+  const hasMobileQuickNavigation = selectMobileNavigation(navigation, mobilePrimaryIds).length > 0;
 
   useEffect(() => {
     const expandedViewport = window.matchMedia(EXPANDED_NAVIGATION_MEDIA_QUERY);
@@ -62,6 +64,7 @@ export function AppShell({
           brand={brand}
           currentPageLabel={currentPageLabel}
           drawerId={drawerId}
+          hasMobileQuickNavigation={hasMobileQuickNavigation}
           navigationOpen={navigationOpen}
           onOpenNavigation={openNavigation}
         />

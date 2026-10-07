@@ -281,10 +281,12 @@ export function MobileBottomNavigation({
 }
 
 export function NavigationMenuButton({
+  className,
   expanded,
   controls,
   onClick,
 }: {
+  className?: string;
   expanded: boolean;
   controls: string;
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
@@ -294,6 +296,7 @@ export function NavigationMenuButton({
       aria-controls={controls}
       aria-expanded={expanded}
       aria-haspopup="dialog"
+      className={className}
       aria-label={expanded ? "Close navigation" : "Open navigation"}
       onClick={onClick}
     >
