@@ -19,6 +19,7 @@ const {
   taskCorrectionInput,
   validTaskDueDate,
   hasPermission,
+  hasPermissions,
   exactReviewerManagementTarget,
   reviewerExceptionTargetEligible,
   reviewerExceptionGrantTargetSql,
@@ -578,6 +579,29 @@ describe("exact assignment reviewer-management authorization", () => {
     await hasPermission(transaction, "actor-1", "org-1", "tasks.view", { taskId: "task-1" });
     expect(queries[1]?.text).not.toContain("actor_assignments.id = $8");
     expect(queries[1]?.values).toHaveLength(7);
+  });
+
+  test("checks multiple permissions in one parameterized grant query", async () => {
+    const queries: Array<{ text: string; values: unknown[] }> = [];
+    const transaction = {
+      query: async (text: string, values: unknown[]) => {
+        queries.push({ text, values });
+        return { rows: [{ permission_0: true, permission_1: false }] };
+      },
+    } as unknown as Parameters<typeof hasPermissions>[0];
+
+    const permissions = await hasPermissions(transaction, "actor-1", "org-1", [
+      "tasks.catalog.view", "tasks.catalog.manage",
+    ]);
+
+    expect(permissions).toEqual({ "tasks.catalog.view": true, "tasks.catalog.manage": false });
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.text).toContain("active_grants AS MATERIALIZED");
+    expect(queries[0]?.text).toContain("grants.permission_key = $3");
+    expect(queries[0]?.text).toContain("grants.permission_key = $4");
+    expect(queries[0]?.values).toEqual([
+      "actor-1", "org-1", "tasks.catalog.view", "tasks.catalog.manage", null, null, null, null,
+    ]);
   });
 });
 

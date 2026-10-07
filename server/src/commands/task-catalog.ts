@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import { withDatabaseRequest } from "../db.js";
 import { requestIdempotencyKey, idempotent, isIdempotencyReplay } from "../idempotency.js";
-import { body, hasPermission, normalActor } from "./work-context.js";
+import { body, hasPermission, hasPermissions, normalActor } from "./work-context.js";
 
 const json = (value: unknown, status = 200) =>
   Response.json(value, { status, headers: { "cache-control": "no-store" } });
@@ -115,12 +115,12 @@ export async function readTaskCatalog(request: Request): Promise<Response> {
   if ("response" in actor) return actor.response;
   try {
     const result = await withDatabaseRequest(actor.context, async (transaction) => {
-      const permissions = {
-        view: await hasPermission(transaction, actor.context.userId, actor.context.organisationId, "tasks.catalog.view"),
-        propose: await hasPermission(transaction, actor.context.userId, actor.context.organisationId, "tasks.catalog.propose"),
-        manage: await hasPermission(transaction, actor.context.userId, actor.context.organisationId, "tasks.catalog.manage"),
-        review: await hasPermission(transaction, actor.context.userId, actor.context.organisationId, "tasks.catalog.review"),
-      };
+      const permissions = await hasPermissions(
+        transaction,
+        actor.context.userId,
+        actor.context.organisationId,
+        ["tasks.catalog.view", "tasks.catalog.propose", "tasks.catalog.manage", "tasks.catalog.review"],
+      );
       let entries: CatalogEntry[] = [];
       if (permissions.view || permissions.manage) {
         entries = (await transaction.query<CatalogEntry>(

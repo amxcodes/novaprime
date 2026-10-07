@@ -268,6 +268,44 @@ export async function hasPermission(
   return result.rows[0]?.permitted === true;
 }
 
+export async function hasPermissions(
+  transaction: PoolClient,
+  actorId: string,
+  organisationId: string,
+  permissionKeys: readonly string[],
+  target: Target = {},
+): Promise<Record<string, boolean>> {
+  if (!permissionKeys.length) return {};
+
+  const targetParameter = permissionKeys.length + 3;
+  const projections = permissionKeys.map((_, index) => `${permissionExistsSql({
+    actorId: "$1",
+    organisationId: "$2",
+    permissionKey: `$${index + 3}`,
+    clientId: `$${targetParameter}`,
+    clientWorkstreamId: `$${targetParameter + 1}`,
+    groupId: `$${targetParameter + 2}`,
+    taskId: `$${targetParameter + 3}`,
+    assignedWorkAssignmentId: target.assignmentId ? `$${targetParameter + 4}` : undefined,
+  })} AS permission_${index}`).join(",\n");
+  const values = [
+    actorId,
+    organisationId,
+    ...permissionKeys,
+    target.clientId ?? null,
+    target.clientWorkstreamId ?? null,
+    target.groupId ?? null,
+    target.taskId ?? null,
+    ...(target.assignmentId ? [target.assignmentId] : []),
+  ];
+  const result = await transaction.query<Record<string, boolean>>(
+    `${activeActorGrantCtes("$1")} SELECT ${projections}`,
+    values,
+  );
+  const row = result.rows[0] ?? {};
+  return Object.fromEntries(permissionKeys.map((key, index) => [key, row[`permission_${index}`] === true]));
+}
+
 function workContextGrantCtes(): string {
   return activeActorGrantCtes("$2");
 }

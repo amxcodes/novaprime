@@ -218,6 +218,13 @@ permanent hosting change.
 - [ ] After deployment, compare the People directory query count and
   end-to-end p50/p95 with the recorded baseline; the code change alone does
   not prove a production latency improvement.
+- [x] Batch the four sequential Task Catalog permission checks into one
+  parameterized permission projection, reusing the same effective-grant scope
+  predicate. The catalog and proposal reads remain separately bounded by the
+  resulting permissions.
+- [ ] After deployment, compare Task Catalog query count and handler time with
+  the previous 14-query, roughly 5.3-second cold sample; collect warm samples
+  before judging the end-to-end effect.
 - [ ] Use browser traces to count API requests per page and identify true
   dependencies. Preserve server permission checks; optimize only requests
   proven to be redundant or independent.

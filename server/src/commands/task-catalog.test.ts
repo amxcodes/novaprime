@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
-import { projectTaskCatalogProposal } from "./task-catalog.js";
+import { describe, expect, mock, test } from "bun:test";
+mock.module("pg", () => ({ Pool: class Pool {}, Client: class Client {} }));
+const { projectTaskCatalogProposal } = await import("./task-catalog.js");
 
 const actorId = "11111111-1111-4111-8111-111111111111";
 const otherPersonId = "22222222-2222-4222-8222-222222222222";
