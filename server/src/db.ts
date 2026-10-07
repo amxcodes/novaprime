@@ -1,5 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Client, Pool, type PoolClient } from "pg";
+import {
+  instrumentDatabaseClient,
+  instrumentDatabasePool,
+  measureDatabasePoolAcquisition,
+} from "./database-diagnostics.js";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -53,7 +58,7 @@ function defaultDatabase(): Pool {
   }
 
   if (!connection) {
-    connection = new Pool({ connectionString: databaseUrl, max: poolSize() });
+    connection = instrumentDatabasePool(new Pool({ connectionString: databaseUrl, max: poolSize() }), "nova");
     observeIdleDatabaseErrors(connection);
   }
   return connection;
@@ -87,9 +92,9 @@ class RequestScopedDatabasePool {
       console.error("NOVA_DATABASE_REQUEST_CONNECTION_ERROR", code);
     });
     try {
-      await client.connect();
+      await measureDatabasePoolAcquisition("nova", () => client.connect());
       this.clients.add(client);
-      return client;
+      return instrumentDatabaseClient(client as unknown as PoolClient, "nova") as unknown as Client;
     } catch (error) {
       await client.end().catch(() => undefined);
       throw error;

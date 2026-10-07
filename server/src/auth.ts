@@ -11,6 +11,7 @@ import { createDatabaseAuthRateLimitStorage } from "./auth-rate-limit-storage.js
 import { activeEmailConnection } from "./commands/email-connections.js";
 import { stageAuthHandoffForIdentity, type AuthHandoffPurpose } from "./commands/auth-handoffs.js";
 import { database } from "./db.js";
+import { instrumentDatabasePool } from "./database-diagnostics.js";
 import { sendEmail } from "./email-delivery.js";
 import {
   configuredPublicOrigins,
@@ -39,7 +40,10 @@ function authenticationDatabasePool(): Pool {
   // independently bounded pool.
   return process.env.NOVA_DATABASE_REQUEST_SCOPED === "true"
     ? database()
-    : new Pool({ connectionString: configuration.databaseUrl, max: authPoolSize() });
+    : instrumentDatabasePool(
+      new Pool({ connectionString: configuration.databaseUrl, max: authPoolSize() }),
+      "auth",
+    );
 }
 
 function trustProxyHeaders(): boolean {

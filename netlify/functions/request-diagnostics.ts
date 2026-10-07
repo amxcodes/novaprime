@@ -1,3 +1,5 @@
+import type { DatabaseDiagnostics } from "../../server/src/database-diagnostics.js";
+
 const safeApiGroups = new Set([
   "attendance", "audit-events", "auth", "auth-handoffs", "availability",
   "clients", "email-connections", "health", "historical-exceptions",
@@ -17,6 +19,7 @@ export type SlowRequestInput = Readonly<{
   appMs?: number;
   authModuleLoadMs?: number;
   entryModuleLoadMs: number;
+  databaseDiagnostics?: DatabaseDiagnostics;
 }>;
 
 /** Return a route label without identifiers, query strings, or arbitrary paths. */
@@ -39,6 +42,7 @@ export function slowRequestDiagnostic(input: SlowRequestInput) {
   const method = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/.test(input.method)
     ? input.method
     : "OTHER";
+  const database = input.databaseDiagnostics;
   return {
     event: "NOVA_REQUEST_DIAGNOSTIC",
     method,
@@ -50,5 +54,21 @@ export function slowRequestDiagnostic(input: SlowRequestInput) {
     ...(input.authModuleLoadMs === undefined
       ? {}
       : { auth_module_load_ms: Math.round(input.authModuleLoadMs) }),
+    ...(database ? {
+      nova_db_pool_acquire_ms: Math.round(database.nova.poolAcquireMs),
+      nova_db_pool_acquisitions: database.nova.poolAcquisitions,
+      nova_db_pool_acquire_failures: database.nova.poolAcquireFailures,
+      nova_db_query_ms: Math.round(database.nova.queryRoundTripMs),
+      nova_db_queries: database.nova.queries,
+      nova_db_query_failures: database.nova.queryFailures,
+      nova_db_max_query_ms: Math.round(database.nova.maxQueryRoundTripMs),
+      auth_db_pool_acquire_ms: Math.round(database.auth.poolAcquireMs),
+      auth_db_pool_acquisitions: database.auth.poolAcquisitions,
+      auth_db_pool_acquire_failures: database.auth.poolAcquireFailures,
+      auth_db_query_ms: Math.round(database.auth.queryRoundTripMs),
+      auth_db_queries: database.auth.queries,
+      auth_db_query_failures: database.auth.queryFailures,
+      auth_db_max_query_ms: Math.round(database.auth.maxQueryRoundTripMs),
+    } : {}),
   } as const;
 }

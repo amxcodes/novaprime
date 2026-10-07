@@ -1,5 +1,11 @@
 import { authenticationConfiguration } from "./auth-configuration.js";
 import { database } from "./db.js";
+import {
+  createDatabaseDiagnostics,
+  readDatabaseDiagnostics,
+  withDatabaseDiagnostics,
+  type RequestDatabaseDiagnostics,
+} from "./database-diagnostics.js";
 import { isSecretsEncryptionKeyValid } from "./secrets.js";
 import { bootstrapOrganisation } from "./commands/bootstrap-organisation.js";
 import { acceptInvitation, registerFounder } from "./commands/account-registration.js";
@@ -172,12 +178,19 @@ const json = (body: unknown, status = 200) =>
   });
 
 /** Add safe request timing to API responses so browser tools can separate server time from network time. */
-export async function handleRequest(request: Request): Promise<Response> {
+export async function handleRequest(
+  request: Request,
+  diagnosticSink?: RequestDatabaseDiagnostics,
+): Promise<Response> {
   const startedAt = performance.now();
   const requestTiming: { authModuleLoadMs?: number } = {};
+  const databaseDiagnostics = diagnosticSink ? createDatabaseDiagnostics() : undefined;
   let response: Response;
   try {
-    response = await dispatchRequest(request, requestTiming);
+    const dispatch = () => dispatchRequest(request, requestTiming);
+    response = databaseDiagnostics
+      ? await withDatabaseDiagnostics(databaseDiagnostics, dispatch)
+      : await dispatch();
   } catch (error) {
     const code = error && typeof error === "object" && "code" in error && typeof error.code === "string"
       ? error.code
@@ -187,6 +200,10 @@ export async function handleRequest(request: Request): Promise<Response> {
     response = status === 503
       ? json({ error: "SERVICE_UNAVAILABLE" }, status)
       : json({ error: "INTERNAL_ERROR" }, status);
+  } finally {
+    if (diagnosticSink && databaseDiagnostics) {
+      diagnosticSink.database = readDatabaseDiagnostics(databaseDiagnostics);
+    }
   }
   const headers = new Headers(response.headers);
   const existingTiming = headers.get("server-timing");

@@ -52,3 +52,44 @@ test("records auth and server failure classes", () => {
     authModuleLoadMs: 1_250,
   }))).toMatchObject({ auth_module_load_ms: 1_250 });
 });
+
+test("records aggregate database time and counts without request data", () => {
+  const diagnostic = slowRequestDiagnostic(request({
+    durationMs: 1_700,
+    databaseDiagnostics: {
+      nova: {
+        poolAcquisitions: 2,
+        poolAcquireMs: 15.4,
+        poolAcquireFailures: 0,
+        queries: 8,
+        queryRoundTripMs: 422.8,
+        queryFailures: 1,
+        maxQueryRoundTripMs: 300.3,
+      },
+      auth: {
+        poolAcquisitions: 1,
+        poolAcquireMs: 5.2,
+        poolAcquireFailures: 0,
+        queries: 4,
+        queryRoundTripMs: 615.5,
+        queryFailures: 0,
+        maxQueryRoundTripMs: 411.1,
+      },
+    },
+  }));
+
+  expect(diagnostic).toMatchObject({
+    nova_db_pool_acquire_ms: 15,
+    nova_db_pool_acquisitions: 2,
+    nova_db_pool_acquire_failures: 0,
+    nova_db_query_ms: 423,
+    nova_db_queries: 8,
+    nova_db_query_failures: 1,
+    nova_db_max_query_ms: 300,
+    auth_db_pool_acquire_ms: 5,
+    auth_db_pool_acquisitions: 1,
+    auth_db_query_ms: 616,
+    auth_db_queries: 4,
+  });
+  expect(JSON.stringify(diagnostic)).not.toContain("request data");
+});
