@@ -51,8 +51,8 @@ const role = {
 };
 
 const permissions = [
-  { key: "people.view", module: "People", description: "View people records.", allowedScopes: ["organisation", "office", "organisation_department"] },
-  { key: "tasks.view", module: "Work", description: "View work records.", allowedScopes: ["assigned_work", "client", "client_workstream", "group"] },
+  { key: "people.view", module: "People", description: "View people records.", allowedScopes: ["organisation", "office", "organisation_department"], customerRoleAssignable: true },
+  { key: "tasks.view", module: "Work", description: "View work records.", allowedScopes: ["assigned_work", "client", "client_workstream", "group"], customerRoleAssignable: true },
 ];
 
 function targetReads() {
@@ -162,6 +162,38 @@ test("scope controls honor modelled target availability and preserve saved selec
   assert.match(source, /onUpdateGrant=\{updateGrant\}/);
   assert.match(source, /onRemoveScope=\{removeScope\}/);
   assert.doesNotMatch(source, /<Select\s+id=\{`\$\{id\}-target`\}/);
+});
+
+test("future permissions are marked unavailable and an existing grant is read-only", () => {
+  const futurePermission = {
+    key: "payroll.view",
+    module: "Payroll",
+    description: "View future payroll records.",
+    allowedScopes: ["organisation"],
+    customerRoleAssignable: false,
+  };
+  const matrix = PermissionGrantMatrix({
+    id: "role-editor",
+    modules: [{ name: "Payroll", permissions: [futurePermission] }],
+    grants: { "payroll.view": [{ scope: "organisation", targetId: "" }] },
+    targetReads: targetReads(),
+    canEdit: true,
+    disabled: false,
+    expandedModules: new Set(["Payroll"]),
+    onModuleToggle() {},
+    onPermissionChange() {},
+    onAddScope() {},
+    onUpdateGrant() {},
+    onRemoveScope() {},
+  });
+  const html = renderToStaticMarkup(matrix);
+
+  assert.match(html, /payroll\.view — unavailable for customer roles/);
+  assert.match(html, /New grants are disabled; any existing grant is locked and preserved unchanged/);
+  assert.match(html, /disabled="" checked=""/);
+  assert.doesNotMatch(html, /Add scope or target/);
+  assert.match(fs.readFileSync(path.join(__dirname, "RolePermissionsEditor.tsx"), "utf8"),
+    /grantResult\.grants[\s\S]*draft\.unavailableGrants/);
 });
 
 test("the grant matrix renders as a controlled semantic disclosure and reports toggle changes", () => {

@@ -326,8 +326,10 @@ export async function readPermissions(request: Request): Promise<Response> {
       module: string;
       description: string;
       allowed_scopes: string[];
+      customer_role_assignable: boolean;
     }>(
-      "SELECT key, module, description, allowed_scopes::text[] FROM nova.permissions ORDER BY module, key",
+      `SELECT key, module, description, allowed_scopes::text[], customer_role_assignable
+       FROM nova.permissions ORDER BY module, key`,
     );
     return {
       permissions: result.rows.map((permission) => ({
@@ -335,6 +337,7 @@ export async function readPermissions(request: Request): Promise<Response> {
         module: permission.module,
         description: permission.description,
         allowedScopes: permission.allowed_scopes,
+        customerRoleAssignable: permission.customer_role_assignable,
       })),
     };
   });

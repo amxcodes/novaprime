@@ -176,7 +176,9 @@ const department = await api("POST", "/organisation-departments", {
 assertStatus("department_create", department, 201);
 const departmentId = requireField("department_create", department, "organisationDepartmentId");
 
-const permissions = await postSql("SELECT key FROM nova.permissions ORDER BY key");
+const permissions = await postSql(
+  "SELECT key FROM nova.permissions WHERE customer_role_assignable ORDER BY key",
+);
 const role = await api("POST", "/roles", {
   key: `nova_smoke_${stamp}`.slice(0, 63),
   name: `NOVA Smoke Runtime Role ${stamp}`,
@@ -194,6 +196,65 @@ const role = await api("POST", "/roles", {
 }, cookie);
 assertStatus("role_create", role, 201);
 const roleId = requireField("role_create", role, "roleId");
+const roleOperationalPolicy = {
+  workEnabled: true,
+  canReceiveAssignments: false,
+  attendanceRequired: true,
+  wfhAllowed: true,
+  canWorkWithoutAttendance: false,
+  payrollApplicable: false,
+  payrollAttendanceContributes: false,
+  payrollOvertimeApplicable: false,
+};
+const futurePayrollCreate = await api("POST", "/roles", {
+  key: ("nova_future_" + stamp).slice(0, 63),
+  name: "NOVA Future Payroll " + stamp,
+  permissionGrants: [{ permissionKey: "payroll.view", scope: "organisation" }],
+  operationalPolicy: roleOperationalPolicy,
+}, cookie);
+assertStatus("role_create_reject_future_permission", futurePayrollCreate, 400);
+assertFixture(futurePayrollCreate.body?.error === "ROLE_INPUT_INVALID", "future_customer_role_grant_rejected");
+
+await postSql(
+  "INSERT INTO nova.role_permission_grants (role_id, permission_key, scope) " +
+  "VALUES (" + sqlLiteral(roleId) + "::uuid, 'payroll.view', 'organisation')",
+);
+const roleGrantsWithLegacyPayroll = [
+  ...permissions.map((row) => ({ permissionKey: row.key, scope: "organisation" })),
+  { permissionKey: "payroll.view", scope: "organisation" },
+];
+const roleUpdate = (name: string, permissionGrants: typeof roleGrantsWithLegacyPayroll) => api(
+  "PATCH",
+  "/roles/" + roleId,
+  {
+    key: ("nova_smoke_" + stamp).slice(0, 63),
+    name,
+    expectedRevision: 1,
+    permissionGrants,
+    operationalPolicy: roleOperationalPolicy,
+  },
+  cookie,
+);
+const droppedLegacyPayroll = await roleUpdate(
+  "NOVA Smoke Runtime Role " + stamp + " Dropped",
+  roleGrantsWithLegacyPayroll.slice(0, -1),
+);
+assertStatus("role_update_reject_legacy_permission_removal", droppedLegacyPayroll, 400);
+const changedLegacyPayroll = await roleUpdate("NOVA Smoke Runtime Role " + stamp + " Changed", [
+  ...permissions.map((row) => ({ permissionKey: row.key, scope: "organisation" })),
+  { permissionKey: "payroll.manage", scope: "organisation" },
+]);
+assertStatus("role_update_reject_legacy_permission_change", changedLegacyPayroll, 400);
+const preservedLegacyPayroll = await roleUpdate(
+  "NOVA Smoke Runtime Role " + stamp + " Updated",
+  roleGrantsWithLegacyPayroll,
+);
+assertStatus("role_update_preserve_legacy_permission", preservedLegacyPayroll, 200);
+const persistedLegacyPayroll = (await postSql(
+  "SELECT scope::text AS scope FROM nova.role_permission_grants WHERE role_id = " +
+  sqlLiteral(roleId) + "::uuid AND permission_key = 'payroll.view'",
+))[0] as { scope?: string } | undefined;
+assertFixture(persistedLegacyPayroll?.scope === "organisation", "legacy_future_grant_kept_unchanged");
 
 let todayRow = (await postSql(
   `WITH person_day AS (

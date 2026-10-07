@@ -52,6 +52,19 @@ Guided first path:
   Supabase project; pass the rotation flag deliberately so the target role and
   generated URL are changed together. Netlify snapshots function environment
   variables per deploy, so trigger a new deploy after saving `DATABASE_URL`.
+  Setup locks the selected environment file for the duration of the operation;
+  if a `.setup.lock` already exists, inspect its PID, host, and start time and
+  confirm the process has stopped before manually removing only that lock.
+  Never remove a lock while its setup process may still be running. Password
+  rotation checkpoints the same project-bound candidate before contacting the
+  database. If the outcome is uncertain, retry without rotation flags first so
+  the exact candidate can be tested. Only after those probes fail and the
+  saved cooldown expires should you rerun with
+  `--recover-app-role-password-rotation`; it can reapply only that same
+  candidate. If recovery is needed, update the hosted `DATABASE_URL` and deploy
+  before reopening traffic. On Windows, atomic `.env` replacement inherits the
+  containing directory ACL; secure that directory if these values need tighter
+  access than its normal inherited permissions.
 - an already-provisioned VPS/direct PostgreSQL: set `.env` and run
   `bun run setup -- --mode external`.
 

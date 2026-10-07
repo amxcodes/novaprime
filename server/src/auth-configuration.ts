@@ -36,3 +36,22 @@ export function authenticationConfiguration(
 export function bootstrapToken(environment = process.env): string {
   return required("NOVA_BOOTSTRAP_TOKEN", environment);
 }
+
+/**
+ * Select the source Better Auth uses for the client address. Netlify's native
+ * request context is authoritative, so its adapter opts into the private
+ * header that it overwrites on every request. Cloudflare keeps its trusted
+ * edge headers, and a directly exposed Node server keeps the private socket-IP
+ * header (or Better Auth's safe shared fallback when it is absent).
+ */
+export function authenticationIpAddressHeaders(
+  environment = process.env,
+): string[] {
+  if (environment.NOVA_AUTH_IP_ADDRESS_HEADER === "x-nova-remote-ip") {
+    return ["x-nova-remote-ip"];
+  }
+
+  return environment.NOVA_TRUST_PROXY_HEADERS === "true"
+    ? ["cf-connecting-ip", "x-forwarded-for", "x-real-ip"]
+    : ["x-nova-remote-ip"];
+}

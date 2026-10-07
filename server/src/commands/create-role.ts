@@ -3,6 +3,7 @@ import { authenticationConfiguration } from "../auth-configuration.js";
 import { withDatabaseRequest, type DatabaseRequestContext } from "../db.js";
 import { isNormalOperationalActor, requestActor } from "../request-actor.js";
 import { enqueueNotification } from "./notifications.js";
+import { customerRolePermissionGrantsAreValid } from "./role-permission-policy.js";
 
 type PermissionScope =
   | "organisation"
@@ -14,7 +15,7 @@ type PermissionScope =
   | "group"
   | "assigned_work";
 
-type PermissionGrantInput = Readonly<{
+export type PermissionGrantInput = Readonly<{
   permissionKey: string;
   scope: PermissionScope;
   officeId?: string;
@@ -282,15 +283,20 @@ async function createRole(
       }
 
       const permissionKeys = [...new Set(input.permissionGrants.map((grant) => grant.permissionKey))];
-      const knownPermissions = await transaction.query<{ key: string; allowed_scopes: string[] }>(
-        "SELECT key, allowed_scopes::text[] FROM nova.permissions WHERE key = ANY($1::text[])",
+      const knownPermissions = await transaction.query<{
+        key: string;
+        allowed_scopes: string[];
+        customer_role_assignable: boolean;
+      }>(
+        `SELECT key, allowed_scopes::text[], customer_role_assignable
+         FROM nova.permissions WHERE key = ANY($1::text[])`,
         [permissionKeys],
       );
       if (knownPermissions.rows.length !== permissionKeys.length) {
         return "ROLE_INPUT_INVALID";
       }
-      const allowedScopes = new Map(knownPermissions.rows.map((permission) => [permission.key, new Set(permission.allowed_scopes)]));
-      if (input.permissionGrants.some((grant) => !allowedScopes.get(grant.permissionKey)?.has(grant.scope))) {
+      const assignability = new Map(knownPermissions.rows.map((permission) => [permission.key, permission.customer_role_assignable]));
+      if (!customerRolePermissionGrantsAreValid([], input.permissionGrants, knownPermissions.rows)) {
         return "ROLE_INPUT_INVALID";
       }
       if (!await canGrantPermissions(transaction, context.userId, permissionKeys)) {
@@ -448,18 +454,32 @@ async function editRole(
       if (previous.revision !== input.expectedRevision) return "ROLE_VERSION_CONFLICT" as const;
 
       const permissionKeys = [...new Set(input.permissionGrants.map((grant) => grant.permissionKey))];
-      const knownPermissions = await transaction.query<{ key: string; allowed_scopes: string[] }>(
-        "SELECT key, allowed_scopes::text[] FROM nova.permissions WHERE key = ANY($1::text[])",
-        [permissionKeys],
+      const catalogueKeys = [...new Set([
+        ...permissionKeys,
+        ...previous.permission_grants.map((grant) => grant.permissionKey),
+      ])];
+      const knownPermissions = await transaction.query<{
+        key: string;
+        allowed_scopes: string[];
+        customer_role_assignable: boolean;
+      }>(
+        `SELECT key, allowed_scopes::text[], customer_role_assignable
+         FROM nova.permissions WHERE key = ANY($1::text[])`,
+        [catalogueKeys],
       );
-      if (knownPermissions.rows.length !== permissionKeys.length) {
+      if (knownPermissions.rows.length !== catalogueKeys.length) {
         return "ROLE_INPUT_INVALID";
       }
-      const allowedScopes = new Map(knownPermissions.rows.map((permission) => [permission.key, new Set(permission.allowed_scopes)]));
-      if (input.permissionGrants.some((grant) => !allowedScopes.get(grant.permissionKey)?.has(grant.scope))) {
+      const assignability = new Map(knownPermissions.rows.map((permission) => [permission.key, permission.customer_role_assignable]));
+      if (!customerRolePermissionGrantsAreValid(
+        previous.permission_grants,
+        input.permissionGrants,
+        knownPermissions.rows,
+      )) {
         return "ROLE_INPUT_INVALID";
       }
-      if (!await canGrantPermissions(transaction, context.userId, permissionKeys)) {
+      const grantablePermissionKeys = permissionKeys.filter((permissionKey) => assignability.get(permissionKey) === true);
+      if (!await canGrantPermissions(transaction, context.userId, grantablePermissionKeys)) {
         return "PERMISSION_DENIED";
       }
 

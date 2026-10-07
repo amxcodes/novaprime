@@ -100,13 +100,15 @@ function projectRole(value: unknown): RoleRecord | null {
 
 function projectPermission(value: unknown): PermissionCatalogueEntry | null {
   if (!isRecord(value) || typeof value.key !== "string" || typeof value.module !== "string" ||
-      typeof value.description !== "string" || !Array.isArray(value.allowedScopes) ||
+      typeof value.description !== "string" || typeof value.customerRoleAssignable !== "boolean" ||
+      !Array.isArray(value.allowedScopes) ||
       value.allowedScopes.some((scope) => !scopes.includes(scope as RolePermissionScope))) return null;
   return {
     key: value.key,
     module: value.module,
     description: value.description,
     allowedScopes: value.allowedScopes as RolePermissionScope[],
+    customerRoleAssignable: value.customerRoleAssignable,
   };
 }
 

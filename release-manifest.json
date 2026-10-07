@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "migrations": [
     {
       "filename": "0001_people_identity.sql",
@@ -313,8 +313,12 @@
     {
       "filename": "0078_organisation_access_revisions.sql",
       "sha256": "279247bedd96ca16789d384f609306a12a2b039ed4980c33cf080c5777b360eb"
+    },
+    {
+      "filename": "0079_permission_customer_role_assignability.sql",
+      "sha256": "2097fa3f2fd54a173924af9667898dc1b01015e87cdac08424236d9f11730aa5"
     }
   ],
   "migrationClass": "online-compatible",
-  "impact": "Adds owner-scoped saved task views and organization-scoped Availability cursor invalidation using private revision triggers. Existing configurations and operational data remain intact."
+  "impact": "Adds a customer-role assignment allowlist to the canonical permission catalogue. New permissions default to unavailable, implemented non-payroll permissions are enabled, and payroll entries remain reserved. Server authorization and role editing preserve existing unavailable grants without allowing new grants."
 }

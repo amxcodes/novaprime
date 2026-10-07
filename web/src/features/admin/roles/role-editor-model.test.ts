@@ -4,6 +4,7 @@ import {
   roleGrantTargetId,
   roleGrantTargetOptions,
   roleScopeChoices,
+  preservedUnavailableRoleGrants,
 } from "./role-editor-model";
 import type {
   PermissionCatalogueEntry,
@@ -19,6 +20,7 @@ const permission = (allowedScopes: PermissionCatalogueEntry["allowedScopes"]): P
   module: "People",
   description: "View people records.",
   allowedScopes,
+  customerRoleAssignable: true,
 });
 
 const targetReads: RoleScopeTargetReads = {
@@ -119,5 +121,21 @@ describe("role editor scope availability", () => {
     expect(roleGrantTargetOptions([], "client-removed")).toEqual([
       { value: "client-removed", label: "Previously saved target — unavailable" },
     ]);
+  });
+
+  it("keeps disabled future grants locked and preserves their exact saved target records", () => {
+    const future = { ...permission(["organisation"]), key: "payroll.view", customerRoleAssignable: false };
+    const saved = [
+      { permissionKey: "payroll.view", scope: "organisation" as const },
+      { permissionKey: "people.view", scope: "organisation" as const },
+    ];
+    expect(roleScopeChoices(future, targetReads)).toEqual([]);
+    expect(roleScopeChoices(future, targetReads, "organisation")).toMatchObject([{
+      value: "organisation",
+      disabled: true,
+      unavailableReason: "This permission is reserved for a future feature. Its existing grant is preserved unchanged.",
+    }]);
+    expect(preservedUnavailableRoleGrants(saved, [future, permission(["organisation"])]))
+      .toEqual([saved[0]]);
   });
 });

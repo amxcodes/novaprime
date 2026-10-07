@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { PostgresDialect } from "kysely";
 import { Pool } from "pg";
-import { authenticationConfiguration } from "./auth-configuration.js";
+import {
+  authenticationConfiguration,
+  authenticationIpAddressHeaders,
+} from "./auth-configuration.js";
 import { activeEmailConnection } from "./commands/email-connections.js";
 import { stageAuthHandoffForIdentity, type AuthHandoffPurpose } from "./commands/auth-handoffs.js";
 import { database } from "./db.js";
@@ -125,9 +128,7 @@ function buildAuth(options: Readonly<{
       // the direct Node adapter supplies a private socket-IP header instead;
       // a configured reverse proxy/edge may opt into its canonical headers.
       ipAddress: {
-        ipAddressHeaders: trustProxyHeaders()
-          ? ["cf-connecting-ip", "x-forwarded-for", "x-real-ip"]
-          : ["x-nova-remote-ip"],
+        ipAddressHeaders: authenticationIpAddressHeaders(),
       },
     },
     database: {

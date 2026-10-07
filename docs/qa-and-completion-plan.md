@@ -8,6 +8,50 @@ test alone does not count as an end-to-end workflow.
 
 ## Current result
 
+Latest production check — 2026-10-07, 13:08 IST: Netlify's Production
+`DATABASE_URL` was changed after the previous published deploy, so I triggered a
+fresh production deploy of the same `d78b472` code at 13:07:08 IST. It
+published successfully at 13:07:34 IST. Read-only live checks returned
+`/api/ready` 200 (`status=ready`, `scheduler=supabase`) and
+`/api/auth/get-session` 200 (`null` while signed out). The user then retried
+the normal sign-in and confirmed success. This supersedes the earlier
+production `28P01`/500 status below; there is no sign-in blocker now.
+
+The healthy path still needs latency work. Netlify's function-region panel says
+CMH (Ohio, US East), and the disposable Supabase primary is in Seoul
+(`ap-northeast-2`); this cross-region path is a plausible source of added round
+trips, but has not been isolated in a controlled benchmark. Five unauthenticated
+session samples had 1.315 s median total time / 512 ms median `nova-app` time;
+the cold first sample was 2.439 s / 1,753 ms. Three additional samples from
+this runner were 1.65–2.15 s total. These do not establish authenticated p95
+latency. Netlify currently locks custom function regions for this project, so
+region changes require a deliberate hosting/database plan. A code-level
+startup finding remains: the browser waits for the session request, then for
+permission and UI-preference reads before its first complete render, while
+protected API calls repeat session and actor-state resolution. Measure that
+path with an authenticated browser trace before consolidating requests or
+changing session-cache semantics.
+
+The production function logs no longer show `28P01`, but Better Auth warns that
+it cannot resolve a client IP and uses one shared rate-limit bucket per path.
+The Netlify adapter change is implemented and locally verified: it derives the
+private Better Auth IP header only from the trusted Function `context.ip`,
+replacing any caller-supplied value. It has not yet been deployed; verify the
+warning disappears from function logs after the next deployment.
+
+The Supabase setup tool now serializes changes per environment file and records
+`pending`, `applying`, and `applied` rotation checkpoints. Ambiguous password
+updates first probe the bound candidate; reapplying it requires a failed probe
+set, an elapsed cooldown, and an explicit recovery flag. Windows updates also
+document the directory-ACL requirement for atomic `.env` replacement.
+
+Migration 0079's `customer_role_assignable` column is already present on the
+disposable database, but the app role cannot read the ledger and the available
+management token returned 403. Do not replay the SQL directly; verify its
+ledger entry with the migration-owner path before the next schema upgrade.
+Complete Admin/Work permission scenarios and live responsive device/browser
+checks remain open. See `docs/verification-matrix.md` for dated evidence.
+
 Hosted auth/connectivity follow-up — 2026-10-07: the Supabase log export
 shows migrations 0075–0078 applied, followed by PostgreSQL `28P01` failures;
 Better Auth's schema-validation warning is downstream of the rejected runtime

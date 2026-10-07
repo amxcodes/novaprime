@@ -7,6 +7,14 @@ import type {
   RoleTargetScope,
 } from "./contracts";
 
+export function preservedUnavailableRoleGrants(
+  roleGrants: ReadonlyArray<RolePermissionGrant>,
+  permissions: ReadonlyArray<PermissionCatalogueEntry>,
+): RolePermissionGrant[] {
+  const assignability = new Map(permissions.map((permission) => [permission.key, permission.customerRoleAssignable]));
+  return roleGrants.filter((grant) => assignability.get(grant.permissionKey) === false);
+}
+
 export const ROLE_SCOPE_LABELS: Readonly<Record<RolePermissionScope, string>> = {
   organisation: "Organisation",
   own_record: "Own record",
@@ -39,6 +47,14 @@ export function roleScopeChoices(
   savedScope?: string,
   remoteTargetSearch = false,
 ): RoleScopeChoice[] {
+  if (!permission.customerRoleAssignable) {
+    return savedScope ? [{
+      value: savedScope,
+      label: `${ROLE_SCOPE_LABELS[savedScope as RolePermissionScope] || savedScope} — unavailable`,
+      disabled: true,
+      unavailableReason: "This permission is reserved for a future feature. Its existing grant is preserved unchanged.",
+    }] : [];
+  }
   const allowedScopes: readonly string[] = permission.allowedScopes.length
     ? permission.allowedScopes
     : ["organisation"];

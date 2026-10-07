@@ -41,6 +41,7 @@ function baseInput(overrides: Partial<RolePermissionsProjectionInput> = {}): Rol
       module: "People",
       description: "View people records.",
       allowedScopes: ["organisation", "office"],
+      customerRoleAssignable: true,
       internalExtra: "not projected",
     }] } },
     targetReads: {
@@ -59,6 +60,26 @@ function baseInput(overrides: Partial<RolePermissionsProjectionInput> = {}): Rol
 }
 
 describe("role permissions feature projection", () => {
+  it("projects disabled future permissions as explicit unavailable catalogue entries", () => {
+    const props = projectRolePermissionsEditorProps(baseInput({
+      permissions: { result: { permissions: [{
+        key: "payroll.view",
+        module: "Payroll",
+        description: "View future payroll records.",
+        allowedScopes: ["organisation"],
+        customerRoleAssignable: false,
+      }] } },
+    }));
+    expect(props.readState).toEqual({ status: "ready" });
+    expect(props.permissions).toEqual([{
+      key: "payroll.view",
+      module: "Payroll",
+      description: "View future payroll records.",
+      allowedScopes: ["organisation"],
+      customerRoleAssignable: false,
+    }]);
+  });
+
   it("projects only editor fields and strips unrelated role, grant, catalogue, and target data", () => {
     const props = projectRolePermissionsEditorProps(baseInput());
     expect(props.readState).toEqual({ status: "ready" });
@@ -77,6 +98,7 @@ describe("role permissions feature projection", () => {
       module: "People",
       description: "View people records.",
       allowedScopes: ["organisation", "office"],
+      customerRoleAssignable: true,
     }]);
     expect(props.targetReads.office).toEqual({ status: "ready", options: [{ id: "office-7", name: "Central" }] });
     expect(JSON.stringify(props)).not.toMatch(/private-created-time|private role field|not projected|private"/);
@@ -168,6 +190,14 @@ describe("role permissions feature projection", () => {
     }));
     expect(malformedCatalogue.readState.status).toBe("error");
     expect(malformedCatalogue.permissions).toEqual([]);
+
+    const missingAssignability = projectRolePermissionsEditorProps(baseInput({
+      permissions: { result: { permissions: [{
+        key: "payroll.view", module: "Payroll", description: "Future payroll permission.", allowedScopes: ["organisation"],
+      }] } },
+    }));
+    expect(missingAssignability.readState.status).toBe("error");
+    expect(missingAssignability.permissions).toEqual([]);
 
     const malformedTargets = projectRolePermissionsEditorProps(baseInput({
       targetReads: {

@@ -48,6 +48,7 @@ export interface PermissionCatalogueEntry {
   module: string;
   description: string;
   allowedScopes: ReadonlyArray<RolePermissionScope>;
+  customerRoleAssignable: boolean;
 }
 
 export interface RoleTargetOption {

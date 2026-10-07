@@ -162,7 +162,8 @@ function PermissionEditor({
   onRemoveScope: (index: number) => void;
 }) {
   const availableScopes = assignableRoleScopes(permission, targetReads, Boolean(onSearchTargets));
-  const checkboxDisabled = disabled || !canEdit || (!grants.length && availableScopes.length === 0);
+  const unavailablePermission = !permission.customerRoleAssignable;
+  const checkboxDisabled = disabled || !canEdit || unavailablePermission || (!grants.length && availableScopes.length === 0);
   const checked = grants.length > 0;
 
   return (
@@ -176,10 +177,15 @@ function PermissionEditor({
           onChange={(event) => onPermissionChange(event.currentTarget.checked)}
         />
         <span className={styles.permissionCopy}>
-          <strong>{permission.key}</strong>
+          <strong>{permission.key}{unavailablePermission ? " — unavailable for customer roles" : ""}</strong>
           <small>{permission.description}</small>
         </span>
       </label>
+      {unavailablePermission ? (
+        <p className={styles.scopeUnavailable}>
+          This permission belongs to a future feature. New grants are disabled; any existing grant is locked and preserved unchanged.
+        </p>
+      ) : null}
       {checked ? (
         <div className={styles.grantList}>
           {grants.map((grant, index) => (
@@ -190,20 +196,22 @@ function PermissionEditor({
               grant={grant}
               targetReads={targetReads}
               onSearchTargets={onSearchTargets}
-              disabled={disabled || !canEdit}
+              disabled={disabled || !canEdit || unavailablePermission}
               onChange={(patch) => onUpdateGrant(index, patch)}
               onRemove={() => onRemoveScope(index)}
             />
           ))}
-          <Button
-            variant="quiet"
-            size="compact"
-            type="button"
-            disabled={disabled || !canEdit || availableScopes.length === 0}
-            onClick={onAddScope}
-          >
-            Add scope or target
-          </Button>
+          {!unavailablePermission ? (
+            <Button
+              variant="quiet"
+              size="compact"
+              type="button"
+              disabled={disabled || !canEdit || availableScopes.length === 0}
+              onClick={onAddScope}
+            >
+              Add scope or target
+            </Button>
+          ) : null}
         </div>
       ) : null}
       {!checked && availableScopes.length === 0 ? (
@@ -298,9 +306,11 @@ function GrantEditor({
       {targetScope ? (
         <SearchableSelect {...searchableSelectProps} />
       ) : null}
-      <Button variant="quiet" size="compact" type="button" disabled={disabled} onClick={onRemove}>
-        Remove scope
-      </Button>
+      {permission.customerRoleAssignable ? (
+        <Button variant="quiet" size="compact" type="button" disabled={disabled} onClick={onRemove}>
+          Remove scope
+        </Button>
+      ) : null}
     </div>
   );
 }

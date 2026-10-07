@@ -114,6 +114,42 @@ with no quick destinations retain it on phones. Responsive behavior tests
 (11/11), shell component tests (7/7), UI typecheck, and production Vite build
 passed. No authenticated live-browser or physical-device visual check was run.
 
+Production recovery — 2026-10-07, 13:08 IST: Netlify's Production
+`DATABASE_URL` was updated after the then-published deploy. I triggered a fresh
+deploy of the same verified `d78b472` source; Netlify published it successfully
+at 13:07:34 IST. Live read-only requests then returned `/api/ready` 200 with
+`status=ready` and `scheduler=supabase`, and `/api/auth/get-session` 200 with
+`null` while signed out. The user retried the normal sign-in and confirmed it
+succeeded. The new function log showed no `28P01`; it did show Better Auth
+falling back to one shared per-path rate-limit bucket because its client IP was
+missing. A local follow-up now passes only Netlify's trusted Function
+`context.ip` through an overwritten private header; caller-supplied values are
+rejected. Focused tests and typechecks pass, but this code is not deployed yet.
+After deployment, verify that the fallback warning disappears from function
+logs.
+
+Healthy-path latency is still a release concern. Netlify reports the function
+region as CMH (Ohio, US East), while the selected Supabase project's primary
+database is in Seoul (`ap-northeast-2`). This geographic mismatch is a plausible
+contributor, not a measured causal breakdown. Small unauthenticated samples
+varied: an independent five-sample run found `/api/auth/get-session` median
+1.315 s total / 512 ms app time, with a cold first sample at 2.439 s / 1,753 ms
+app time; three later requests from this runner took 1.65–2.15 s total. These
+samples are not p95s or authenticated-route measurements. No function-region,
+database-region, or hosting-provider change was made. Netlify currently locks
+custom function regions for this project; use a measured same-region deployment
+or a deliberate database migration plan before changing infrastructure.
+
+The permission-catalogue migration 0079's new column is present on the
+disposable target, but its migration-ledger row/checksum could not be read as
+`nova_app` (expected least privilege), and the available management token could
+not read that endpoint. Do not apply the raw SQL again. Verify the row through
+the migration-owner path or the normal ledger-aware updater before the next
+upgrade. Production readiness, the anonymous Better Auth session endpoint, and
+the user's successful sign-in are now verified; full authenticated Admin/Work
+coverage, live migration-ledger verification, and responsive device/browser
+checks remain open.
+
 ## Verified evidence (database and host-local scopes)
 
 | Area | Evidence | Result |

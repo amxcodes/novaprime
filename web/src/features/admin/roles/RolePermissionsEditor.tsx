@@ -20,6 +20,7 @@ import {
   assignableRoleScopes,
   roleGrantTargetId,
   rolePermissionModules,
+  preservedUnavailableRoleGrants,
 } from "./role-editor-model";
 import {
   isRoleOperationalPolicyFieldEnabled,
@@ -36,6 +37,8 @@ type EditorDraft = {
   name: string;
   operationalPolicy: RoleOperationalPolicy;
   grants: Record<string, PermissionGrantDraft[]>;
+  /** Existing grants for permissions disabled in the customer-role catalogue stay immutable. */
+  unavailableGrants: ReadonlyArray<RolePermissionGrant>;
 };
 
 const policyFields: ReadonlyArray<{
@@ -168,7 +171,7 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
   }
 
   function togglePermission(permission: PermissionCatalogueEntry, enabled: boolean) {
-    if (!draft || !canEditDraft || submitting) return;
+    if (!draft || !canEditDraft || submitting || !permission.customerRoleAssignable) return;
     const current = draft.grants[permission.key] || [];
     if (!enabled) {
       updateDraft("grants", { ...draft.grants, [permission.key]: [] });
@@ -184,7 +187,7 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
   }
 
   function addScope(permission: PermissionCatalogueEntry) {
-    if (!draft || !canEditDraft || submitting) return;
+    if (!draft || !canEditDraft || submitting || !permission.customerRoleAssignable) return;
     const current = draft.grants[permission.key] || [];
     const scopes = assignableRoleScopes(permission, props.targetReads, Boolean(props.onSearchTargets));
     if (!scopes.length) return;
@@ -248,7 +251,7 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
     event.preventDefault();
     if (!draft || !canEditDraft || submittingRef.current) return;
 
-    const grantResult = collectRolePermissionGrants(props.permissions.map((permission) => ({
+    const grantResult = collectRolePermissionGrants(props.permissions.filter((permission) => permission.customerRoleAssignable).map((permission) => ({
       permissionKey: permission.key,
       enabled: (draft.grants[permission.key] || []).length > 0,
       grants: draft.grants[permission.key] || [],
@@ -261,7 +264,7 @@ export function RolePermissionsEditor(props: RolePermissionsEditorProps) {
     const payload: RoleMutationPayload = {
       key: draft.key,
       name: draft.name,
-      permissionGrants: grantResult.grants as ReadonlyArray<RolePermissionGrant>,
+      permissionGrants: [...(grantResult.grants as ReadonlyArray<RolePermissionGrant>), ...draft.unavailableGrants],
       operationalPolicy: { ...draft.operationalPolicy },
     };
     submittingRef.current = true;
@@ -519,6 +522,7 @@ function emptyDraft(): EditorDraft {
       payrollOvertimeApplicable: false,
     },
     grants: {},
+    unavailableGrants: [],
   };
 }
 
@@ -530,6 +534,7 @@ function roleToDraft(role: RoleRecord, permissions: ReadonlyArray<PermissionCata
     key: role.key,
     name: role.name,
     operationalPolicy: { ...role.operationalPolicy },
+    unavailableGrants: preservedUnavailableRoleGrants(role.permissionGrants, permissions),
     grants: Object.fromEntries(permissions.map((permission) => [
       permission.key,
       (byPermission.get(permission.key) || []).map((grant) => ({
