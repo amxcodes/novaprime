@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { confirmSupabaseProject } from "./supabase-project-confirmation.js";
 import { migrationSha256 } from "./migration-checksum.js";
 import { applicationRoleProvisioningSql } from "./application-role-provisioning.js";
-import { assertSupabaseDatabaseUrlBinding } from "./supabase-pooler.js";
+import { assertSupabaseDatabaseUrlBinding, supabaseManagementFailureCode } from "./supabase-pooler.js";
 
 const projectRef = requiredEnvironment("NOVA_SUPABASE_PROJECT_REF");
 const accessToken =
@@ -61,7 +61,7 @@ async function postSql(path: string, body: unknown): Promise<unknown> {
       .replaceAll(/\s+/g, " ")
       .slice(0, 500);
 
-    throw new Error(`SUPABASE_REQUEST_FAILED_${response.status}_${path}: ${detail}`);
+    throw new Error(`${supabaseManagementFailureCode(path, response.status)}_${path}: ${detail}`);
   }
 
   return response.status === 204 ? undefined : response.json();

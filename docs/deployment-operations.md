@@ -38,7 +38,13 @@ Guided first path:
   the setup command then reads and updates only the selected file. It rejects
   paths outside the checkout and symlinked env files. The project token is
   requested with terminal masking when it is not already in the process
-  environment; do not pass it as a command-line argument. To repair a rejected
+  environment; do not pass it as a command-line argument. For a scoped
+  Supabase Personal Access Token, scope it to this project and grant Database
+  pooling configuration read (`database_pooling_config_read`), Database read
+  and write (`database_read`, `database_write`), and Database migrations write
+  (`database_migrations_write`). The setup command reports which permission
+  was denied; a 403 can also mean your Supabase account role does not have that
+  access to the selected project. To repair a rejected
   `nova_app` password, add `--rotate-app-role-password` only when you can also
   update the API host with the newly generated `DATABASE_URL` from that same
   selected file. On Netlify, update Production Functions before serving traffic.

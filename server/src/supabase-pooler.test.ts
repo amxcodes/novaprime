@@ -4,6 +4,7 @@ import {
   assertSupabaseDatabaseUrlBinding,
   resolveSupabasePoolerHost,
   selectSupabasePoolerHost,
+  supabaseManagementFailureCode,
   supabasePoolerHostFromConfiguration,
   validateSupabasePoolerHost,
 } from "./supabase-pooler";
@@ -69,7 +70,18 @@ describe("Supabase transaction pooler discovery", () => {
   test("does not leak API error bodies or credentials", async () => {
     await expect(resolveSupabasePoolerHost("abcdefghijklmnopqrst", "token", async () =>
       new Response("sensitive server body", { status: 403 }),
-    )).rejects.toThrow("SUPABASE_POOLER_CONFIG_LOOKUP_FAILED_403");
+    )).rejects.toThrow("SUPABASE_POOLER_CONFIG_PERMISSION_REQUIRED_403");
+  });
+
+  test("classifies management API authorization failures by the required bootstrap scope", () => {
+    expect(supabaseManagementFailureCode("/config/database/pooler", 403))
+      .toBe("SUPABASE_POOLER_CONFIG_PERMISSION_REQUIRED_403");
+    expect(supabaseManagementFailureCode("/database/query", 403))
+      .toBe("SUPABASE_DATABASE_WRITE_PERMISSION_REQUIRED_403");
+    expect(supabaseManagementFailureCode("/database/migrations", 403))
+      .toBe("SUPABASE_DATABASE_MIGRATIONS_WRITE_PERMISSION_REQUIRED_403");
+    expect(supabaseManagementFailureCode("/database/query", 401))
+      .toBe("SUPABASE_ACCESS_TOKEN_REJECTED_401");
   });
 });
 

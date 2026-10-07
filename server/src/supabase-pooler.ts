@@ -10,6 +10,15 @@ type PoolerConfiguration = Readonly<{
 
 const poolerHostPattern = /^aws-\d+-[a-z0-9-]+\.pooler\.supabase\.com$/;
 
+export function supabaseManagementFailureCode(path: string, status: number): string {
+  if (status === 401) return "SUPABASE_ACCESS_TOKEN_REJECTED_401";
+  if (status !== 403) return `SUPABASE_REQUEST_FAILED_${status}`;
+  if (path.endsWith("/config/database/pooler")) return "SUPABASE_POOLER_CONFIG_PERMISSION_REQUIRED_403";
+  if (path.endsWith("/database/query")) return "SUPABASE_DATABASE_WRITE_PERMISSION_REQUIRED_403";
+  if (path.endsWith("/database/migrations")) return "SUPABASE_DATABASE_MIGRATIONS_WRITE_PERMISSION_REQUIRED_403";
+  return "SUPABASE_MANAGEMENT_PERMISSION_DENIED_403";
+}
+
 export function validateSupabasePoolerHost(value: string): string {
   const host = value.trim().toLowerCase();
   if (!poolerHostPattern.test(host)) throw new Error("SUPABASE_POOLER_HOST_INVALID");
@@ -173,10 +182,11 @@ export async function resolveSupabasePoolerHost(
 ): Promise<string> {
   if (!/^[a-z0-9]{20}$/.test(projectRef)) throw new Error("NOVA_SUPABASE_PROJECT_REF_INVALID");
   if (!accessToken.trim()) throw new Error("SUPABASE_ACCESS_TOKEN_REQUIRED");
-  const response = await request(`https://api.supabase.com/v1/projects/${projectRef}/config/database/pooler`, {
+  const path = `/config/database/pooler`;
+  const response = await request(`https://api.supabase.com/v1/projects/${projectRef}${path}`, {
     headers: { authorization: `Bearer ${accessToken}` },
     signal: AbortSignal.timeout(30_000),
   });
-  if (!response.ok) throw new Error(`SUPABASE_POOLER_CONFIG_LOOKUP_FAILED_${response.status}`);
+  if (!response.ok) throw new Error(supabaseManagementFailureCode(path, response.status));
   return supabasePoolerHostFromConfiguration(await response.json());
 }
