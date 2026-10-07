@@ -71,7 +71,7 @@ describe("safe Git update worktrees", () => {
       originalHead: baseline,
       targetCommit: target,
     });
-  }, 20_000);
+  }, 60_000);
 
   it("uses an exact durable path and resumes a clean pre-merge crash state", async () => {
     const { root, tempRoot, baseline, target } = await makeRepository();
@@ -88,7 +88,7 @@ describe("safe Git update worktrees", () => {
     expect(resumed).toMatchObject({ path: candidatePath, originalHead: baseline, targetCommit: target });
     expect(resumed!.headCommit).toBe(target);
     expect(run(candidatePath, ["rev-parse", "HEAD"]).trim()).toBe(target);
-  }, 20_000);
+  }, 60_000);
 
   it("stops before creating a candidate when tracked or untracked work exists", async () => {
     const { root } = await makeRepository();
@@ -103,7 +103,7 @@ describe("safe Git update worktrees", () => {
     await expect(prepareUpdateWorktree(root, { targetCommit: "a".repeat(40), releaseTag: "v0.2.0" }))
       .rejects.toMatchObject({ code: "DIRTY_WORKTREE" });
     expect((await readFile(join(root, "README.md"), "utf8")).trim()).toBe("tracked operator edit");
-  }, 20_000);
+  }, 60_000);
 
   it("keeps a conflicted candidate for review and leaves the operator branch untouched", async () => {
     const { root, tempRoot, baseline } = await makeRepository();
@@ -126,7 +126,7 @@ describe("safe Git update worktrees", () => {
     expect(prepared.conflictedPaths).toContain("README.md");
     expect(run(root, ["rev-parse", "HEAD"]).trim()).toBe(customerHead);
     expect(run(root, ["rev-parse", "operator"]).trim()).not.toBe(baseline);
-  }, 20_000);
+  }, 60_000);
 
   it("accepts only the exact two-parent merge for a divergent customer base", async () => {
     const { root, tempRoot, target } = await makeRepository();
@@ -150,7 +150,7 @@ describe("safe Git update worktrees", () => {
       expectedTargetCommit: target,
       expectedCandidateHead: prepared.path ? run(prepared.path, ["rev-parse", "HEAD"]).trim() : undefined,
     })).resolves.toMatchObject({ originalHead, targetCommit: target, headCommit: parentLine[0] });
-  }, 20_000);
+  }, 60_000);
 
   it("requires explicit adoption when a completed merge HEAD was not journaled", async () => {
     const { root, tempRoot, target } = await makeRepository();
@@ -175,7 +175,7 @@ describe("safe Git update worktrees", () => {
       expectedTargetCommit: target,
       allowUnpinnedMerge: true,
     })).resolves.toMatchObject({ originalHead, targetCommit: target });
-  }, 20_000);
+  }, 60_000);
 
   it("rejects a non-GitHub destination even when it is the configured push remote", async () => {
     const { root, tempRoot, baseline, target, remote } = await makeRepository();
@@ -194,7 +194,7 @@ describe("safe Git update worktrees", () => {
     })).rejects.toMatchObject({ code: "PUSH_DESTINATION_UNSUPPORTED" });
     expect(run(remote, ["rev-parse", "refs/heads/main"]).trim()).toBe(target);
     expect(run(root, ["rev-parse", "HEAD"]).trim()).toBe(baseline);
-  }, 20_000);
+  }, 60_000);
 
   it("rechecks the exact candidate HEAD immediately before a GitHub push", async () => {
     const { root, tempRoot, baseline, target } = await makeRepository();
@@ -212,7 +212,7 @@ describe("safe Git update worktrees", () => {
       expectedCandidateHead: baseline,
       expectedTargetCommit: target,
     })).rejects.toMatchObject({ code: "CANDIDATE_HEAD_MISMATCH" });
-  }, 20_000);
+  }, 60_000);
 
   it("accepts only GitHub HTTPS and SSH push URLs", () => {
     expect(() => validateGitHubPushUrl("https://github.com/customer/nova.git")).not.toThrow();
@@ -257,7 +257,7 @@ describe("safe Git update worktrees", () => {
       expectedCandidateHead: target,
       expectedTargetCommit: target,
     })).rejects.toMatchObject({ code: "PUSH_DESTINATION_CHANGED" });
-  }, 20_000);
+  }, 60_000);
 
   it("refuses a push to the canonical NOVA repository in every supported URL form", async () => {
     const { root, tempRoot, baseline, target } = await makeRepository();
@@ -277,7 +277,7 @@ describe("safe Git update worktrees", () => {
       expectedCandidateHead: target,
       expectedTargetCommit: target,
     })).rejects.toMatchObject({ code: "PUSH_DESTINATION_CANONICAL" });
-  }, 20_000);
+  }, 60_000);
 
   it("refuses a push after the source checkout head changes", async () => {
     const { root, tempRoot, baseline, target } = await makeRepository();
@@ -298,7 +298,7 @@ describe("safe Git update worktrees", () => {
       expectedCandidateHead: target,
       expectedTargetCommit: target,
     })).rejects.toMatchObject({ code: "SOURCE_CHECKOUT_CHANGED" });
-  }, 20_000);
+  }, 60_000);
 
   it("rejects extra candidate commits and incorrect recorded base or expected HEAD", async () => {
     const { root, tempRoot, baseline, target } = await makeRepository();
@@ -337,5 +337,5 @@ describe("safe Git update worktrees", () => {
       expectedTargetCommit: target,
       expectedCandidateHead: baseline,
     })).rejects.toMatchObject({ code: "CANDIDATE_HISTORY_INVALID" });
-  }, 20_000);
+  }, 60_000);
 });

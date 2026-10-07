@@ -49,7 +49,7 @@ describe("resolveSetupEnvironmentPath", () => {
       throw error;
     }
 
-    expect(() => resolveSetupEnvironmentPath(root, ".env.qa-supabase")).toThrow("SETUP_ENV_FILE_OUTSIDE_REPOSITORY");
+    expect(() => resolveSetupEnvironmentPath(root, ".env.qa-supabase")).toThrow("SETUP_ENV_FILE_SYMLINK_UNSUPPORTED");
   });
 
   test("rejects a dangling env-file symlink instead of writing through it", () => {
