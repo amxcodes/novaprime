@@ -51,6 +51,11 @@ pool waiting, and application work.
   usually within tens of milliseconds of the handler on those samples. One
   earlier cold session request had about 1.7 s outside NOVA, so platform
   startup can hurt cold requests but does not explain sustained warm latency.
+- The QA database has `pg_stat_statements` installed in the `extensions`
+  schema, but the `nova_app` database role cannot read that view (PostgreSQL
+  `42501`). No grants or database settings were changed. Query execution
+  statistics therefore need the Supabase dashboard or an authorized
+  monitoring role; do not broaden the runtime app role for profiling.
 - My Day returned HTTP 409 for attendance because the page reported that an
   active office assignment is required. This is a setup/business-state issue,
   not a latency or database-authentication failure. Work’s sampled reads
@@ -127,7 +132,9 @@ permanent hosting change.
 
 - [ ] In the matching time window, inspect Supabase `pg_stat_statements` for
   high mean/max execution time and high total time; snapshot cumulative stats
-  before and after the same controlled workload.
+  before and after the same controlled workload. The runtime `nova_app` role
+  currently lacks SELECT on the view (`42501`); use dashboard/monitoring
+  access instead of widening the application role.
 - [ ] Inspect active sessions, blocked/long-running queries, connection counts
   by role, cache hit rate, sequential scans, and index usage.
 - [ ] Explain the selected slow statements in a safe environment. Add an index
