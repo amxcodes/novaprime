@@ -10,11 +10,12 @@ import {
 import { runDeploymentDoctor } from "./deployment-doctor.ts";
 import { discoverProviderResources } from "./deployment/providers.ts";
 import { loadDeploymentPlan, saveDeploymentPlan } from "./deployment/state.ts";
+import { verifyDeploymentPlanSnapshot } from "./deployment/verification.ts";
 
 const repoRoot = resolve(import.meta.dir, "..");
 const preflightPath = resolve(repoRoot, "scripts/deployment-preflight.ts");
 
-type Command = "status" | "doctor" | "plan" | "show" | "apply" | "help";
+type Command = "status" | "doctor" | "plan" | "show" | "verify" | "apply" | "help";
 interface Options {
   command: Command;
   environmentFile?: string;
@@ -39,7 +40,7 @@ function requiredValue(args: readonly string[], index: number, option: string): 
 
 export function parseDeploymentManagerArguments(args: readonly string[]): Options {
   const command = args[0] === "--help" || args[0] === "-h" ? "help" : args[0] ?? "help";
-  if (command !== "status" && command !== "doctor" && command !== "plan" && command !== "show" && command !== "apply" && command !== "help") {
+  if (command !== "status" && command !== "doctor" && command !== "plan" && command !== "show" && command !== "verify" && command !== "apply" && command !== "help") {
     throw new Error("DEPLOYMENT_COMMAND_NOT_AVAILABLE:" + command);
   }
   if (command === "help" && args.length > 1) throw new Error("DEPLOYMENT_HELP_CANNOT_BE_COMBINED");
@@ -49,8 +50,14 @@ export function parseDeploymentManagerArguments(args: readonly string[]): Option
     options.planId = args[1];
     return options;
   }
+  let firstOption = 1;
+  if (command === "verify") {
+    if (args.length < 2 || !/^plan-[0-9a-f-]{36}$/i.test(args[1]!)) throw new Error("DEPLOYMENT_PLAN_ID_REQUIRED");
+    options.planId = args[1];
+    firstOption = 2;
+  }
   const seen = new Set<string>();
-  for (let index = 1; index < args.length; index += 1) {
+  for (let index = firstOption; index < args.length; index += 1) {
     const argument = args[index]!;
     if (argument === "--help" || argument === "-h") {
       if (args.length !== 2) throw new Error("DEPLOYMENT_HELP_CANNOT_BE_COMBINED");
@@ -95,8 +102,8 @@ export function parseDeploymentManagerArguments(args: readonly string[]): Option
     throw new Error("DEPLOYMENT_PLAN_OPTIONS_REQUIRE_PLAN_COMMAND");
   }
   if (options.command !== "doctor" && options.apiOrigin) throw new Error("DEPLOYMENT_API_ORIGIN_REQUIRES_DOCTOR");
-  if (options.command !== "status" && options.json) throw new Error("DEPLOYMENT_JSON_OPTION_REQUIRES_STATUS");
-  if (options.command !== "status" && options.command !== "plan" && options.remote) throw new Error("DEPLOYMENT_REMOTE_OPTION_NOT_SUPPORTED_FOR_COMMAND");
+  if (options.command !== "status" && options.command !== "verify" && options.json) throw new Error("DEPLOYMENT_JSON_OPTION_REQUIRES_STATUS");
+  if (options.command !== "status" && options.command !== "plan" && options.command !== "verify" && options.remote) throw new Error("DEPLOYMENT_REMOTE_OPTION_NOT_SUPPORTED_FOR_COMMAND");
   return options;
 }
 
@@ -146,7 +153,7 @@ function reportStatus(
       const migrations = provider.migrationInventory
         ? `Migrations ${provider.migrationInventory.state} (${provider.migrationInventory.appliedCount ?? "?"} applied; head ${provider.migrationInventory.migrationHead ?? "none"}; expected ${provider.migrationInventory.expectedHead ?? "unknown"})`
         : undefined;
-      const summary = [provider.provider, provider.state, provider.target, provider.configuredScheduler
+      const summary = [provider.provider, provider.state, provider.target, provider.revision ? `revision ${provider.revision}` : undefined, provider.configuredScheduler
         ? `configured scheduler ${provider.configuredScheduler}` : undefined, scheduler, provider.schedulerInventory?.detail,
         migrations, provider.migrationInventory?.detail, provider.detail]
         .filter(Boolean).join(" — ");
@@ -213,6 +220,7 @@ export async function runDeploymentManager(
         "  bun run nova:deployment doctor [--env-file <path>] [--api-origin https://nova.example]",
         "  bun run nova:deployment plan --runtime <netlify|cloudflare|vercel|vps> [--database <keep|provision-supabase|move>] [--scheduler <keep|provider>] [--env-file <path>] [--remote]",
         "  bun run nova:deployment show <plan-id>",
+        "  bun run nova:deployment verify <plan-id> [--env-file <path>] [--remote] [--json]",
         "  bun run nova:deployment apply <plan-id>  (not enabled; provider writes are not implemented)",
         "",
         "Remote inventory is read-only and requires explicit target IDs in the selected environment. No deploy, DNS, scheduler, or database-move write is enabled.",
@@ -244,6 +252,21 @@ export async function runDeploymentManager(
       const plan = await loadDeploymentPlan(repoRoot, options.planId!, { allowExpired: true });
       write(JSON.stringify(plan, null, 2));
       return 0;
+    }
+
+    if (options.command === "verify") {
+      const plan = await loadDeploymentPlan(repoRoot, options.planId!);
+      const inventory = await inspectLocalDeployment(repoRoot, selected.values, selected.label);
+      const remote = options.remote ? await discoverProviderResources(selected.values) : undefined;
+      const verification = verifyDeploymentPlanSnapshot(plan, inventory, remote);
+      const result = {
+        planId: plan.id,
+        ...verification,
+        applyEnabled: false,
+        providerWritesPerformed: false,
+      };
+      write(JSON.stringify(result, null, 2));
+      return verification.valid ? 0 : 2;
     }
 
     if (options.command === "apply") {

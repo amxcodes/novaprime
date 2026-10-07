@@ -33,7 +33,7 @@ application feature permissions.
 | --- | --- | --- |
 | Runtime adapters | Netlify Functions, Vercel Functions, Cloudflare Worker, and VPS/Docker run the NOVA API through provider-specific entry points. | The adapters do not create or configure customer provider projects. |
 | PostgreSQL | Supabase Cloud bootstrap and direct PostgreSQL setup apply migrations and create/check the restricted runtime role. The update manager migrates an existing pinned target. | There is no automated database provisioning or cross-database data-copy/cutover workflow. A new target is not a schema migration. |
-| Scheduler | Cloudflare, Netlify, Vercel, Supabase Cron, and VPS use the shared protected tick contract. The Supabase command creates/removes its schedule. Provider build configuration selects the other hosted schedules. `nova:deployment status --remote` can inspect selected Cloudflare and Supabase schedules. | There is no complete inventory across every account, runtime, and external trigger, nor a scheduler handover executor. A selector does not discover every duplicate schedule targeting the database. |
+| Scheduler | Cloudflare, Netlify, Vercel, Supabase Cron, and VPS use the shared protected tick contract. The Supabase command creates/removes its schedule. Provider build configuration selects the other hosted schedules. `nova:deployment status --remote` reads the selected Netlify site's latest published production deploy schedule list, selected Cloudflare Worker schedules, and project-pinned Supabase Cron rows when the owner URL is available. | Vercel Cron and VPS schedule inventory remain unverified; a single selected Worker/site does not prove account-wide completeness. There is no complete inventory across every account, runtime, and external trigger, nor a scheduler handover executor. A selector does not discover every duplicate schedule targeting the database. |
 | Source and release | `nova:update` prepares a pinned source candidate, applies approved migrations, and can offer a Git push. | A successful push is not proof that a host built, deployed, or serves that candidate. |
 | Diagnosis | `deployment:preflight` checks the configured database/schema; `deployment:doctor` adds safe repair guidance and optional public health/readiness probes. `nova:deployment status --remote` reads explicitly targeted provider metadata and, when the owner URL is selected, Supabase migration and Cron inventory. | The manager does not yet verify all account resources, secret bindings/presence, custom domains or DNS, or every scheduler. Its inventory is not proof that unselected resources do not exist. |
 | First install | The public deployment assistant describes supported combinations and the operator actions. | It is a guide, not a control plane; selecting a path does not change an account. |
@@ -129,17 +129,22 @@ bun run nova:deployment doctor
 bun run nova:deployment plan --runtime cloudflare --database keep --scheduler supabase --env-file .env --remote
 bun run nova:deployment plan --runtime netlify --database provision-supabase --scheduler supabase
 bun run nova:deployment show <plan-id>
+bun run nova:deployment verify <plan-id> --remote --env-file .env
 bun run nova:deployment apply <plan-id>
-bun run nova:deployment resume <operation-id>
-bun run nova:deployment verify <operation-id>
-bun run nova:deployment rollback <operation-id>
 ```
+
+`resume <operation-id>`, `verify <operation-id>`, and `rollback <operation-id>`
+are future executor commands; they are not available yet. The current `verify`
+command accepts a plan ID and only rechecks the saved snapshot.
 
 `status --remote` currently contacts only the providers for which both an
 explicit target ID and credential are present in the selected environment:
-Netlify site and latest production deploy, Cloudflare Worker and its Cron
-expressions, Vercel project and latest production deployment, and Supabase
-project/service health. With an explicitly selected `MIGRATOR_DATABASE_URL`
+Netlify site and latest published production deploy (including its
+`function_schedules` metadata), Cloudflare Worker and its Cron expressions,
+Vercel project and latest production deployment, and Supabase project/service
+health. A missing Netlify schedule field is unknown; only an explicit array
+(including an empty array) counts as inspected for that published deploy. With
+an explicitly selected `MIGRATOR_DATABASE_URL`
 that fingerprints to the same database as `DATABASE_URL`, it also lists only
 NOVA-targeting `cron.job` rows and compares `public.nova_schema_migrations`
 filenames and SHA-256 checksums against the verified local release manifest,
@@ -152,11 +157,14 @@ identity endpoint over HTTPS and retains only its allowlisted runtime, release,
 database fingerprint/readiness, and scheduler fields. It sends read-only
 requests, does not enumerate an entire account, and reports only sanitized
 metadata or permission status. The Supabase result is project-scoped; the
-Cloudflare result covers only the selected Worker. Netlify and Vercel scheduler
-inventory is not verified by this adapter, and other Cloudflare Workers or VPS
-instances may exist. Plans therefore carry a global scheduler-inventory
-blocker until every live triggering surface is accounted for. Absence in this
-inventory is not proof that no trigger or domain exists.
+Netlify result covers only the selected site's current published production
+deploy; the Cloudflare result covers only the selected Worker. Vercel scheduler
+inventory is not verified by this adapter, and other Netlify sites, Cloudflare
+Workers, Vercel projects, VPS instances, or external triggers may exist. The
+planner requires each known scheduler inventory to be project-scoped; a
+resource-only read does not close the global scheduler gate. Plans therefore
+remain blocked until every live triggering surface is accounted for. Absence
+in this inventory is not proof that no trigger or domain exists.
 The supported read-only target variables are `NETLIFY_SITE_ID`,
 `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_WORKER_NAME`, `VERCEL_PROJECT_ID` (and
 optional `VERCEL_TEAM_ID`), and `NOVA_SUPABASE_PROJECT_REF`. Supabase Cron and
@@ -171,9 +179,14 @@ Run the focused checks with `bun run test:deployment-manager`.
 bound to this checkout and the current local source snapshot. `show` reads that
 plan. With `--remote`, the plan includes sanitized provider facts, the inspected
 database migration head and checksum state, and a verified live NOVA identity
-fingerprint when available. The plan is still a local proposal: it does not yet
-bind verified remote account resources, complete scheduler inventory, DNS, or
-secret scopes. `apply`
+fingerprint when available. `verify <plan-id>` checks that the checkout,
+effective local target hints, and any bound provider inventory still match the
+saved plan; pass `--remote` to re-read provider state. It ignores descriptive
+timestamps but detects changed targets, releases, database fingerprints,
+migration heads, provider deployment revisions, origins, and scheduler rows.
+It performs only reads. A local-only plan cannot be upgraded into a remote-bound
+plan by verification. The plan is still a local proposal: inventory remains incomplete for Vercel Cron,
+account-wide/other-resource schedules, DNS, and secret scopes. `apply`
 deliberately refuses because provider write adapters and an operation executor
 have not been implemented. A private journal store is present, but it is not
 yet connected to a CLI operation. Once full provider inventory and confirmation
@@ -676,9 +689,11 @@ plan's documented phase bounds and observed provider behavior.
    privileges. A private journal store binds events to a persisted plan
    fingerprint and enforces ordered revisions; there is not yet a CLI
    operation executor. Finish this phase in this order:
-   - Reconcile Netlify and Vercel scheduler state with the exact selected
-     deploy/source and deploy-context configuration; inspect selected Worker
-     Cron and Supabase Cron; keep any source that cannot be inspected as an
+   - Netlify inventory now reads `function_schedules` only from the latest
+     published production deploy; Cloudflare reads only the selected Worker;
+     Supabase reads NOVA-targeting jobs from the database-pinned owner URL.
+     Complete selected-resource reconciliation and implement a confirmed
+     Vercel Cron read path. Keep every uninspected account/resource as an
      explicit blocker. Never infer that an absent API row means no schedule.
    - Inventory custom-domain/route ownership and required runtime binding
      names. Record secret presence and scope/context only; do not retrieve or

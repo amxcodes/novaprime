@@ -20,8 +20,10 @@ export async function inspectVercel(
     const deployments = asObject(await getProviderJson(fetcher,
       `https://api.vercel.com/v6/deployments?${deploymentQuery}`, token, "vercel"));
     const latest = Array.isArray(deployments?.deployments) ? asObject(deployments.deployments[0]) : null;
+    const revision = safeProviderId(firstString(latest?.uid, latest?.id));
     return {
       provider: "vercel", state: "identified", target: projectId, runtime: "vercel",
+      ...(revision ? { revision } : {}),
       ...(safeReleaseSha(firstString(asObject(latest?.meta)?.githubCommitSha))
         ? { release: safeReleaseSha(firstString(asObject(latest?.meta)?.githubCommitSha)) } : {}),
       ...(safeHttpsOrigin(`https://${firstString(latest?.url) ?? ""}`)

@@ -89,6 +89,19 @@ test("remote planning binds provider inventory and blocks an unverified runtime 
   expect(preview.blockers).not.toContain("DATABASE_PROVIDER_NOT_VERIFIED");
 });
 
+test("remote planning requires a stable provider revision for the selected runtime", () => {
+  const providers = [
+    { provider: "netlify" as const, state: "identified" as const, target: "site-1" },
+    { provider: "cloudflare" as const, state: "identified" as const, target: "account/worker", revision: "etag-1" },
+    { provider: "supabase" as const, state: "identified" as const, target: "abcdefghijklmnopqrst" },
+    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", configuredScheduler: "supabase" },
+  ];
+  const preview = buildDeploymentPreview(inventory, {
+    runtime: "netlify", database: "keep", scheduler: "supabase",
+  }, providers);
+  expect(preview.blockers).toContain("TARGET_RUNTIME_REVISION_UNAVAILABLE");
+});
+
 test("remote plans stop on pending or diverged database migrations before a runtime change", () => {
   const providers = [
     { provider: "netlify" as const, state: "identified" as const, target: "site-1" },
@@ -162,4 +175,31 @@ test("remote plan detects duplicate or missing active NOVA schedulers", () => {
     ? { ...provider, schedulerInventory: { ...provider.schedulerInventory, triggers: [] } }
     : provider));
   expect(missing.blockers).toContain("CONFIGURED_SUPABASE_SCHEDULER_HAS_NO_ACTIVE_NOVA_JOB");
+});
+
+test("a single-resource Cron read cannot close the global scheduler inventory gate", () => {
+  const providers = [
+    { provider: "netlify" as const, state: "identified" as const, schedulerInventory: {
+      scope: "target-runtime" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [],
+    } },
+    { provider: "cloudflare" as const, state: "identified" as const, schedulerInventory: {
+      scope: "target-runtime" as const, state: "verified" as const, completeness: "resource-only" as const,
+      triggers: [{ id: "nova-worker/schedule-1", name: "cloudflare-cron-trigger", schedule: "*/5 * * * *", active: true }],
+    } },
+    { provider: "vercel" as const, state: "identified" as const, schedulerInventory: {
+      scope: "target-runtime" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [],
+    } },
+    { provider: "supabase" as const, state: "identified" as const, schedulerInventory: {
+      scope: "database-project" as const, state: "verified" as const, completeness: "project-scoped" as const,
+      triggers: [{ id: "12", name: "nova-background-tick", schedule: "*/5 * * * *", active: true }],
+    }, migrationInventory: {
+      state: "current" as const, appliedCount: 2, migrationHead: "0002_authentication_bootstrap.sql",
+      expectedHead: "0002_authentication_bootstrap.sql", checksumsVerified: true,
+    } },
+    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", configuredScheduler: "supabase" },
+  ];
+  const preview = buildDeploymentPreview(inventory, {
+    runtime: "cloudflare", database: "keep", scheduler: "supabase",
+  }, providers);
+  expect(preview.blockers).toContain("GLOBAL_SCHEDULER_INVENTORY_INCOMPLETE");
 });

@@ -35,8 +35,10 @@ export async function inspectCloudflare(
         detail: providerFailure("cloudflare", error).detail,
       };
     }
+    const revision = safeProviderId(firstString(script.etag, script.modified_on));
     return {
       provider: "cloudflare", state: "identified", target: `${account}/${worker}`, runtime: "cloudflare",
+      ...(revision ? { revision } : {}),
       schedulerInventory,
       ...(firstString(script.modified_on) ? { detail: `SCRIPT_MODIFIED_${script.modified_on}` } : {}),
     };

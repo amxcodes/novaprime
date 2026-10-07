@@ -16,6 +16,15 @@ test("command parsing requires a target runtime and keeps apply as an explicit u
     .toMatchObject({ command: "plan", runtime: "cloudflare", scheduler: "supabase", database: "keep" });
   expect(parseDeploymentManagerArguments(["status", "--remote", "--json"]))
     .toMatchObject({ command: "status", remote: true, json: true });
+  expect(parseDeploymentManagerArguments([
+    "verify", "plan-123e4567-e89b-42d3-a456-426614174000", "--env-file", ".env.qa", "--remote", "--json",
+  ])).toMatchObject({
+    command: "verify", planId: "plan-123e4567-e89b-42d3-a456-426614174000",
+    environmentFile: ".env.qa", remote: true, json: true,
+  });
+  expect(() => parseDeploymentManagerArguments([
+    "verify", "plan-123e4567-e89b-42d3-a456-426614174000", "--runtime", "cloudflare",
+  ])).toThrow("DEPLOYMENT_PLAN_OPTIONS_REQUIRE_PLAN_COMMAND");
   expect(() => parseDeploymentManagerArguments(["plan", "--runtime", "netlify", "--runtime", "cloudflare"]))
     .toThrow("DEPLOYMENT_OPTION_DUPLICATE:--runtime");
 });

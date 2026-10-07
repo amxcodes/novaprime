@@ -59,6 +59,7 @@ export function buildDeploymentPreview(
   if (providerInventory) {
     const runtimeState = providerInventory.find(({ provider }) => provider === request.runtime);
     if (runtimeState?.state !== "identified") blockers.push("TARGET_RUNTIME_NOT_VERIFIED");
+    else if (!runtimeState.revision) blockers.push("TARGET_RUNTIME_REVISION_UNAVAILABLE");
     const databaseState = providerInventory.find(({ provider }) => provider === "supabase");
     if (request.database === "keep" && inventory.database.providerHint === "supabase" &&
         databaseState?.state !== "identified") {
@@ -89,8 +90,7 @@ export function buildDeploymentPreview(
     const incompleteSchedulerTargets = schedulerProviders.some((provider) =>
       provider.state !== "identified" ||
       (provider.schedulerInventory?.state !== "verified" && provider.schedulerInventory?.state !== "not-installed") ||
-      provider.schedulerInventory.completeness === "not-inspected" ||
-      provider.schedulerInventory.completeness === "partial");
+      provider.schedulerInventory.completeness !== "project-scoped");
     if (incompleteSchedulerTargets) blockers.push("GLOBAL_SCHEDULER_INVENTORY_INCOMPLETE");
     const supabaseTriggers = providerInventory.find(({ provider }) => provider === "supabase")?.schedulerInventory?.triggers ?? [];
     if (supabaseTriggers.filter(({ active }) => active).length > 1) {

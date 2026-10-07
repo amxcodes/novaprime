@@ -50,6 +50,12 @@ test("plans persist outside the checkout with a random ID and private file mode"
   const repo = join(temporaryRoot, "repo");
   const preview = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "supabase" }, [
     {
+      provider: "cloudflare" as const,
+      state: "identified" as const,
+      target: "account/worker",
+      revision: "worker-etag-123",
+    },
+    {
       provider: "supabase" as const,
       state: "identified" as const,
       target: "abcdefghijklmnopqrst",

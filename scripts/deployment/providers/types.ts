@@ -21,6 +21,7 @@ export interface ProviderResource {
   provider: ProviderName;
   state: "identified" | "target-required" | "not-configured" | "unavailable";
   target?: string;
+  revision?: string;
   runtime?: string;
   release?: string;
   origin?: string;

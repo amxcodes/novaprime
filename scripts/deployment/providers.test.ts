@@ -8,7 +8,9 @@ test("provider discovery requests only explicit target resources and returns met
     const token = new Headers(init?.headers).get("authorization") ?? "";
     requests.push({ url, token });
     if (url.endsWith("/sites/site-id")) return Response.json({ id: "site-id", ssl_url: "https://nova.example" });
-    if (url.includes("/sites/site-id/deploys")) return Response.json([{ state: "ready", context: "production", commit_ref: "a".repeat(40) }]);
+    if (url.includes("/sites/site-id/deploys")) return Response.json([{
+      state: "ready", context: "production", published: true, commit_ref: "a".repeat(40), function_schedules: [],
+    }]);
     if (url.endsWith("/projects/abcdefghijklmnopqrst")) return Response.json({ id: "id", database: { version: "17.4" } });
     if (url.endsWith("/projects/abcdefghijklmnopqrst/health")) return Response.json([{ status: "HEALTHY" }]);
     throw new Error("unexpected read");
@@ -40,6 +42,48 @@ test("provider discovery requires explicit target IDs and sanitizes API failure 
     provider: "cloudflare", state: "unavailable", detail: "MISSING_READ_PERMISSION",
   });
   expect(JSON.stringify(rejected)).not.toContain("token response");
+});
+
+test("Netlify Cron inventory comes only from its latest published production deploy", async () => {
+  const requests: string[] = [];
+  const fetcher: ProviderFetcher = async (input) => {
+    const url = String(input);
+    requests.push(url);
+    if (url.endsWith("/sites/site-id")) return Response.json({ id: "site-id", url: "nova.netlify.app" });
+    if (url.includes("/sites/site-id/deploys")) return Response.json([{
+      state: "ready", context: "production", published: true, commit_ref: "a".repeat(40),
+      function_schedules: [{ name: "nova-background-tick", cron: "*/5 * * * *" }],
+    }]);
+    throw new Error("unexpected read");
+  };
+  const resources = await discoverProviderResources({ NETLIFY_AUTH_TOKEN: "netlify-token", NETLIFY_SITE_ID: "site-id" }, fetcher);
+  expect(requests.some((url) => url.includes("production=true&latest-published=true&per_page=1"))).toBe(true);
+  expect(resources.find(({ provider }) => provider === "netlify")?.schedulerInventory).toEqual({
+    scope: "target-runtime",
+    state: "verified",
+    completeness: "project-scoped",
+    triggers: [{ id: "nova-background-tick", name: "nova-background-tick", schedule: "*/5 * * * *", active: true }],
+  });
+});
+
+test("Netlify Cron inventory distinguishes an explicit empty schedule list from missing metadata", async () => {
+  for (const [function_schedules, expected] of [
+    [[], { state: "not-installed", completeness: "project-scoped" }],
+    [undefined, { state: "unavailable", completeness: "partial", detail: "NETLIFY_PUBLISHED_DEPLOY_SCHEDULE_INVENTORY_UNAVAILABLE" }],
+  ] as const) {
+    const fetcher: ProviderFetcher = async (input) => {
+      const url = String(input);
+      if (url.endsWith("/sites/site-id")) return Response.json({ id: "site-id" });
+      if (url.includes("/sites/site-id/deploys")) return Response.json([{
+        state: "ready", context: "production", published: true, ...(function_schedules === undefined ? {} : { function_schedules }),
+      }]);
+      throw new Error("unexpected read");
+    };
+    const resources = await discoverProviderResources({ NETLIFY_AUTH_TOKEN: "netlify-token", NETLIFY_SITE_ID: "site-id" }, fetcher);
+    expect(resources.find(({ provider }) => provider === "netlify")?.schedulerInventory).toMatchObject({
+      scope: "target-runtime", triggers: [], ...expected,
+    });
+  }
 });
 
 test("Cloudflare inventory distinguishes one Worker's Cron triggers from global scheduler coverage", async () => {
