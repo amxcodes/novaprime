@@ -1,4 +1,4 @@
-import { afterEach, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, test } from "bun:test";
 
 mock.module("./auth.js", () => ({
   auth: {
@@ -19,6 +19,12 @@ process.env.BETTER_AUTH_URL = "https://nova.test";
 process.env.DATABASE_URL = "postgres://nova_app:private@127.0.0.1/nova";
 
 const { handleRequest } = await import("./app.js");
+
+beforeEach(() => {
+  process.env.BETTER_AUTH_SECRET = "test-secret-which-is-long-enough-for-better-auth";
+  process.env.BETTER_AUTH_URL = "https://nova.test";
+  process.env.DATABASE_URL = "postgres://nova_app:private@127.0.0.1/nova";
+});
 
 afterEach(() => {
   for (const [key, value] of previousEnvironment) {
