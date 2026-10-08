@@ -1440,11 +1440,20 @@ async function main(): Promise<void> {
     "definition_rule_updates_use_optimistic_revision");
   const restrictedCatalog = await request("GET", "/task-catalog", undefined, firstEmployee.cookie);
   assertStatus("catalog_view_is_independent_of_billing_class", restrictedCatalog, 200);
-  assert(restrictedCatalog.body?.permissions?.["tasks.catalog.view"] === true
-    && restrictedCatalog.body?.permissions?.["tasks.create.billable"] === undefined
-    && restrictedCatalog.body?.entries?.some((entry: any) => entry.id === taskCatalogEntryId
-      && entry.billingClass === undefined),
-  "catalog_content_has_no_billing_field_and_task_visibility_is_not_a_billing_grant");
+  const catalogPermissions = restrictedCatalog.body?.permissions ?? {};
+  const visibleCatalogEntry = restrictedCatalog.body?.entries?.find((entry: any) => entry.id === taskCatalogEntryId);
+  console.info("restricted_catalog_observation", JSON.stringify({
+    permissionKeys: Object.keys(catalogPermissions).sort(),
+    canView: catalogPermissions["tasks.catalog.view"] === true,
+    billableGrantExposed: Object.hasOwn(catalogPermissions, "tasks.create.billable"),
+    entryCount: Array.isArray(restrictedCatalog.body?.entries) ? restrictedCatalog.body.entries.length : -1,
+    expectedEntryVisible: Boolean(visibleCatalogEntry),
+    billingClassExposed: Boolean(visibleCatalogEntry && Object.hasOwn(visibleCatalogEntry, "billingClass")),
+  }));
+  assert(catalogPermissions["tasks.catalog.view"] === true, "catalog_view_permission_uses_canonical_key");
+  assert(!Object.hasOwn(catalogPermissions, "tasks.create.billable"), "catalog_read_does_not_expose_billable_grant");
+  assert(Boolean(visibleCatalogEntry) && !Object.hasOwn(visibleCatalogEntry, "billingClass"),
+    "catalog_entry_has_no_billing_class_field");
   const billableDefinitionDenied = await request("POST", "/tasks", {
     clientWorkstreamId: workstreamId,
     taskCatalogEntryId: billableTaskDefinitionId,
