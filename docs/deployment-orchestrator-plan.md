@@ -722,8 +722,13 @@ plan's documented phase bounds and observed provider behavior.
      names/types, and its paginated Custom Domains. Supabase reads NOVA-targeting
      jobs from the database-pinned owner URL. Runtime-move plans block when
      required target bindings are absent, misclassified, or configured for a
-     different scheduler. Cloudflare zone Worker Routes, DNS ownership and TLS
-     readiness remain unverified; the Custom Domains list is not a substitute.
+     different scheduler. Cloudflare's Worker Domain inventory exposes the
+     hostname, Worker, zone ID, and TLS certificate ID, but that metadata alone
+     does not prove the certificate is served at the public hostname. The
+     manager still needs selected-zone Worker Route and exact DNS-record reads
+     plus a public TLS/HTTPS probe before promotion. Worker Routes can run
+     before a Custom Domain, so a matching Custom Domain does not rule out a
+     route shadowing part of NOVA.
      For Vercel, keep scheduler
      completeness partial until an explicit project-settings confirmation or
      supported read API can establish disabled/active state; source config is
@@ -812,6 +817,12 @@ libraries, but have different plans, approvals, journals, and rollback models.
 
 - [Netlify API — list sites and retrieve a site](https://open-api.netlify.com/)
 - [Cloudflare API — list Worker scripts and schedules](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/)
+- [Cloudflare API — list Worker Domains](https://developers.cloudflare.com/api/resources/workers/subresources/domains/methods/list/)
+- [Cloudflare API — list zone Worker Routes](https://developers.cloudflare.com/api/typescript/resources/workers/subresources/routes/methods/list/)
+- [Cloudflare API — list DNS records](https://developers.cloudflare.com/api/resources/dns/subresources/records/methods/list/)
+- [Cloudflare API — list zones](https://developers.cloudflare.com/api/resources/zones/methods/list/)
+- [Cloudflare API — list SSL certificate packs](https://developers.cloudflare.com/api/resources/ssl/subresources/certificate_packs/methods/list/)
+- [Cloudflare Workers Custom Domains and route precedence](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)
 - [Cloudflare Workers versions and deployments](https://developers.cloudflare.com/workers/versions-and-deployments/)
 - [Cloudflare Worker Version URLs and access controls](https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/)
 - [Cloudflare Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/)

@@ -239,7 +239,7 @@ export function buildDeploymentPreview(
     actions.push(
       { id: "discover-current-runtime", resource: "runtime", operation: "inspect deployed provider/account/project and live commit", execution: "provider-inventory-required" },
       { id: "discover-current-database", resource: "database", operation: "verify exact live database identity and migration head", execution: "provider-inventory-required" },
-      { id: "inventory-schedulers", resource: "scheduler", operation: "verify every trigger in the operator-confirmed deployment footprint for this database", execution: "provider-inventory-required" },
+      { id: "inventory-schedulers", resource: "scheduler", operation: "identify every runtime/scheduler resource that can call this database and verify each trigger", execution: "provider-inventory-required" },
     );
   }
   if (request.database === "keep") {

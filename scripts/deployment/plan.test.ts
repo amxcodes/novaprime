@@ -43,6 +43,8 @@ test("a preview is deterministic, secret-free and never claims apply is enabled"
   expect(first.persisted).toBe(false);
   expect(first.applyEnabled).toBe(false);
   expect(first.blockers).toContain("GLOBAL_SCHEDULER_INVENTORY_NOT_REQUESTED");
+  expect(first.actions.find(({ id }) => id === "inventory-schedulers")?.operation)
+    .toContain("identify every runtime/scheduler resource");
   expect(first.actions.some(({ resource, execution }) => resource === "runtime" && execution === "not-implemented")).toBe(true);
   expect(JSON.stringify(first)).not.toMatch(/password|secret-value|token-value/i);
 });
