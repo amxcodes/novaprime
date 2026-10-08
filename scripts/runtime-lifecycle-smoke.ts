@@ -1440,8 +1440,8 @@ async function main(): Promise<void> {
     "definition_rule_updates_use_optimistic_revision");
   const restrictedCatalog = await request("GET", "/task-catalog", undefined, firstEmployee.cookie);
   assertStatus("catalog_view_is_independent_of_billing_class", restrictedCatalog, 200);
-  assert(restrictedCatalog.body?.permissions?.view === true
-    && restrictedCatalog.body?.permissions?.createBillable === undefined
+  assert(restrictedCatalog.body?.permissions?.["tasks.catalog.view"] === true
+    && restrictedCatalog.body?.permissions?.["tasks.create.billable"] === undefined
     && restrictedCatalog.body?.entries?.some((entry: any) => entry.id === taskCatalogEntryId
       && entry.billingClass === undefined),
   "catalog_content_has_no_billing_field_and_task_visibility_is_not_a_billing_grant");
