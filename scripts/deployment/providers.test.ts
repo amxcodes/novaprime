@@ -190,6 +190,26 @@ test("Cloudflare inventory distinguishes one Worker's Cron triggers from global 
   expect(JSON.stringify(cloudflare)).not.toContain("omit-me");
 });
 
+test("Cloudflare inventory treats an explicit zero-page domain response as verified empty", async () => {
+  const fetcher: ProviderFetcher = async (input) => {
+    const parsed = new URL(String(input));
+    if (parsed.pathname.endsWith("/schedules")) return Response.json({ success: true, result: { schedules: [] } });
+    if (parsed.pathname.endsWith("/settings")) return Response.json({ success: true, result: { bindings: [] } });
+    if (parsed.pathname.endsWith("/workers/domains")) {
+      return Response.json({ success: true, result: [], result_info: { page: 1, total_pages: 0 } });
+    }
+    return Response.json({ success: true, result: { id: "nova-api" } });
+  };
+  const resources = await discoverProviderResources({
+    CLOUDFLARE_API_TOKEN: "cloudflare-token",
+    CLOUDFLARE_ACCOUNT_ID: "a".repeat(32),
+    CLOUDFLARE_WORKER_NAME: "nova-api",
+  }, fetcher);
+  expect(resources.find(({ provider }) => provider === "cloudflare")?.domainRoutes).toEqual({
+    state: "verified", completeness: "selected-runtime", domains: [],
+  });
+});
+
 test("live deployment identity sends its bearer only to the configured HTTPS origin and allowlists the result", async () => {
   const requests: Array<{ url: string; authorization: string | null }> = [];
   const fetcher: ProviderFetcher = async (input, init) => {

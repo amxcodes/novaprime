@@ -49,9 +49,15 @@ async function workerDomains(
     const result = envelope && Array.isArray(envelope.result) ? envelope.result : null;
     const resultInfo = asObject(envelope?.result_info);
     const totalPages = resultInfo?.total_pages;
-    if (!envelope?.success || !result || !Number.isInteger(totalPages) || (totalPages as number) < 1 || !resultInfo ||
+    if (!envelope?.success || !result || !Number.isInteger(totalPages) || (totalPages as number) < 0 || !resultInfo ||
         (resultInfo.page !== undefined && resultInfo.page !== page)) {
       return { state: "unavailable", completeness: "partial", domains: [...domains.values()], detail: "CLOUDFLARE_WORKER_DOMAIN_INVENTORY_INVALID" };
+    }
+    if (totalPages === 0) {
+      if (page !== 1 || result.length !== 0 || domains.size !== 0) {
+        return { state: "unavailable", completeness: "partial", domains: [...domains.values()], detail: "CLOUDFLARE_WORKER_DOMAIN_INVENTORY_INVALID" };
+      }
+      return { state: "verified", completeness: "selected-runtime", domains: [] };
     }
     if (expectedPages === undefined) expectedPages = totalPages as number;
     if (expectedPages !== totalPages) {
