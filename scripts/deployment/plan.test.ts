@@ -140,6 +140,15 @@ test("runtime move requires target production bindings, secret classification, a
   expect(preview.blockers).not.toContain("CURRENT_PUBLIC_HOSTNAME_UNVERIFIED");
   expect(preview.blockers).not.toContain("TARGET_RUNTIME_PUBLIC_HOSTNAME_NOT_ATTACHED");
 
+  for (const scheduler of ["keep", "supabase"] as const) {
+    const liveIdentityOnly = buildDeploymentPreview({ ...inventory, runtimeHint: null, schedulerHint: null }, {
+      runtime: "cloudflare", database: "keep", scheduler,
+    }, providers);
+    expect(liveIdentityOnly.blockers).not.toContain("CURRENT_RUNTIME_NOT_IDENTIFIED");
+    expect(liveIdentityOnly.blockers).not.toContain("CURRENT_SCHEDULER_NOT_IDENTIFIED");
+    expect(liveIdentityOnly.blockers).not.toContain("CROSS_PROVIDER_SCHEDULER_INVENTORY_NOT_IMPLEMENTED");
+  }
+
   const invalid = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
     { ...providers[0]!, runtimeBindings: { state: "verified", completeness: "selected-runtime", bindings: cloudflareBindings.filter(({ name }) => name !== "HYPERDRIVE").map((binding) => binding.name === "BETTER_AUTH_SECRET" ? { ...binding, secret: false } : binding), configuredScheduler: "cloudflare" } },
     ...providers.slice(1),

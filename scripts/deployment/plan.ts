@@ -96,11 +96,9 @@ export function buildDeploymentPreview(
   if (request.database === "keep" && !inventory.database.configured) blockers.push("DATABASE_TARGET_NOT_CONFIGURED");
   if (request.database === "provision-supabase") blockers.push("SUPABASE_PROJECT_PROVISIONING_NOT_IMPLEMENTED");
   if (request.database === "move") blockers.push("DATABASE_MOVE_REQUIRES_MAINTENANCE_GATE_AND_REHEARSAL");
-  if (inventory.runtimeHint === null) blockers.push("CURRENT_RUNTIME_NOT_IDENTIFIED");
-  if (inventory.schedulerHint === null) blockers.push("CURRENT_SCHEDULER_NOT_IDENTIFIED");
-  if (request.scheduler === "keep" && inventory.schedulerHint === null) {
-    blockers.push("CURRENT_SCHEDULER_NOT_IDENTIFIED");
-  } else if (request.scheduler !== "keep" && request.scheduler !== inventory.schedulerHint) {
+  if (currentRuntime === null) blockers.push("CURRENT_RUNTIME_NOT_IDENTIFIED");
+  if (currentScheduler === null) blockers.push("CURRENT_SCHEDULER_NOT_IDENTIFIED");
+  if (request.scheduler !== "keep" && currentScheduler !== null && request.scheduler !== currentScheduler) {
     blockers.push("CROSS_PROVIDER_SCHEDULER_INVENTORY_NOT_IMPLEMENTED");
   }
   if (providerInventory) {
