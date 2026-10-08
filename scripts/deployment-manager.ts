@@ -172,7 +172,9 @@ function reportStatus(
       const cloudflareRouting = provider.domainRoutes?.cloudflareRouting
         ? `Cloudflare route/DNS inventory ${provider.domainRoutes.cloudflareRouting.state}/${provider.domainRoutes.cloudflareRouting.completeness} (${provider.domainRoutes.cloudflareRouting.zones.length} selected zone(s); ${provider.domainRoutes.cloudflareRouting.zones.reduce((count, zone) => count + zone.routes.length, 0)} routes; ${provider.domainRoutes.cloudflareRouting.zones.reduce((count, zone) => count + zone.dnsRecords.length, 0)} exact-host records)`
         : undefined;
-      const summary = [provider.provider, provider.state, provider.target, provider.revision ? `revision ${provider.revision}` : undefined, provider.configuredScheduler
+      const summary = [provider.provider, provider.state, provider.target, provider.revision ? `revision ${provider.revision}` : undefined,
+        provider.runtimeId ? `runtime ${provider.runtimeId}` : undefined,
+        provider.release ? `release ${provider.release.slice(0, 12)}` : undefined, provider.configuredScheduler
         ? `configured scheduler ${provider.configuredScheduler}` : undefined, scheduler, provider.schedulerInventory?.detail,
         runtimeBindings, provider.runtimeBindings?.detail, domains, provider.domainRoutes?.detail, cloudflareRouting,
         provider.domainRoutes?.cloudflareRouting?.detail,

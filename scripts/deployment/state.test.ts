@@ -54,10 +54,14 @@ test("plans persist outside the checkout with a random ID and private file mode"
       state: "identified" as const,
       target: "account/worker",
       revision: "worker-etag-123",
+      runtimeId: "01234567-89ab-4cde-8fab-0123456789ab",
       runtimeBindings: {
         state: "verified" as const,
         completeness: "selected-runtime" as const,
-        bindings: [{ name: "HYPERDRIVE", type: "hyperdrive", scopes: ["worker"], contexts: ["production"], secret: false }],
+        bindings: [
+          { name: "CF_VERSION_METADATA", type: "version_metadata", scopes: ["worker"], contexts: ["production"], secret: false },
+          { name: "HYPERDRIVE", type: "hyperdrive", scopes: ["worker"], contexts: ["production"], secret: false },
+        ],
         configuredScheduler: "supabase",
       },
       domainRoutes: {

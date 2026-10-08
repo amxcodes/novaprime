@@ -1,11 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import worker from "./worker";
+import worker, { configureCloudflareRuntimeEnvironment } from "./worker";
 
 const environmentKeys = [
   "DATABASE_URL",
   "BETTER_AUTH_SECRET",
   "BETTER_AUTH_URL",
+  "CF_VERSION_METADATA",
   "NOVA_ALLOWED_ORIGINS",
   "NOVA_RELEASE_SHA",
   "NOVA_RUNTIME_ID",
@@ -32,6 +33,43 @@ test("both Cloudflare scheduler configs build and serve the same Vite asset grap
   const supabaseCron = readFileSync(new URL("./wrangler.supabase-cron.toml", import.meta.url), "utf8");
   expect(supabaseCron).toContain('NOVA_BACKGROUND_SCHEDULER = "supabase"');
   expect(supabaseCron).toContain("crons = []");
+  for (const file of ["./wrangler.toml", "./wrangler.supabase-cron.toml"]) {
+    expect(readFileSync(new URL(file, import.meta.url), "utf8")).toContain('binding = "CF_VERSION_METADATA"');
+  }
+});
+
+test("Cloudflare runtime identity uses the immutable Worker version id and a commit tag", () => {
+  const versionId = "01234567-89ab-4cde-8fab-0123456789ab";
+  const releaseSha = "A".repeat(40);
+  configureCloudflareRuntimeEnvironment({
+    HYPERDRIVE: { connectionString: "postgresql://nova_app:placeholder@127.0.0.1:1/nova" },
+    BETTER_AUTH_SECRET: "not-used",
+    BETTER_AUTH_URL: "https://nova.example",
+    NOVA_BACKGROUND_JOB_SECRET: "not-used",
+    NOVA_BACKGROUND_SCHEDULER: "supabase",
+    NOVA_BOOTSTRAP_TOKEN: "not-used",
+    NOVA_SECRETS_ENCRYPTION_KEY: "not-used",
+    NOVA_RELEASE_SHA: "b".repeat(40),
+    NOVA_RUNTIME_ID: "manually-configured-id",
+    CF_VERSION_METADATA: { id: versionId, tag: releaseSha, timestamp: "2026-10-08T00:00:00Z" },
+  });
+
+  expect(process.env.NOVA_RUNTIME_ID).toBe(versionId);
+  expect(process.env.NOVA_RELEASE_SHA).toBe(releaseSha.toLowerCase());
+
+  configureCloudflareRuntimeEnvironment({
+    HYPERDRIVE: { connectionString: "postgresql://nova_app:placeholder@127.0.0.1:1/nova" },
+    BETTER_AUTH_SECRET: "not-used",
+    BETTER_AUTH_URL: "https://nova.example",
+    NOVA_BACKGROUND_JOB_SECRET: "not-used",
+    NOVA_BACKGROUND_SCHEDULER: "supabase",
+    NOVA_BOOTSTRAP_TOKEN: "not-used",
+    NOVA_SECRETS_ENCRYPTION_KEY: "not-used",
+    NOVA_RELEASE_SHA: "b".repeat(40),
+    CF_VERSION_METADATA: { id: versionId, tag: "a".repeat(7) },
+  });
+  expect(process.env.NOVA_RUNTIME_ID).toBe(versionId);
+  expect(process.env.NOVA_RELEASE_SHA).toBeUndefined();
 });
 
 afterEach(() => {

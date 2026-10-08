@@ -32,10 +32,12 @@ export async function inspectNovaIdentity(
       throw new Error("nova:IDENTITY_RESPONSE_INVALID");
     }
     const runtimeAdapter = firstString(runtime.adapter);
+    const runtimeId = firstString(runtime.id);
     const releaseSha = firstString(runtime.releaseSha);
     return {
       provider: "nova", state: "identified", target: origin.origin,
       ...(runtimeAdapter && runtimes.includes(runtimeAdapter) ? { runtime: runtimeAdapter } : {}),
+      ...(runtimeId && /^[A-Za-z0-9._:-]{1,160}$/.test(runtimeId) ? { runtimeId } : {}),
       ...(releaseSha && /^(?:[a-f0-9]{7,64})$/i.test(releaseSha) ? { release: releaseSha.toLowerCase() } : {}),
       databaseFingerprint: database.fingerprint.toLowerCase(),
       schemaReady: database.schemaReady,

@@ -45,6 +45,7 @@ const netlifyRequiredRuntimeBindings = [
 
 const cloudflareRequiredRuntimeBindings = [
   { name: "HYPERDRIVE", type: "hyperdrive", secret: false },
+  { name: "CF_VERSION_METADATA", type: "version_metadata", secret: false },
   { name: "BETTER_AUTH_SECRET", type: "secret_text", secret: true },
   { name: "BETTER_AUTH_URL", type: "plain_text", secret: false },
   { name: "NOVA_BOOTSTRAP_TOKEN", type: "secret_text", secret: true },

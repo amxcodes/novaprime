@@ -96,11 +96,12 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
       }) || !Array.isArray(preview.blockers) || !preview.blockers.every((item) => typeof item === "string") ||
       (providerInventory !== undefined && (!Array.isArray(providerInventory) || !providerInventory.every((item) => {
         const provider = typeof item === "object" && item !== null && !Array.isArray(item) ? item as Record<string, unknown> : null;
-        return provider !== null && hasOnly(provider, ["provider", "state", "target", "revision", "runtime", "release", "origin", "databaseVersion", "databaseFingerprint", "schemaReady", "migrationLedgerPresent", "configuredScheduler", "schedulerInventory", "migrationInventory", "runtimeBindings", "domainRoutes", "detail"]) &&
+        return provider !== null && hasOnly(provider, ["provider", "state", "target", "revision", "runtime", "runtimeId", "release", "origin", "databaseVersion", "databaseFingerprint", "schemaReady", "migrationLedgerPresent", "configuredScheduler", "schedulerInventory", "migrationInventory", "runtimeBindings", "domainRoutes", "detail"]) &&
           ["netlify", "cloudflare", "vercel", "supabase", "nova"].includes(String(provider.provider)) &&
           ["identified", "target-required", "not-configured", "unavailable"].includes(String(provider.state)) &&
-          ["target", "revision", "runtime", "release", "origin", "databaseVersion", "detail"].every((key) => provider[key] === undefined || typeof provider[key] === "string") &&
+          ["target", "revision", "runtime", "runtimeId", "release", "origin", "databaseVersion", "detail"].every((key) => provider[key] === undefined || typeof provider[key] === "string") &&
           (provider.revision === undefined || /^[A-Za-z0-9._:-]{1,160}$/.test(String(provider.revision))) &&
+          (provider.runtimeId === undefined || /^[A-Za-z0-9._:-]{1,160}$/.test(String(provider.runtimeId))) &&
           (provider.configuredScheduler === undefined || ["cloudflare", "netlify", "vercel", "supabase", "vps"].includes(String(provider.configuredScheduler))) &&
           (provider.databaseFingerprint === undefined || (typeof provider.databaseFingerprint === "string" && /^[a-f0-9]{64}$/.test(provider.databaseFingerprint))) &&
           ["schemaReady", "migrationLedgerPresent"].every((key) => provider[key] === undefined || typeof provider[key] === "boolean") &&

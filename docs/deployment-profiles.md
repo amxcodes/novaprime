@@ -73,10 +73,14 @@ candidate readiness. Runtime-move previews require the exact current public
 hostname to appear in the target provider's verified domain inventory;
 unknown hostnames and unrelated or empty target-domain lists block the move.
 They also block if required production bindings are missing, have the wrong
-secret classification, or select a different scheduler. `apply` remains
-disabled until public route/TLS readiness, scoped write adapters, precondition
-checks, read-after-write verification, crash recovery, and a disposable live
-rehearsal are complete.
+secret classification, or select a different scheduler. The Cloudflare
+adapter reads the Worker Version Metadata binding as an immutable runtime
+version ID; when an upload is tagged with the exact Git commit SHA, identity
+reports that SHA as the deployed release. This lets a later plan detect a
+version change even when its human-readable Worker settings look unchanged.
+`apply` remains disabled until public route/TLS readiness, scoped write
+adapters, precondition checks, read-after-write verification, crash recovery,
+and a disposable live rehearsal are complete.
 
 Remote scheduler plans are scoped to the customer's actual NOVA footprint.
 Review all runtimes and schedulers that can call the selected database, then

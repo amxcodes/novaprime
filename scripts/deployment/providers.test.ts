@@ -151,6 +151,7 @@ test("Cloudflare inventory distinguishes one Worker's Cron triggers from global 
     }
     if (parsed.pathname.endsWith("/settings")) return Response.json({ success: true, result: { bindings: [
       { name: "HYPERDRIVE", type: "hyperdrive", id: "hyperdrive-id" },
+      { name: "CF_VERSION_METADATA", type: "version_metadata" },
       { name: "BETTER_AUTH_SECRET", type: "secret_text", text: "never-retain-secret-value" },
       { name: "NOVA_BACKGROUND_SCHEDULER", type: "plain_text", text: "supabase" },
     ] } });
@@ -188,6 +189,7 @@ test("Cloudflare inventory distinguishes one Worker's Cron triggers from global 
     state: "verified", completeness: "selected-runtime", configuredScheduler: "supabase",
     bindings: [
       { name: "BETTER_AUTH_SECRET", type: "secret_text", secret: true },
+      { name: "CF_VERSION_METADATA", type: "version_metadata", secret: false },
       { name: "HYPERDRIVE", type: "hyperdrive", secret: false },
       { name: "NOVA_BACKGROUND_SCHEDULER", type: "plain_text", secret: false },
     ],
@@ -294,6 +296,7 @@ test("live deployment identity sends its bearer only to the configured HTTPS ori
     provider: "nova",
     state: "identified",
     runtime: "netlify",
+    runtimeId: "deploy-1",
     release: "a".repeat(40),
     databaseFingerprint: "b".repeat(64),
     schemaReady: true,
@@ -301,6 +304,23 @@ test("live deployment identity sends its bearer only to the configured HTTPS ori
   }));
   expect(JSON.stringify(resources)).not.toContain(secret);
   expect(JSON.stringify(resources)).not.toContain("should never be retained");
+});
+
+test("live identity omits malformed runtime IDs and release metadata", async () => {
+  const resources = await discoverProviderResources({
+    NOVA_PUBLIC_ORIGIN: "https://nova.example",
+    NOVA_BACKGROUND_JOB_SECRET: "identity-secret",
+  }, async () => Response.json({
+    service: "nova-api",
+    status: "identified",
+    runtime: { adapter: "cloudflare", id: "bad\nvalue", releaseSha: "not-a-commit" },
+    database: { fingerprint: "b".repeat(64), schemaReady: true, migrationLedgerPresent: true },
+    scheduler: "supabase",
+  }));
+  const identity = resources.find(({ provider }) => provider === "nova");
+  expect(identity).toMatchObject({ provider: "nova", state: "identified", runtime: "cloudflare" });
+  expect(identity).not.toHaveProperty("runtimeId");
+  expect(identity).not.toHaveProperty("release");
 });
 
 test("live identity secret is never sent to non-HTTPS or non-origin URLs", async () => {

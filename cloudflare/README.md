@@ -2,8 +2,8 @@
 
 This is the hosted adapter for the same NOVA API and PostgreSQL schema. It
 does not add a second domain implementation: Cloudflare supplies the request
-runtime, Hyperdrive supplies the PostgreSQL connection, and the Worker Cron
-Trigger calls `/api/internal/background/tick` every five minutes.
+runtime, Hyperdrive supplies the PostgreSQL connection, and the selected
+background scheduler calls `/api/internal/background/tick` every five minutes.
 
 1. For Supabase Cloud, open the project's **Connect → Direct connection**
    settings and use that database endpoint with the restricted `nova_app`
@@ -38,6 +38,19 @@ Trigger calls `/api/internal/background/tick` every five minutes.
 3. Apply the canonical `database/migrations` to the chosen PostgreSQL
    project, then deploy from Workers Builds with
    `npx wrangler@4.141.0 deploy --config cloudflare/wrangler.toml`.
+
+Both configs declare Cloudflare's Version Metadata binding. NOVA reports the
+immutable Worker version ID through its protected deployment-identity
+endpoint. For a release upload, tag the version with the exact full Git commit
+SHA (`wrangler versions upload --tag <commit-sha>`); only a valid Git SHA is
+reported as the release. This makes identity checks detect an unexpected
+version and connect a tested candidate to its source commit. Version URLs use
+the uploaded version's existing bindings, including production Hyperdrive and
+secrets. Cloudflare documents them as public when enabled, so gate access with
+Cloudflare Access and limit candidate checks to health, readiness, assets, and
+the protected read-only identity endpoint. Do not run sign-in or writes against
+production records as a deployment smoke test. See [Version Metadata](https://developers.cloudflare.com/workers/runtime-apis/bindings/version-metadata/)
+and [Version URLs](https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/).
 
 Cloudflare Workers use outbound HTTPS email adapters: Gmail API OAuth2 or
 Resend. Gmail API OAuth2 uses Google's HTTPS token and send APIs; it does not

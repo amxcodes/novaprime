@@ -11,6 +11,7 @@ function providerSnapshot(resources: readonly ProviderResource[]): unknown[] {
     target: resource.target ?? null,
     revision: resource.revision ?? null,
     runtime: resource.runtime ?? null,
+    runtimeId: resource.runtimeId ?? null,
     release: resource.release ?? null,
     origin: resource.origin ?? null,
     databaseVersion: resource.databaseVersion ?? null,

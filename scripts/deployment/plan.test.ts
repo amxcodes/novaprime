@@ -4,6 +4,7 @@ import type { LocalDeploymentInventory } from "./inventory.ts";
 
 const cloudflareBindings = [
   { name: "HYPERDRIVE", type: "hyperdrive", scopes: ["worker"], contexts: ["production"], secret: false },
+  { name: "CF_VERSION_METADATA", type: "version_metadata", scopes: ["worker"], contexts: ["production"], secret: false },
   { name: "BETTER_AUTH_SECRET", type: "secret_text", scopes: ["worker"], contexts: ["production"], secret: true },
   { name: "BETTER_AUTH_URL", type: "plain_text", scopes: ["worker"], contexts: ["production"], secret: false },
   { name: "NOVA_BOOTSTRAP_TOKEN", type: "secret_text", scopes: ["worker"], contexts: ["production"], secret: true },
@@ -176,10 +177,11 @@ test("runtime move requires target production bindings, secret classification, a
   }
 
   const invalid = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
-    { ...providers[0]!, runtimeBindings: { state: "verified", completeness: "selected-runtime", bindings: cloudflareBindings.filter(({ name }) => name !== "HYPERDRIVE").map((binding) => binding.name === "BETTER_AUTH_SECRET" ? { ...binding, secret: false } : binding), configuredScheduler: "cloudflare" } },
+    { ...providers[0]!, runtimeBindings: { state: "verified", completeness: "selected-runtime", bindings: cloudflareBindings.filter(({ name }) => name !== "HYPERDRIVE" && name !== "CF_VERSION_METADATA").map((binding) => binding.name === "BETTER_AUTH_SECRET" ? { ...binding, secret: false } : binding), configuredScheduler: "cloudflare" } },
     ...providers.slice(1),
   ], true);
   expect(invalid.blockers).toContain("TARGET_RUNTIME_REQUIRED_BINDING_INVALID:HYPERDRIVE");
+  expect(invalid.blockers).toContain("TARGET_RUNTIME_REQUIRED_BINDING_INVALID:CF_VERSION_METADATA");
   expect(invalid.blockers).toContain("TARGET_RUNTIME_REQUIRED_BINDING_INVALID:BETTER_AUTH_SECRET");
   expect(invalid.blockers).toContain("TARGET_RUNTIME_SCHEDULER_CONFIGURATION_MISMATCH");
 

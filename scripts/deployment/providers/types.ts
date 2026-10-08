@@ -58,6 +58,7 @@ export interface ProviderResource {
   target?: string;
   revision?: string;
   runtime?: string;
+  runtimeId?: string;
   release?: string;
   origin?: string;
   databaseVersion?: string;

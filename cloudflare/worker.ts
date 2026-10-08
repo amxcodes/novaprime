@@ -9,9 +9,15 @@ import { withRequestScopedDatabase } from "../server/src/db";
 
 type AssetBinding = Readonly<{ fetch: (request: Request) => Promise<Response> }>;
 type HyperdriveBinding = Readonly<{ connectionString: string }>;
+type VersionMetadataBinding = Readonly<{
+  id?: string;
+  tag?: string;
+  timestamp?: string;
+}>;
 
 type CloudflareEnvironment = Readonly<{
   ASSETS?: AssetBinding;
+  CF_VERSION_METADATA?: VersionMetadataBinding;
   HYPERDRIVE: HyperdriveBinding;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
@@ -31,18 +37,31 @@ type ScheduledEvent = unknown;
 type WorkerExecutionContext = Readonly<{ waitUntil: (promise: Promise<unknown>) => void }>;
 let loadedHandler: NovaHandler | undefined;
 
+const runtimeIdPattern = /^[A-Za-z0-9._:-]{1,160}$/;
+const releaseShaPattern = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i;
+
 function hyperdriveConnectionString(environment: CloudflareEnvironment): string {
   const connectionString = environment.HYPERDRIVE?.connectionString;
   if (!connectionString) throw new Error("HYPERDRIVE_BINDING_REQUIRED");
   return connectionString;
 }
 
-function configureNodeEnvironment(environment: CloudflareEnvironment): void {
+export function configureCloudflareRuntimeEnvironment(environment: CloudflareEnvironment): void {
   const processLike = (globalThis as typeof globalThis & {
     process?: { env?: Record<string, string | undefined> };
   }).process;
   if (!processLike?.env) throw new Error("CLOUDFLARE_NODE_COMPATIBILITY_REQUIRED");
   const databaseUrl = hyperdriveConnectionString(environment);
+  const versionId = environment.CF_VERSION_METADATA?.id;
+  const versionTag = environment.CF_VERSION_METADATA?.tag;
+  const runtimeId = environment.CF_VERSION_METADATA
+    ? (versionId && runtimeIdPattern.test(versionId) ? versionId : undefined)
+    : environment.NOVA_RUNTIME_ID;
+  const releaseSha = environment.CF_VERSION_METADATA
+    ? (versionTag && releaseShaPattern.test(versionTag) ? versionTag.toLowerCase() : undefined)
+    : environment.NOVA_RELEASE_SHA;
+  if (!runtimeId) delete processLike.env.NOVA_RUNTIME_ID;
+  if (!releaseSha) delete processLike.env.NOVA_RELEASE_SHA;
   Object.assign(processLike.env, {
     DATABASE_URL: databaseUrl,
     BETTER_AUTH_SECRET: environment.BETTER_AUTH_SECRET,
@@ -53,8 +72,8 @@ function configureNodeEnvironment(environment: CloudflareEnvironment): void {
     NOVA_BOOTSTRAP_TOKEN: environment.NOVA_BOOTSTRAP_TOKEN,
     NOVA_DATABASE_REQUEST_SCOPED: "true",
     NOVA_RUNTIME_ADAPTER: "cloudflare",
-    ...(environment.NOVA_RELEASE_SHA ? { NOVA_RELEASE_SHA: environment.NOVA_RELEASE_SHA } : {}),
-    ...(environment.NOVA_RUNTIME_ID ? { NOVA_RUNTIME_ID: environment.NOVA_RUNTIME_ID } : {}),
+    ...(releaseSha ? { NOVA_RELEASE_SHA: releaseSha } : {}),
+    ...(runtimeId ? { NOVA_RUNTIME_ID: runtimeId } : {}),
     NOVA_SECRETS_ENCRYPTION_KEY: environment.NOVA_SECRETS_ENCRYPTION_KEY,
     // Cloudflare supplies cf-connecting-ip at the trusted edge. Direct/VPS
     // deployments leave this opt-in disabled unless their proxy is hardened.
@@ -65,7 +84,7 @@ function configureNodeEnvironment(environment: CloudflareEnvironment): void {
 }
 
 async function novaHandler(environment: CloudflareEnvironment): Promise<NovaHandler> {
-  configureNodeEnvironment(environment);
+  configureCloudflareRuntimeEnvironment(environment);
   return (loadedHandler ??= (await import("../server/src/app")).handleRequest);
 }
 

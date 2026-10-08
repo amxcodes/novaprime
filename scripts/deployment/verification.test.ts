@@ -77,6 +77,12 @@ test("plan verification detects a new provider deployment revision", () => {
     .toEqual(["REMOTE_INVENTORY_CHANGED"]);
 });
 
+test("plan verification detects a changed immutable runtime version id", () => {
+  const boundPlan = { preview: { ...plan.preview, providerInventory: [{ ...remote[0]!, runtimeId: "version-1" }] } } as StoredDeploymentPlan;
+  expect(verifyDeploymentPlanSnapshot(boundPlan, local, [{ ...remote[0]!, runtimeId: "version-2" }]).issues)
+    .toEqual(["REMOTE_INVENTORY_CHANGED"]);
+});
+
 test("plan verification detects runtime binding and custom-domain changes", () => {
   const changed = [{
     ...remote[0]!,
