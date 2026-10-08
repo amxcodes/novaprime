@@ -727,10 +727,13 @@ plan's documented phase bounds and observed provider behavior.
      as an explicit blocker. Never infer that an absent API row means no schedule.
    - Extend custom-domain/route ownership inventory from selected Netlify site
      and Cloudflare Worker metadata to provider routes, zone ownership, DNS
-     state, TLS status, and runtime binding scopes/contexts. Current binding
-     inventory records names and secret flags only; it never persists values.
-     Verify API token permissions before implementing writes, with 401/403
-     stopping the plan.
+     state, TLS status, and runtime binding scopes/contexts. Runtime moves
+     must also prove that the exact current public hostname is attached to the
+     selected target; an empty or unrelated custom-domain list is not enough.
+     If the current hostname or target attachment cannot be verified, block
+     the move. Current binding inventory records names and secret flags only;
+     it never persists values. Verify API token permissions before
+     implementing writes, with 401/403 stopping the plan.
    - Bind a saved plan to the exact source commit, provider resource IDs,
      database fingerprint and migration head/checksums, scheduler IDs,
      runtime origin/domain, selected deploy context, and expiry. Re-read all

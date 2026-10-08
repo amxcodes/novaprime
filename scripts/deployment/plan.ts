@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { LocalDeploymentInventory, RuntimeAdapter, SchedulerAdapter } from "./inventory.ts";
 import type { ProviderResource } from "./providers.ts";
+import { safeHostname } from "./providers/shared.ts";
 
 export type DatabaseChange = "keep" | "provision-supabase" | "move";
 
@@ -111,6 +112,14 @@ export function buildDeploymentPreview(
       blockers.push(...runtimeConfigurationBlockers(request.runtime, expectedScheduler, runtimeState.runtimeBindings));
       if (runtimeState.domainRoutes?.state !== "verified" || runtimeState.domainRoutes.completeness !== "selected-runtime") {
         blockers.push("TARGET_RUNTIME_CUSTOM_DOMAIN_INVENTORY_INCOMPLETE");
+      } else {
+        const currentRuntimeResource = providerInventory.find(({ provider }) => provider === currentRuntime);
+        const currentOrigin = (liveIdentity?.state === "identified" ? liveIdentity.origin : undefined) ?? currentRuntimeResource?.origin;
+        const currentHostname = safeHostname(currentOrigin);
+        if (!currentHostname) blockers.push("CURRENT_PUBLIC_HOSTNAME_UNVERIFIED");
+        else if (!runtimeState.domainRoutes.domains.some(({ hostname }) => hostname === currentHostname)) {
+          blockers.push("TARGET_RUNTIME_PUBLIC_HOSTNAME_NOT_ATTACHED");
+        }
       }
     }
     const databaseState = providerInventory.find(({ provider }) => provider === "supabase");

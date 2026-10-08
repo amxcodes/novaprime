@@ -132,11 +132,13 @@ test("runtime move requires target production bindings, secret classification, a
     },
     { provider: "netlify" as const, state: "identified" as const, target: "site-id", schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [] } },
     { provider: "vercel" as const, state: "identified" as const, target: "project-id", schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [] } },
-    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64) },
+    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", origin: "https://nova.example.test", configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64) },
   ];
   const preview = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, providers);
   expect(preview.blockers).not.toContain("TARGET_RUNTIME_BINDING_INVENTORY_INCOMPLETE");
   expect(preview.blockers).not.toContain("TARGET_RUNTIME_SCHEDULER_CONFIGURATION_MISMATCH");
+  expect(preview.blockers).not.toContain("CURRENT_PUBLIC_HOSTNAME_UNVERIFIED");
+  expect(preview.blockers).not.toContain("TARGET_RUNTIME_PUBLIC_HOSTNAME_NOT_ATTACHED");
 
   const invalid = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
     { ...providers[0]!, runtimeBindings: { state: "verified", completeness: "selected-runtime", bindings: cloudflareBindings.filter(({ name }) => name !== "HYPERDRIVE").map((binding) => binding.name === "BETTER_AUTH_SECRET" ? { ...binding, secret: false } : binding), configuredScheduler: "cloudflare" } },
@@ -151,6 +153,18 @@ test("runtime move requires target production bindings, secret classification, a
     ...providers.slice(1),
   ]);
   expect(domainUnknown.blockers).toContain("TARGET_RUNTIME_CUSTOM_DOMAIN_INVENTORY_INCOMPLETE");
+
+  const targetHostnameMissing = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
+    { ...providers[0]!, domainRoutes: { state: "verified", completeness: "selected-runtime", domains: [] } },
+    ...providers.slice(1),
+  ]);
+  expect(targetHostnameMissing.blockers).toContain("TARGET_RUNTIME_PUBLIC_HOSTNAME_NOT_ATTACHED");
+
+  const currentHostnameUnknown = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
+    ...providers.slice(0, -1),
+    { ...providers.at(-1)!, origin: undefined },
+  ]);
+  expect(currentHostnameUnknown.blockers).toContain("CURRENT_PUBLIC_HOSTNAME_UNVERIFIED");
 });
 
 test("Netlify target bindings must be Functions-scoped and available in production", () => {
@@ -168,7 +182,7 @@ test("Netlify target bindings must be Functions-scoped and available in producti
       runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings, configuredScheduler: "supabase" },
       domainRoutes: { state: "verified" as const, completeness: "selected-runtime" as const, domains: [{ hostname: "nova.example.test", source: "custom-domain" as const }] },
     },
-    { provider: "nova" as const, state: "identified" as const, runtime: "cloudflare", configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64) },
+    { provider: "nova" as const, state: "identified" as const, runtime: "cloudflare", origin: "https://nova.example.test", configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64) },
   ];
   const request = { runtime: "netlify" as const, database: "keep" as const, scheduler: "keep" as const };
   const source = { ...inventory, runtimeHint: "cloudflare" as const };

@@ -65,12 +65,14 @@ variable names/scopes/contexts and Cloudflare Worker binding names/types, plus
 site domains and Cloudflare Worker custom domains. It never retains variable
 values; only the allowlisted scheduler selector is read as a configuration
 value. Cloudflare zone routes, DNS ownership, and TLS readiness are still not
-proved by this inventory. Runtime-move previews now block if the target's
-required production bindings are missing, have the wrong secret classification,
-or select a different scheduler. `apply` remains disabled until a selected
-transition has complete route/resource inventory, scoped write adapters,
-precondition checks, read-after-write verification, crash recovery, and a
-disposable live rehearsal.
+proved by this inventory. Runtime-move previews require the exact current
+public hostname to appear in the target provider's verified domain inventory;
+unknown hostnames and unrelated or empty target-domain lists block the move.
+They also block if required production bindings are missing, have the wrong
+secret classification, or select a different scheduler. `apply` remains
+disabled until a selected transition has complete route/resource inventory,
+scoped write adapters, precondition checks, read-after-write verification,
+crash recovery, and a disposable live rehearsal.
 
 Keep these resources separate in every plan:
 
