@@ -13,6 +13,7 @@ describe("deployment assistant rendered flow", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("PASS: seven stages, every allowed provider/scheduler pairing");
+    expect(result.stdout).toContain("PASS: seven stages, all three fixed profiles");
+    expect(result.stdout).toContain("readiness-gated Supabase Cron");
   });
 });

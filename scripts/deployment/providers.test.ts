@@ -86,11 +86,77 @@ test("Netlify Cron inventory distinguishes an explicit empty schedule list from 
   }
 });
 
-test("Cloudflare inventory distinguishes one Worker's Cron triggers from global scheduler coverage", async () => {
+test("Netlify inventory records production binding metadata and hostnames but never variable values", async () => {
+  const variableValue = "postgresql://nova_app:never-retain-this@db.example.test/nova";
+  const originValue = "https://do-not-retain-variable-value.example.test";
   const fetcher: ProviderFetcher = async (input) => {
     const url = String(input);
-    if (url.endsWith("/schedules")) {
+    if (url.endsWith("/sites/site-id")) return Response.json({
+      id: "site-id", account_id: "team-id", ssl_url: "https://nova.example.test", url: "nova-site.netlify.app",
+      custom_domain: "nova.example.test", domain_aliases: ["www.nova.example.test"],
+    });
+    if (url.includes("/sites/site-id/deploys")) return Response.json([{
+      state: "ready", context: "production", published: true, commit_sha: "a".repeat(40), function_schedules: [],
+    }]);
+    if (url.includes("/accounts/team-id/env?")) return Response.json([
+      { key: "DATABASE_URL", scopes: ["functions"], values: [{ context: "production", value: variableValue }], is_secret: true },
+      { key: "BETTER_AUTH_URL", scopes: ["functions"], values: [{ context: "all", value: originValue }], is_secret: false },
+      { key: "NOVA_BACKGROUND_SCHEDULER", scopes: ["functions"], values: [{ context: "production", value: "supabase" }], is_secret: false },
+    ]);
+    throw new Error("unexpected read");
+  };
+  const resources = await discoverProviderResources({ NETLIFY_AUTH_TOKEN: "token", NETLIFY_SITE_ID: "site-id" }, fetcher);
+  const netlify = resources.find(({ provider }) => provider === "netlify")!;
+  expect(netlify.runtimeBindings).toMatchObject({
+    state: "verified", completeness: "selected-runtime", configuredScheduler: "supabase",
+    bindings: [
+      { name: "BETTER_AUTH_URL", contexts: ["all"], scopes: ["functions"], secret: false },
+      { name: "DATABASE_URL", contexts: ["production"], scopes: ["functions"], secret: true },
+      { name: "NOVA_BACKGROUND_SCHEDULER", contexts: ["production"], scopes: ["functions"], secret: false },
+    ],
+  });
+  expect(netlify.domainRoutes).toEqual({
+    state: "verified", completeness: "selected-runtime", domains: [
+      { hostname: "nova-site.netlify.app", source: "provider-default" },
+      { hostname: "nova.example.test", source: "custom-domain" },
+      { hostname: "www.nova.example.test", source: "custom-domain" },
+    ],
+  });
+  expect(JSON.stringify(netlify)).not.toContain(variableValue);
+  expect(JSON.stringify(netlify)).not.toContain(originValue);
+});
+
+test("Netlify variable permission failure remains explicit without discarding site identity", async () => {
+  const fetcher: ProviderFetcher = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/sites/site-id")) return Response.json({ id: "site-id", account_id: "team-id", url: "nova-site.netlify.app", custom_domain: null, domain_aliases: [] });
+    if (url.includes("/deploys")) return Response.json([{ state: "ready", context: "production", published: true, function_schedules: [] }]);
+    if (url.includes("/env?")) return new Response("private error body", { status: 403 });
+    throw new Error("unexpected read");
+  };
+  const resources = await discoverProviderResources({ NETLIFY_AUTH_TOKEN: "token", NETLIFY_SITE_ID: "site-id" }, fetcher);
+  const netlify = resources.find(({ provider }) => provider === "netlify")!;
+  expect(netlify.state).toBe("identified");
+  expect(netlify.runtimeBindings).toMatchObject({ state: "unavailable", detail: "MISSING_READ_PERMISSION", bindings: [] });
+  expect(JSON.stringify(netlify)).not.toContain("private error body");
+});
+
+test("Cloudflare inventory distinguishes one Worker's Cron triggers from global scheduler coverage", async () => {
+  const fetcher: ProviderFetcher = async (input) => {
+    const parsed = new URL(String(input));
+    if (parsed.pathname.endsWith("/schedules")) {
       return Response.json({ success: true, result: { schedules: [{ cron: "*/5 * * * *" }] } });
+    }
+    if (parsed.pathname.endsWith("/settings")) return Response.json({ success: true, result: { bindings: [
+      { name: "HYPERDRIVE", type: "hyperdrive", id: "hyperdrive-id" },
+      { name: "BETTER_AUTH_SECRET", type: "secret_text", text: "never-retain-secret-value" },
+      { name: "NOVA_BACKGROUND_SCHEDULER", type: "plain_text", text: "supabase" },
+    ] } });
+    if (parsed.pathname.endsWith("/workers/domains")) {
+      const page = Number(parsed.searchParams.get("page"));
+      return Response.json({ success: true, result: [{
+        hostname: `app${page}.example.test`, service: "nova-api", zone_name: "example.test", secret_value: "omit-me",
+      }], result_info: { page, total_pages: 2 } });
     }
     return Response.json({ success: true, result: { id: "nova-api", modified_on: "2026-10-07T00:00:00Z" } });
   };
@@ -105,6 +171,23 @@ test("Cloudflare inventory distinguishes one Worker's Cron triggers from global 
     completeness: "resource-only",
     triggers: [{ id: "nova-api/schedule-1", name: "cloudflare-cron-trigger", schedule: "*/5 * * * *", active: true }],
   });
+  const cloudflare = resources.find(({ provider }) => provider === "cloudflare")!;
+  expect(cloudflare.runtimeBindings).toMatchObject({
+    state: "verified", completeness: "selected-runtime", configuredScheduler: "supabase",
+    bindings: [
+      { name: "BETTER_AUTH_SECRET", type: "secret_text", secret: true },
+      { name: "HYPERDRIVE", type: "hyperdrive", secret: false },
+      { name: "NOVA_BACKGROUND_SCHEDULER", type: "plain_text", secret: false },
+    ],
+  });
+  expect(cloudflare.domainRoutes).toEqual({
+    state: "verified", completeness: "selected-runtime", domains: [
+      { hostname: "app1.example.test", source: "custom-domain" },
+      { hostname: "app2.example.test", source: "custom-domain" },
+    ],
+  });
+  expect(JSON.stringify(cloudflare)).not.toContain("never-retain-secret-value");
+  expect(JSON.stringify(cloudflare)).not.toContain("omit-me");
 });
 
 test("live deployment identity sends its bearer only to the configured HTTPS origin and allowlists the result", async () => {

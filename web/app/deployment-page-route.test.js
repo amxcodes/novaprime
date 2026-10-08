@@ -13,7 +13,6 @@ const feature = {
   DeploymentAssistant: assistant,
   DEPLOYMENT_STAGES: stages,
   deploymentPathById: (id) => id === "cloudflare-supabase" ? { id } : undefined,
-  supportedDeploymentSchedulers: (path) => path === "cloudflare-supabase" ? ["supabase"] : [],
 };
 
 function createFixture(overrides = {}) {
@@ -93,17 +92,14 @@ describe("Deployment page route adapter", () => {
     fixture.props.onSelectPath("invalid");
     expect(fixture.progress.path).toBe("");
     fixture.props.onSelectPath("cloudflare-supabase");
-    expect(fixture.progress).toEqual({ path: "cloudflare-supabase", stage: 0, scheduler: "", completed: {} });
+    expect(fixture.progress).toEqual({ path: "cloudflare-supabase", stage: 0, scheduler: "supabase", completed: {} });
     expect(fixture.saved).toHaveLength(1);
     expect(fixture.invalidations).toHaveLength(1);
     expect(fixture.focused).toHaveLength(1);
 
-    fixture.props.onSelectScheduler("supabase");
-    expect(fixture.progress.scheduler).toBe("supabase");
-    expect(fixture.saved).toHaveLength(2);
     fixture.props.onReset();
     expect(fixture.progress).toEqual({ path: "", stage: 0, scheduler: "", completed: {} });
-    expect(fixture.saved).toHaveLength(3);
+    expect(fixture.saved).toHaveLength(2);
     expect(fixture.feedback.length).toBeGreaterThan(0);
     expect(fixture.loadCount).toBe(1);
 

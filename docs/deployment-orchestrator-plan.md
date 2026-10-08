@@ -173,6 +173,27 @@ fingerprint to the same database as `DATABASE_URL`; it is used only for
 read-only inventory. Matching provider tokens and `NOVA_PUBLIC_ORIGIN` +
 `NOVA_BACKGROUND_JOB_SECRET` must come from the same explicitly selected
 environment file or operator process.
+
+Provider API contracts used by this inventory:
+
+- Netlify `GET /api/v1/accounts/{account_id}/env`, filtered by `site_id`,
+  `context_name=production`, and `scope=functions`. The response includes
+  variable values, so the adapter must continue discarding them except for the
+  allowlisted non-secret scheduler selector. See the [Netlify environment
+  variables API](https://open-api.netlify.com/) and its [API
+  guide](https://docs.netlify.com/api-and-cli-guides/api-guides/get-started-with-api/).
+- Cloudflare `GET /accounts/{account_id}/workers/scripts/{script_name}/settings`
+  returns Worker bindings; the adapter stores binding metadata only. See the
+  [Cloudflare Workers Scripts API](https://developers.cloudflare.com/api/operations/worker-script-list-workers).
+- Cloudflare `GET /accounts/{account_id}/workers/domains`, filtered by
+  `service`, enumerates Worker custom domains. Its result identifies the Worker
+  and TLS certificate ID, but does not prove certificate readiness, DNS
+  ownership, or zone Worker Routes. See [List Worker
+  Domains](https://developers.cloudflare.com/api/resources/workers/subresources/domains/methods/list/).
+
+Recheck these contracts when upgrading the adapters. In particular, a
+successful domain-list response must not be treated as proof that public DNS
+and TLS are ready for a cutover.
 Run the focused checks with `bun run test:deployment-manager`.
 
 `plan` stores an immutable, expiring plan under the OS per-user state directory,
@@ -689,18 +710,27 @@ plan's documented phase bounds and observed provider behavior.
    privileges. A private journal store binds events to a persisted plan
    fingerprint and enforces ordered revisions; there is not yet a CLI
    operation executor. Finish this phase in this order:
-   - Netlify inventory now reads `function_schedules` only from the latest
-     published production deploy; Cloudflare reads only the selected Worker;
-     Supabase reads NOVA-targeting jobs from the database-pinned owner URL.
-     Complete selected-resource reconciliation. For Vercel, keep scheduler
+   - Netlify inventory reads `function_schedules` only from the latest
+     published production deploy and inspects the selected site's production
+     Functions variable names, scopes, contexts, and secret flags. The parser
+     discards variable values, except the allowlisted background-scheduler
+     selector. Cloudflare reads only the selected Worker, its binding
+     names/types, and its paginated Custom Domains. Supabase reads NOVA-targeting
+     jobs from the database-pinned owner URL. Runtime-move plans block when
+     required target bindings are absent, misclassified, or configured for a
+     different scheduler. Cloudflare zone Worker Routes, DNS ownership and TLS
+     readiness remain unverified; the Custom Domains list is not a substitute.
+     For Vercel, keep scheduler
      completeness partial until an explicit project-settings confirmation or
      supported read API can establish disabled/active state; source config is
      only evidence of declared jobs. Keep every uninspected account/resource
      as an explicit blocker. Never infer that an absent API row means no schedule.
-   - Inventory custom-domain/route ownership and required runtime binding
-     names. Record secret presence and scope/context only; do not retrieve or
-     persist secret values. Verify API token permissions before implementing
-     writes, with 401/403 stopping the plan.
+   - Extend custom-domain/route ownership inventory from selected Netlify site
+     and Cloudflare Worker metadata to provider routes, zone ownership, DNS
+     state, TLS status, and runtime binding scopes/contexts. Current binding
+     inventory records names and secret flags only; it never persists values.
+     Verify API token permissions before implementing writes, with 401/403
+     stopping the plan.
    - Bind a saved plan to the exact source commit, provider resource IDs,
      database fingerprint and migration head/checksums, scheduler IDs,
      runtime origin/domain, selected deploy context, and expiry. Re-read all

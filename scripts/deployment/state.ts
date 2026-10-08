@@ -95,7 +95,7 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
       }) || !Array.isArray(preview.blockers) || !preview.blockers.every((item) => typeof item === "string") ||
       (providerInventory !== undefined && (!Array.isArray(providerInventory) || !providerInventory.every((item) => {
         const provider = typeof item === "object" && item !== null && !Array.isArray(item) ? item as Record<string, unknown> : null;
-        return provider !== null && hasOnly(provider, ["provider", "state", "target", "revision", "runtime", "release", "origin", "databaseVersion", "databaseFingerprint", "schemaReady", "migrationLedgerPresent", "configuredScheduler", "schedulerInventory", "migrationInventory", "detail"]) &&
+        return provider !== null && hasOnly(provider, ["provider", "state", "target", "revision", "runtime", "release", "origin", "databaseVersion", "databaseFingerprint", "schemaReady", "migrationLedgerPresent", "configuredScheduler", "schedulerInventory", "migrationInventory", "runtimeBindings", "domainRoutes", "detail"]) &&
           ["netlify", "cloudflare", "vercel", "supabase", "nova"].includes(String(provider.provider)) &&
           ["identified", "target-required", "not-configured", "unavailable"].includes(String(provider.state)) &&
           ["target", "revision", "runtime", "release", "origin", "databaseVersion", "detail"].every((key) => provider[key] === undefined || typeof provider[key] === "string") &&
@@ -129,6 +129,38 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
               validFilename(migration.migrationHead) && validFilename(migration.expectedHead) &&
               typeof migration.checksumsVerified === "boolean" &&
               (migration.detail === undefined || typeof migration.detail === "string");
+          })()) &&
+          (provider.runtimeBindings === undefined || (() => {
+            const runtime = typeof provider.runtimeBindings === "object" && provider.runtimeBindings !== null && !Array.isArray(provider.runtimeBindings)
+              ? provider.runtimeBindings as Record<string, unknown> : null;
+            return runtime !== null && hasOnly(runtime, ["state", "completeness", "bindings", "configuredScheduler", "detail"]) &&
+              ["verified", "unavailable", "not-inspected"].includes(String(runtime.state)) &&
+              ["selected-runtime", "partial", "not-inspected"].includes(String(runtime.completeness)) &&
+              (runtime.configuredScheduler === undefined || ["cloudflare", "netlify", "vercel", "supabase", "vps"].includes(String(runtime.configuredScheduler))) &&
+              (runtime.detail === undefined || typeof runtime.detail === "string") && Array.isArray(runtime.bindings) &&
+              runtime.bindings.length <= 500 && runtime.bindings.every((value) => {
+                const binding = typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
+                return binding !== null && hasOnly(binding, ["name", "type", "scopes", "contexts", "secret"]) &&
+                  typeof binding.name === "string" && /^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(binding.name) &&
+                  typeof binding.type === "string" && /^[a-z][a-z0-9_-]{0,63}$/.test(binding.type) &&
+                  Array.isArray(binding.scopes) && binding.scopes.length <= 8 && binding.scopes.every((scope) => typeof scope === "string" && scope.length <= 40) &&
+                  Array.isArray(binding.contexts) && binding.contexts.length <= 8 && binding.contexts.every((context) => typeof context === "string" && context.length <= 40) &&
+                  typeof binding.secret === "boolean";
+              });
+          })()) &&
+          (provider.domainRoutes === undefined || (() => {
+            const domains = typeof provider.domainRoutes === "object" && provider.domainRoutes !== null && !Array.isArray(provider.domainRoutes)
+              ? provider.domainRoutes as Record<string, unknown> : null;
+            return domains !== null && hasOnly(domains, ["state", "completeness", "domains", "detail"]) &&
+              ["verified", "unavailable", "not-inspected"].includes(String(domains.state)) &&
+              ["selected-runtime", "partial", "not-inspected"].includes(String(domains.completeness)) &&
+              (domains.detail === undefined || typeof domains.detail === "string") && Array.isArray(domains.domains) &&
+              domains.domains.length <= 2_000 && domains.domains.every((value) => {
+                const domain = typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
+                return domain !== null && hasOnly(domain, ["hostname", "source"]) &&
+                  typeof domain.hostname === "string" && domain.hostname.length <= 253 && /^[a-z0-9.-]+$/.test(domain.hostname) &&
+                  ["provider-default", "custom-domain"].includes(String(domain.source));
+              });
           })());
       })))) return corrupt();
   return value as StoredDeploymentPlan;

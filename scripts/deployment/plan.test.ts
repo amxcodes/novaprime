@@ -2,6 +2,16 @@ import { expect, test } from "bun:test";
 import { buildDeploymentPreview } from "./plan.ts";
 import type { LocalDeploymentInventory } from "./inventory.ts";
 
+const cloudflareBindings = [
+  { name: "HYPERDRIVE", type: "hyperdrive", scopes: ["worker"], contexts: ["production"], secret: false },
+  { name: "BETTER_AUTH_SECRET", type: "secret_text", scopes: ["worker"], contexts: ["production"], secret: true },
+  { name: "BETTER_AUTH_URL", type: "plain_text", scopes: ["worker"], contexts: ["production"], secret: false },
+  { name: "NOVA_BOOTSTRAP_TOKEN", type: "secret_text", scopes: ["worker"], contexts: ["production"], secret: true },
+  { name: "NOVA_SECRETS_ENCRYPTION_KEY", type: "secret_text", scopes: ["worker"], contexts: ["production"], secret: true },
+  { name: "NOVA_BACKGROUND_JOB_SECRET", type: "secret_text", scopes: ["worker"], contexts: ["production"], secret: true },
+  { name: "NOVA_BACKGROUND_SCHEDULER", type: "plain_text", scopes: ["worker"], contexts: ["production"], secret: false },
+];
+
 const inventory: LocalDeploymentInventory = {
   environmentSource: "test",
   source: { branch: "main", commit: "a".repeat(40), clean: true, dirtyPathCount: 0, packageVersion: "1.2.3" },
@@ -48,6 +58,21 @@ test("an unchanged topology does not propose a runtime deploy, scheduler handove
   expect(actionIds).not.toContain("promote-origin");
 });
 
+test("a hosted runtime move keeps Supabase Cron and reconciles its stored callback before origin promotion", () => {
+  const preview = buildDeploymentPreview(inventory, {
+    runtime: "cloudflare",
+    database: "keep",
+    scheduler: "keep",
+  });
+  const actionIds = preview.actions.map(({ id }) => id);
+  expect(actionIds.indexOf("deploy-candidate")).toBeLessThan(actionIds.indexOf("repoint-supabase-cron"));
+  expect(actionIds.indexOf("repoint-supabase-cron")).toBeLessThan(actionIds.indexOf("promote-origin"));
+  expect(preview.actions.find(({ id }) => id === "repoint-supabase-cron")).toMatchObject({
+    execution: "not-implemented",
+    resource: "scheduler",
+  });
+});
+
 test("unknown global scheduler inventory blocks a proposed move", () => {
   const preview = buildDeploymentPreview({ ...inventory, schedulerHint: null }, {
     runtime: "cloudflare",
@@ -90,6 +115,80 @@ test("remote planning binds provider inventory and blocks an unverified runtime 
   expect(preview.blockers).toContain("GLOBAL_SCHEDULER_INVENTORY_INCOMPLETE");
   expect(preview.blockers).toContain("DATABASE_MIGRATION_STATE_UNVERIFIED");
   expect(preview.blockers).not.toContain("DATABASE_PROVIDER_NOT_VERIFIED");
+});
+
+test("runtime move requires target production bindings, secret classification, and matching scheduler selector", () => {
+  const providers = [
+    {
+      provider: "cloudflare" as const, state: "identified" as const, target: "account/worker", revision: "worker-revision",
+      runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings: cloudflareBindings, configuredScheduler: "supabase" },
+      domainRoutes: { state: "verified" as const, completeness: "selected-runtime" as const, domains: [{ hostname: "nova.example.test", source: "custom-domain" as const }] },
+      schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "resource-only" as const, triggers: [] },
+    },
+    {
+      provider: "supabase" as const, state: "identified" as const, target: "abcdefghijklmnopqrst",
+      migrationInventory: { state: "current" as const, appliedCount: 4, migrationHead: "0004_schema.sql", expectedHead: "0004_schema.sql", checksumsVerified: true },
+      schedulerInventory: { scope: "database-project" as const, state: "verified" as const, completeness: "project-scoped" as const, triggers: [{ id: "cron-1", name: "nova-background-tick", schedule: "*/5 * * * *", active: true }] },
+    },
+    { provider: "netlify" as const, state: "identified" as const, target: "site-id", schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [] } },
+    { provider: "vercel" as const, state: "identified" as const, target: "project-id", schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [] } },
+    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64) },
+  ];
+  const preview = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, providers);
+  expect(preview.blockers).not.toContain("TARGET_RUNTIME_BINDING_INVENTORY_INCOMPLETE");
+  expect(preview.blockers).not.toContain("TARGET_RUNTIME_SCHEDULER_CONFIGURATION_MISMATCH");
+
+  const invalid = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
+    { ...providers[0]!, runtimeBindings: { state: "verified", completeness: "selected-runtime", bindings: cloudflareBindings.filter(({ name }) => name !== "HYPERDRIVE").map((binding) => binding.name === "BETTER_AUTH_SECRET" ? { ...binding, secret: false } : binding), configuredScheduler: "cloudflare" } },
+    ...providers.slice(1),
+  ]);
+  expect(invalid.blockers).toContain("TARGET_RUNTIME_REQUIRED_BINDING_INVALID:HYPERDRIVE");
+  expect(invalid.blockers).toContain("TARGET_RUNTIME_REQUIRED_BINDING_INVALID:BETTER_AUTH_SECRET");
+  expect(invalid.blockers).toContain("TARGET_RUNTIME_SCHEDULER_CONFIGURATION_MISMATCH");
+
+  const domainUnknown = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
+    { ...providers[0]!, domainRoutes: { state: "unavailable", completeness: "partial", domains: [], detail: "ROUTE_INVENTORY_FORBIDDEN" } },
+    ...providers.slice(1),
+  ]);
+  expect(domainUnknown.blockers).toContain("TARGET_RUNTIME_CUSTOM_DOMAIN_INVENTORY_INCOMPLETE");
+});
+
+test("Netlify target bindings must be Functions-scoped and available in production", () => {
+  const names = [
+    ["DATABASE_URL", true], ["BETTER_AUTH_SECRET", true], ["BETTER_AUTH_URL", false],
+    ["NOVA_BOOTSTRAP_TOKEN", true], ["NOVA_SECRETS_ENCRYPTION_KEY", true],
+    ["NOVA_BACKGROUND_JOB_SECRET", true], ["NOVA_BACKGROUND_SCHEDULER", false],
+  ] as const;
+  const bindings = names.map(([name, secret]) => ({
+    name, type: "environment-variable", scopes: ["functions"], contexts: ["production"], secret,
+  }));
+  const baseProviders = [
+    {
+      provider: "netlify" as const, state: "identified" as const, target: "site-id", revision: "deploy-id",
+      runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings, configuredScheduler: "supabase" },
+      domainRoutes: { state: "verified" as const, completeness: "selected-runtime" as const, domains: [{ hostname: "nova.example.test", source: "custom-domain" as const }] },
+    },
+    { provider: "nova" as const, state: "identified" as const, runtime: "cloudflare", configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64) },
+  ];
+  const request = { runtime: "netlify" as const, database: "keep" as const, scheduler: "keep" as const };
+  const source = { ...inventory, runtimeHint: "cloudflare" as const };
+  const valid = buildDeploymentPreview(source, request, baseProviders);
+  expect(valid.blockers).not.toContain("TARGET_RUNTIME_BINDING_INVENTORY_INCOMPLETE");
+  expect(valid.blockers).not.toContain("TARGET_RUNTIME_REQUIRED_BINDING_INVALID:DATABASE_URL");
+
+  const wrongScope = buildDeploymentPreview(source, request, [{
+    ...baseProviders[0]!,
+    runtimeBindings: { ...baseProviders[0]!.runtimeBindings!, bindings: bindings.map((binding) =>
+      binding.name === "DATABASE_URL" ? { ...binding, scopes: ["builds"] } : binding) },
+  }, baseProviders[1]!]);
+  expect(wrongScope.blockers).toContain("TARGET_RUNTIME_REQUIRED_BINDING_INVALID:DATABASE_URL");
+
+  const wrongContext = buildDeploymentPreview(source, request, [{
+    ...baseProviders[0]!,
+    runtimeBindings: { ...baseProviders[0]!.runtimeBindings!, bindings: bindings.map((binding) =>
+      binding.name === "DATABASE_URL" ? { ...binding, contexts: ["deploy-preview"] } : binding) },
+  }, baseProviders[1]!]);
+  expect(wrongContext.blockers).toContain("TARGET_RUNTIME_REQUIRED_BINDING_INVALID:DATABASE_URL");
 });
 
 test("remote plans block a Supabase project or database endpoint that differs from the live deployment", () => {

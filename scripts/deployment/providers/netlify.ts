@@ -1,5 +1,68 @@
-import type { ProviderFetcher, ProviderResource, SchedulerTriggerInventory } from "./types.ts";
-import { asObject, firstString, getProviderJson, providerFailure, safeHttpsOrigin, safeProviderId, safeReleaseSha } from "./shared.ts";
+import type { DomainRouteInventory, ProviderFetcher, ProviderResource, RuntimeBindingInventory, SchedulerTriggerInventory } from "./types.ts";
+import { asObject, firstString, getProviderJson, providerFailure, safeHostname, safeHttpsOrigin, safeProviderId, safeReleaseSha, safeSchedulerSelector } from "./shared.ts";
+
+const maxEnvironmentVariables = 500;
+
+function productionBindings(value: unknown): RuntimeBindingInventory {
+  if (!Array.isArray(value) || value.length > maxEnvironmentVariables) {
+    return { state: "unavailable", completeness: "partial", bindings: [], detail: "NETLIFY_PRODUCTION_VARIABLE_INVENTORY_INVALID" };
+  }
+  const bindings: RuntimeBindingInventory["bindings"] = [];
+  let configuredScheduler: string | undefined;
+  const seen = new Set<string>();
+  for (const entry of value) {
+    const variable = asObject(entry);
+    const name = firstString(variable?.key);
+    const scopes = variable?.scopes;
+    const values = variable?.values;
+    if (!name || !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(name) || seen.has(name) ||
+        !Array.isArray(scopes) || scopes.length > 8 || !Array.isArray(values) || values.length > 32 ||
+        values.some((item) => {
+          const object = asObject(item);
+          return !object || !["all", "production"].includes(String(object.context));
+        })) {
+      return { state: "unavailable", completeness: "partial", bindings: [], detail: "NETLIFY_PRODUCTION_VARIABLE_INVENTORY_INVALID" };
+    }
+    seen.add(name);
+    const normalizedScopes = scopes.filter((scope): scope is string =>
+      typeof scope === "string" && ["builds", "functions", "runtime", "post-processing"].includes(scope));
+    if (normalizedScopes.length !== scopes.length) {
+      return { state: "unavailable", completeness: "partial", bindings: [], detail: "NETLIFY_PRODUCTION_VARIABLE_SCOPE_INVALID" };
+    }
+    const contexts = [...new Set(values.map((item) => String(asObject(item)?.context)))].sort();
+    if (name === "NOVA_BACKGROUND_SCHEDULER") {
+      const candidates = new Set(values.map((item) => safeSchedulerSelector(asObject(item)?.value)).filter(Boolean));
+      if (candidates.size === 1) configuredScheduler = [...candidates][0];
+    }
+    bindings.push({ name, type: "environment-variable", scopes: [...new Set(normalizedScopes)].sort(), contexts, secret: variable?.is_secret === true });
+  }
+  return {
+    state: "verified", completeness: "selected-runtime", bindings: bindings.sort((left, right) => left.name.localeCompare(right.name)),
+    ...(configuredScheduler ? { configuredScheduler } : {}),
+  };
+}
+
+function siteDomains(site: Record<string, unknown>): DomainRouteInventory {
+  if (!Array.isArray(site.domain_aliases) || !Object.hasOwn(site, "custom_domain")) {
+    return { state: "unavailable", completeness: "partial", domains: [], detail: "NETLIFY_SITE_DOMAIN_INVENTORY_INCOMPLETE" };
+  }
+  const domains = new Map<string, DomainRouteInventory["domains"][number]>();
+  const add = (value: unknown, source: DomainRouteInventory["domains"][number]["source"]) => {
+    const hostname = safeHostname(value);
+    if (!hostname) return value === null || value === undefined || value === "";
+    const existing = domains.get(hostname);
+    if (!existing || source === "custom-domain") domains.set(hostname, { hostname, source });
+    return true;
+  };
+  const valid = add(site.custom_domain, "custom-domain") && site.domain_aliases.every((value) => add(value, "custom-domain")) &&
+    add(site.url, "provider-default") && add(site.ssl_url, "provider-default");
+  if (!valid) return { state: "unavailable", completeness: "partial", domains: [], detail: "NETLIFY_SITE_DOMAIN_INVENTORY_INVALID" };
+  return { state: "verified", completeness: "selected-runtime", domains: [...domains.values()].sort((left, right) => left.hostname.localeCompare(right.hostname)) };
+}
+
+function inventoryError(error: unknown): string {
+  return providerFailure("netlify", error).detail ?? "PROVIDER_READ_FAILED";
+}
 
 function publishedFunctionSchedules(deploy: Record<string, unknown> | undefined): SchedulerTriggerInventory {
   const schedules = deploy?.function_schedules;
@@ -50,6 +113,18 @@ export async function inspectNetlify(
     const recentDeploys = deploys.map(asObject).filter((item): item is Record<string, unknown> => item !== null);
     const latestProduction = recentDeploys.find((item) => item.context === "production" && item.state === "ready" && item.published === true);
     const revision = safeProviderId(firstString(latestProduction?.id));
+    const runtimeBindings = await (async (): Promise<RuntimeBindingInventory> => {
+      const accountId = safeProviderId(firstString(site.account_id));
+      if (!accountId) return { state: "unavailable", completeness: "partial", bindings: [], detail: "NETLIFY_ACCOUNT_ID_UNAVAILABLE" };
+      try {
+        const query = new URLSearchParams({ site_id: id, context_name: "production", scope: "functions" });
+        const variables = await getProviderJson<unknown>(fetcher,
+          `https://api.netlify.com/api/v1/accounts/${encodeURIComponent(accountId)}/env?${query}`, token, "netlify");
+        return productionBindings(variables);
+      } catch (error) {
+        return { state: "unavailable", completeness: "partial", bindings: [], detail: inventoryError(error) };
+      }
+    })();
     return {
       provider: "netlify", state: "identified", target: id, runtime: "netlify",
       ...(revision ? { revision } : {}),
@@ -57,6 +132,8 @@ export async function inspectNetlify(
         ? { release: safeReleaseSha(firstString(latestProduction?.commit_sha, latestProduction?.commit_ref, latestProduction?.commit)) } : {}),
       ...(safeHttpsOrigin(firstString(site.ssl_url, site.url)) ? { origin: safeHttpsOrigin(firstString(site.ssl_url, site.url)) } : {}),
       schedulerInventory: publishedFunctionSchedules(latestProduction),
+      runtimeBindings,
+      domainRoutes: siteDomains(site),
       detail: latestProduction ? "PRODUCTION_DEPLOY_READY" : "PRODUCTION_DEPLOY_NOT_CONFIRMED",
     };
   } catch (error) { return providerFailure("netlify", error); }

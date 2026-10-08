@@ -5,7 +5,6 @@ export {
   DEPLOYMENT_SCHEDULER_LABELS,
   DEPLOYMENT_STAGES,
   deploymentPathById,
-  supportedDeploymentSchedulers,
 } from "./catalog";
 export type {
   DeploymentAssistantProps,

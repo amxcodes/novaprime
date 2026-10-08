@@ -1,4 +1,4 @@
-import type { DeploymentAssistantProps, DeploymentScheduler } from "./contracts";
+import type { DeploymentAssistantProps } from "./contracts";
 import { Button } from "../../../design-system/primitives/Button";
 import { DEPLOYMENT_PATHS, DEPLOYMENT_STAGES } from "./catalog";
 import { deploymentCanSelectStage } from "./flow";
@@ -53,26 +53,14 @@ function WiringPanel({ wiring }: { wiring: DeploymentWiringPresentation }) {
   );
 }
 
-function SchedulerPanel({
-  panel,
-  selectedScheduler,
-  onSelectScheduler,
-}: {
-  panel: DeploymentSchedulerPresentation;
-  selectedScheduler: DeploymentScheduler | "";
-  onSelectScheduler: DeploymentAssistantProps["onSelectScheduler"];
-}) {
+function SchedulerPanel({ panel }: { panel: DeploymentSchedulerPresentation }) {
   return (
-    <section className="deployment-scheduler-grid" aria-label="Choose and apply the selected scheduler">
+    <section className="deployment-scheduler-grid" aria-label="Review the profile scheduler">
       <h3>{panel.title}</h3>
       <p className="small"><FormattedText>{panel.description}</FormattedText></p>
-      <div className="deployment-scheduler-choices">
-        {panel.choices.map(({ value, label }) => <label className="check deployment-scheduler" key={value}>
-          <input type="radio" name="deploymentScheduler" value={value} checked={selectedScheduler === value} onChange={() => onSelectScheduler(value)} /> {label}
-        </label>)}
-      </div>
+      <p className="deployment-scheduler-default" role="status">Profile default: {panel.schedulerLabel}</p>
       {panel.outcome ? <div className="deployment-scheduler-outcome" role="note">
-        <h4>How this selection becomes real</h4>
+        <h4>How the profile scheduler runs</h4>
         <dl>
           <div><dt>Where you change it</dt><dd><FormattedText>{panel.outcome.where}</FormattedText></dd></div>
           <div><dt>What switches it on</dt><dd><FormattedText>{panel.outcome.activates}</FormattedText></dd></div>
@@ -94,7 +82,7 @@ function SchedulerPanel({
           <p><strong>How to verify:</strong> <FormattedText>{panel.verify}</FormattedText></p>
           {panel.warning ? <p className="notice warning" role="note"><FormattedText>{panel.warning}</FormattedText></p> : null}
         </div>
-      </details> : <p className="small">Select a trigger to see exactly which file/setting activates it and where to verify it.</p>}
+      </details> : <p className="small">Select a profile to see its exact scheduled-work configuration and verification steps.</p>}
     </section>
   );
 }
@@ -162,12 +150,12 @@ export function DeploymentAssistant(props: DeploymentAssistantProps) {
                     <p>API health: {props.probe.health ? "ready" : "unavailable"}</p>
                     <p>Database/runtime readiness: {props.probe.ready ? "ready" : "not ready"}</p>
                     {props.stage === 4 ? <><p>Selected scheduler: {props.scheduler || "not selected"}</p><p>Runtime selector: {props.probe.scheduler || "not configured"}</p></> : null}
-                    <p className="small">Checked at {props.probe.checkedAt} UTC. Readiness checks core tables and a supported scheduler selection; it does not verify the full migration ledger, database-role privileges, or the live provider trigger.</p>
+                    <p className="small">Checked at {props.probe.checkedAt} UTC. Readiness checks core tables and the profile scheduler setting; it does not verify the full migration ledger, database-role privileges, or the live provider trigger.</p>
                   </div>
                   : <p className="small" role="status" aria-live="polite">Not checked in this browser session.</p>}
               <Button className={styles.publicAction} variant="secondary" data-deployment-probe disabled={props.probe?.checking === true} onClick={props.onProbe}>Check API and database</Button>
             </section> : null}
-            {schedulerPanel ? <SchedulerPanel panel={schedulerPanel} selectedScheduler={props.scheduler} onSelectScheduler={props.onSelectScheduler} /> : null}
+            {schedulerPanel ? <SchedulerPanel panel={schedulerPanel} /> : null}
             <label className="check deployment-confirm"><input type="checkbox" data-deployment-complete checked={presentation.completed} disabled={completionDisabled} onChange={(event) => props.onCompleteChange(event.currentTarget.checked)} /> I applied these steps and verified them at the provider.</label>
             <div className={styles.formActions}>
               <Button className={styles.publicAction} variant="secondary" data-deployment-back disabled={props.stage === 0} onClick={props.onBack}>Back</Button>

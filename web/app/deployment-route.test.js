@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  deploymentCanCompleteStage,
   deploymentCanContinue,
   deploymentCanSelectStage,
   normalizeDeploymentProgress,
@@ -41,6 +42,10 @@ describe("deployment checklist progression", () => {
     expect(deploymentCanContinue(scheduler, { checking: true, health: true, ready: true, scheduler: "supabase" })).toBe(false);
     expect(deploymentCanContinue(scheduler, { health: true, ready: true, scheduler: "vercel" })).toBe(false);
     expect(deploymentCanContinue(scheduler, { health: true, ready: true, scheduler: "supabase" })).toBe(true);
+
+    const unsupportedScheduler = { ...scheduler, scheduler: "vps" };
+    expect(deploymentCanCompleteStage("cloudflare-supabase", 4, "vps", { health: true, ready: true, scheduler: "vps" })).toBe(false);
+    expect(deploymentCanContinue(unsupportedScheduler, { health: true, ready: true, scheduler: "vps" })).toBe(false);
   });
 
   test("cannot continue from a late stage if any earlier completion is missing", () => {

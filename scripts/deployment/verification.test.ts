@@ -27,6 +27,17 @@ const remote: ProviderResource[] = [{
     completeness: "project-scoped",
     triggers: [{ id: "nova-background-tick", name: "nova-background-tick", schedule: "*/5 * * * *", active: true }],
   },
+  runtimeBindings: {
+    state: "verified",
+    completeness: "selected-runtime",
+    bindings: [{ name: "NOVA_BACKGROUND_SCHEDULER", type: "plain_text", scopes: ["worker"], contexts: ["production"], secret: false }],
+    configuredScheduler: "supabase",
+  },
+  domainRoutes: {
+    state: "verified",
+    completeness: "selected-runtime",
+    domains: [{ hostname: "nova.example.test", source: "custom-domain" }],
+  },
 }];
 
 const plan = {
@@ -64,6 +75,15 @@ test("plan verification ignores descriptive provider detail but detects changed 
 test("plan verification detects a new provider deployment revision", () => {
   expect(verifyDeploymentPlanSnapshot(plan, local, [{ ...remote[0]!, revision: "deploy-2" }]).issues)
     .toEqual(["REMOTE_INVENTORY_CHANGED"]);
+});
+
+test("plan verification detects runtime binding and custom-domain changes", () => {
+  const changed = [{
+    ...remote[0]!,
+    runtimeBindings: { ...remote[0]!.runtimeBindings!, configuredScheduler: "cloudflare" },
+    domainRoutes: { ...remote[0]!.domainRoutes!, domains: [{ hostname: "other.example.test", source: "custom-domain" as const }] },
+  }];
+  expect(verifyDeploymentPlanSnapshot(plan, local, changed).issues).toEqual(["REMOTE_INVENTORY_CHANGED"]);
 });
 
 test("remote-bound plans require a fresh remote read and clean exact source", () => {

@@ -1,9 +1,11 @@
 # NOVA
 
 NOVA is a portable people-operations foundation. PostgreSQL is the persistence
-and security foundation; Better Auth is embedded at the API edge; Supabase
-Cloud is the easiest hosted PostgreSQL deployment, while direct PostgreSQL on a
-VPS remains a supported deployment with the same migrations and domain rules.
+and security foundation; Better Auth is embedded in the shared API. The three
+supported deployment profiles are Netlify + Supabase, Cloudflare + Supabase,
+and self-hosted Docker + PostgreSQL behind Nginx. See
+[`docs/deployment-profiles.md`](docs/deployment-profiles.md) for their
+boundaries and release gates.
 
 ## Local first run
 
@@ -20,20 +22,21 @@ service. Use `bun run setup:supabase` for the guided Supabase Cloud path, or
 already provisioned.
 
 The browser-based deployment assistant is available at `/?view=deploy`. It is
-a secret-free, session-only guide: it shows which repository files and
-provider-account steps apply, but it does not connect GitHub, create provider
-resources, write secrets, or enable a scheduler. The customer connects the
-repo and sets values directly in their hosting/database accounts, then returns
-to verify the deployment. The practical order is: import the GitHub repository
-into the code host; run the separate database setup from a trusted computer;
-add runtime secrets in the selected host's private settings; map HTTPS and
-configure NOVA's public origin; then apply exactly one scheduler using that
-provider's configuration or the Supabase scheduler command. The Supabase
+a secret-free guide for the three supported profiles: it shows which
+repository files and provider-account steps apply, but it does not connect
+GitHub, create provider resources, write secrets, or enable a scheduler. The
+customer connects the repo and sets values directly in their hosting/database
+accounts, then returns to verify the deployment. The practical order is:
+import the GitHub repository into the code host; run the separate database
+setup from a trusted computer; add runtime secrets in the selected host's
+private settings; map HTTPS and configure NOVA's public origin; then activate
+the profile's single recommended scheduler after readiness. The Supabase
 setup and scheduler commands display the target project ref and require the
 operator to type it exactly before any database/scheduler write. A GitHub push
 only deploys committed code/configuration; it does not provision the database,
-copy secrets, map DNS or create Supabase Cron. Vercel Hobby's daily-only Cron
-cannot run NOVA's five-minute maintenance tick; choose Supabase Cron there. See
+copy secrets, map DNS or create Supabase Cron. Vercel and native-host scheduler
+adapters remain for existing installations, but are not offered as new-customer
+profiles. See
 [`docs/visual-deployment-task.md`](docs/visual-deployment-task.md) for the
 provider-specific apply and verification steps.
 The evidence boundary and release gates are tracked in
@@ -55,10 +58,11 @@ If Docker Engine exists only inside WSL, open an interactive WSL distro shell,
 run the repository's `bash docker/bootstrap.sh` from there, and keep that shell
 open while using NOVA from Windows at `http://localhost:3001`. WSL's systemd
 services do not by themselves keep the distro running; when the distro stops,
-its local API and Windows localhost forwarding stop too. The API and database
-should remain bound to loopback—do not set `NOVA_API_BIND_ADDRESS=0.0.0.0` for
-this workflow. For a regular Windows install that stays available without an
-open WSL shell, use Docker Desktop. See Microsoft's [WSL systemd
+its local services and Windows localhost forwarding stop too. The Compose
+Nginx proxy publishes that loopback port and routes to the private API
+container. Keep the published port bound to loopback—do not set
+`NOVA_API_BIND_ADDRESS=0.0.0.0` for this workflow. For an always-on Windows
+install, use Docker Desktop. See Microsoft's [WSL systemd
 guidance](https://learn.microsoft.com/en-us/windows/wsl/systemd) and [localhost
 forwarding guidance](https://learn.microsoft.com/en-us/windows/dev-environment/wsl-interop).
 
@@ -120,29 +124,27 @@ hosted API. For an intentional rotation, pass
 selected API host's `DATABASE_URL` to the newly generated local value before
 serving traffic. Setup does not update hosted secrets.
 
-To publish that verified Supabase database through Netlify or Vercel, connect
-the repository and add the runtime variables to the host:
+To publish that verified Supabase database through Netlify, connect the
+repository and add the runtime variables to the host:
 `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`,
 `NOVA_BOOTSTRAP_TOKEN`, `NOVA_SECRETS_ENCRYPTION_KEY`,
-`NOVA_BACKGROUND_JOB_SECRET`, the non-secret `NOVA_BACKGROUND_SCHEDULER`, and
-`NOVA_ALLOWED_ORIGINS` for a mapped custom domain. For Vercel, add
-`CRON_SECRET` only when Vercel Cron is the selected scheduler; Vercel sends it
-only to the production Cron invocation and the adapter converts that request
-to NOVA's protected POST tick. Do not add
+`NOVA_BACKGROUND_JOB_SECRET`, `NOVA_BACKGROUND_SCHEDULER=supabase` as a
+non-secret value, and `NOVA_ALLOWED_ORIGINS` for a mapped custom domain. For
+Cloudflare, use the Cloudflare Worker secrets and Hyperdrive binding described
+in the deployment assistant. Do not add
 `SUPABASE_ACCESS_TOKEN`; it is used only by the one-time operator bootstrap.
-All hosted runtimes ultimately call the same `POST /api/internal/background/tick`
-endpoint. Set `NOVA_BACKGROUND_SCHEDULER` to exactly one of `cloudflare`,
-`netlify`, `vercel`, `supabase`, or `vps` on every NOVA runtime sharing that
-database. Each built-in adapter identifies itself; NOVA rejects a tick from a
-different provider. Still disable unused provider schedules: NOVA cannot
-detect duplicate schedules configured for the same provider. Netlify +
-Supabase is the current hosted reference path. Its build plugin includes the
-Netlify scheduled function only when `NOVA_BACKGROUND_SCHEDULER=netlify`; when
-`supabase` is selected, it publishes the API without Netlify's schedule, so no
-source edit is needed. Cloudflare and Vercel remain supported hosted adapters;
-Vercel's build-time `vercel.ts` config registers Cron only when its production
-selector is `vercel`. Supabase Cron/pg_net and VPS/Docker use the identical
-protected endpoint. To switch away from Supabase Cron, run
+All runtimes call the same `POST /api/internal/background/tick` endpoint. New
+Netlify and Cloudflare profiles use `NOVA_BACKGROUND_SCHEDULER=supabase`; the
+self-hosted Docker profile uses `vps`. Existing installations can continue to
+use their previously selected native provider scheduler. Set exactly one
+active trigger for every database: NOVA rejects ticks from the wrong adapter,
+but cannot discover duplicate schedules configured in provider dashboards.
+The Netlify build plugin publishes only the API when `supabase` is selected.
+The Cloudflare profile uses `cloudflare/wrangler.supabase-cron.toml`, which
+publishes no Cloudflare Cron. Existing Cloudflare, Netlify, and Vercel Cron
+adapters remain available for installations that already use them. Supabase
+Cron/pg_net and Docker call the same protected endpoint. To switch an existing
+installation away from Supabase Cron, run
 `bun run supabase:scheduler:disable` from a trusted operator machine.
 The Supabase adapter enables `pg_cron`/`pg_net` and uses Supabase's
 `supabase_vault` extension (which exposes the `vault` schema) for its two
@@ -201,7 +203,7 @@ service before recreating the API:
 
 ```powershell
 docker compose --env-file .env -f docker/compose.yaml run --rm migrate
-docker compose --env-file .env -f docker/compose.yaml up -d api maintenance
+docker compose --env-file .env -f docker/compose.yaml up -d api nginx maintenance
 ```
 
 ## Supabase Cloud
@@ -218,20 +220,23 @@ against a populated customer database unless its disposable-test precondition
 has been verified. Never use the Supabase `postgres` owner or
 `service_role` connection for normal NOVA API requests.
 
-## Cloudflare, Netlify, Vercel, and VPS
+## Supported deployment profiles and retained adapters
 
-Netlify + Supabase Cloud is the current hosted reference path
-(`netlify/functions/nova.mts`). Cloudflare (`cloudflare/worker.ts`) and Vercel
-(`api/[...path].ts`) are supported alternative adapters that use the same API
-and PostgreSQL schema. Each keeps domain logic in the shared API. A VPS can
-run the same API and static client behind a reverse proxy with direct
-PostgreSQL. See
+NOVA guides new installations through three profiles: Netlify Functions with
+Supabase Cloud, Cloudflare Workers with Supabase Cloud, or self-hosted Docker
+with PostgreSQL behind Nginx. Netlify + Supabase is the hosted reference path
+(`netlify/functions/nova.mts`); Cloudflare uses `cloudflare/worker.ts` and
+Hyperdrive. All use the same API domain logic, PostgreSQL schema, and protected
+background-work contract. The Vercel adapter (`api/[...path].ts`) and
+native-host scheduler adapters remain in the repository for existing
+installations; they are not new-customer deployment profiles. See
 [`docs/foundation-design.md`](docs/foundation-design.md) for the portability,
 RLS, role, email-adapter, and module-boundary rules.
 See [`docs/deployment-operations.md`](docs/deployment-operations.md) for
 backup/restore, upgrades, secret rotation, readiness and scheduled maintenance.
 See [`docs/deployment-orchestrator-plan.md`](docs/deployment-orchestrator-plan.md)
-for the planned orchestration of runtime, database, scheduler, and domain moves.
+for the deployment manager's current read-only boundary and the safety gates
+required before runtime, scheduler, database, or domain moves can be automated.
 
 NOVA is open source. Checkout, trials, subscriptions, license activation and
 mandatory call-home services are not required. A hosted operator may provide
@@ -257,9 +262,10 @@ administrator reveals once. No administrator is given a password.
 
 ## Custom domains and generated links
 
-Connect the custom domain and HTTPS at Netlify, Vercel, or the VPS reverse
-proxy first. Set `NOVA_ALLOWED_ORIGINS` in the API environment to the exact
-origins mapped to this deployment, alongside `BETTER_AUTH_URL` as the fallback.
+Connect the custom domain and HTTPS at Netlify, Cloudflare, or the VPS reverse
+proxy first. Existing Vercel installations follow the same origin rules. Set
+`NOVA_ALLOWED_ORIGINS` in the API environment to the exact origins mapped to
+this deployment, alongside `BETTER_AUTH_URL` as the fallback.
 A Super Admin selects the approved origin during first-run setup (and can
 change it later in Settings → Public links and custom domain). NOVA uses that selection for new invitations, auth
 verification/reset links, Gmail OAuth callbacks, notification email links and
@@ -269,7 +275,8 @@ selected again. The setting is per organisation, audited, and cannot add a host 
 database adapter; it does not host the public web origin.
 
 For a VPS reverse proxy, set `NOVA_TRUST_PROXY_HEADERS=true` only when the
-proxy strips client-supplied forwarded headers and sets the external host and
-HTTPS protocol itself. The same opt-in enables trusted client-IP headers for
-Better Auth's shared rate limiter; leave it false when NOVA is directly
-exposed.
+outer proxy strips client-supplied forwarded headers and sets the external host,
+HTTPS protocol, and trusted client IP itself. The Compose Nginx proxy drops
+`CF-Connecting-IP` and uses the trusted `X-Forwarded-For` chain. The same opt-in
+enables trusted client-IP headers for Better Auth's shared rate limiter; leave
+it false when NOVA is directly exposed.

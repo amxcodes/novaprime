@@ -350,28 +350,19 @@
   border-block-start: 1px solid var(--nova-color-border);
 }
 
-.root :global(.deployment-scheduler-choices) {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
-  gap: var(--nova-space-2);
-}
-
-.root :global(.deployment-scheduler) {
-  display: flex;
-  min-width: 0;
-  min-height: var(--nova-control-touch-target);
-  align-items: center;
-  gap: var(--nova-space-3);
+.root :global(.deployment-scheduler-default) {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
   padding: var(--nova-space-2) var(--nova-space-3);
   border: 1px solid var(--nova-color-border);
   border-radius: var(--nova-radius-control);
   color: var(--nova-color-text-primary);
-  background: var(--nova-color-surface);
+  background: var(--nova-color-surface-subtle);
   font-size: var(--nova-type-size-sm);
   overflow-wrap: anywhere;
 }
 
-.root :global(.deployment-scheduler input),
 .root :global(.deployment-confirm input) {
   width: 1.125rem;
   height: 1.125rem;
@@ -679,7 +670,6 @@
   .root,
   .root :global(.deployment-path),
   .root :global(.deployment-stage),
-  .root :global(.deployment-scheduler),
   .root :global(.deployment-action-map th),
   .root :global(.deployment-action-map td),
   .root :global(.notice),

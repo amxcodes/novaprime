@@ -54,6 +54,17 @@ test("plans persist outside the checkout with a random ID and private file mode"
       state: "identified" as const,
       target: "account/worker",
       revision: "worker-etag-123",
+      runtimeBindings: {
+        state: "verified" as const,
+        completeness: "selected-runtime" as const,
+        bindings: [{ name: "HYPERDRIVE", type: "hyperdrive", scopes: ["worker"], contexts: ["production"], secret: false }],
+        configuredScheduler: "supabase",
+      },
+      domainRoutes: {
+        state: "verified" as const,
+        completeness: "selected-runtime" as const,
+        domains: [{ hostname: "nova.example.test", source: "custom-domain" as const }],
+      },
     },
     {
       provider: "supabase" as const,
@@ -85,6 +96,14 @@ test("plans persist outside the checkout with a random ID and private file mode"
   expect(files).toEqual([`${stored.id}.json`]);
   expect(JSON.stringify(stored)).not.toContain("SUPABASE_ACCESS_TOKEN");
   expect(JSON.stringify(stored)).not.toContain("DATABASE_URL");
+  const persistedPath = join(root, (await readdir(root))[0]!, `${stored.id}.json`);
+  const editedPlan = JSON.parse(await readFile(persistedPath, "utf8")) as Record<string, unknown>;
+  const persistedPreview = editedPlan.preview as { providerInventory: Array<Record<string, unknown>> };
+  const cloudflare = persistedPreview.providerInventory.find(({ provider }) => provider === "cloudflare")!;
+  const runtimeBindings = cloudflare.runtimeBindings as { bindings: Array<Record<string, unknown>> };
+  runtimeBindings.bindings[0]!.value = "must-not-enter-plan-state";
+  await writeFile(persistedPath, JSON.stringify(editedPlan));
+  await expect(loadDeploymentPlan(repo, stored.id)).rejects.toThrow("DEPLOYMENT_PLAN_CORRUPT");
   if (process.platform !== "win32") {
     const info = await stat(join(root, hashDirs[0]!, `${stored.id}.json`));
     expect(info.mode & 0o777).toBe(0o600);

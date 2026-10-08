@@ -128,16 +128,17 @@ limit 20;
 ```
 
 The Cron row confirms that pg_cron ran its SQL. The HTTP row is the one that
-confirms whether the Netlify/API endpoint answered successfully.
+confirms whether the NOVA API endpoint answered successfully.
 
 ### Where each deployment value goes
 
 Selecting a path in NOVA only selects the browser checklist. It does not change
-GitHub or a provider account. The customer must first import/connect the repo
-in Cloudflare Workers & Pages, Netlify, or Vercel; after that, a configured
-production push deploys committed code and provider configuration. A GitHub
-push does not create the database, inject runtime values, map DNS, or enable
-the Supabase scheduler.
+GitHub or a provider account. For new installations, the customer imports or
+connects the repo in Cloudflare Workers & Pages or Netlify; existing Vercel
+installations can keep their adapter. After that, a configured production push
+deploys committed code and provider configuration. A GitHub push does not
+create the database, inject runtime values, map DNS, or enable the Supabase
+scheduler.
 
 For each path, the division is:
 
@@ -180,6 +181,11 @@ management token in a hosted runtime. After changing a host secret, redeploy
 or restart that host. After changing the scheduler selection, update the
 selector on every runtime sharing the database, disable the previous provider
 trigger, run one manual tick, and check provider logs plus `/api/ready`.
+Supabase Cron stores the API callback origin in Vault: when a runtime move keeps
+the same public origin, the job follows the new route after domain cutover; if
+the origin changes, rerun `bun run supabase:scheduler` against the same project
+with the verified new HTTPS origin, then confirm one active job and its
+`pg_net` HTTP response before retiring the previous runtime.
 Preview/staging runtimes must use separate databases or have no production
 scheduler enabled.
 

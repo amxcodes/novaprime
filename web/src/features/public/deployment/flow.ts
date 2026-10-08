@@ -25,8 +25,8 @@ export function deploymentCanCompleteStage(
   scheduler: DeploymentScheduler | "",
   probe: DeploymentProbe | null,
 ): boolean {
-  const available = path ? DEPLOYMENT_SCHEDULERS[path] : [];
-  const schedulerSelected = stage !== 0 || available.includes(scheduler as DeploymentScheduler);
+  const expectedScheduler = path ? DEPLOYMENT_SCHEDULERS[path] : "";
+  const schedulerSelected = (stage !== 0 && stage !== 4) || scheduler === expectedScheduler;
   return schedulerSelected && deploymentProbePassed(stage, scheduler, probe);
 }
 
@@ -35,8 +35,8 @@ export function deploymentCanContinue(progress: DeploymentChecklistProgress, pro
   for (let stage = 0; stage < progress.stage; stage += 1) {
     if (progress.completed[stage] !== true) return false;
   }
-  const available = progress.path ? DEPLOYMENT_SCHEDULERS[progress.path] : [];
-  const schedulerSelected = (progress.stage !== 0 && progress.stage !== 4) || available.includes(progress.scheduler as DeploymentScheduler);
+  const expectedScheduler = progress.path ? DEPLOYMENT_SCHEDULERS[progress.path] : "";
+  const schedulerSelected = (progress.stage !== 0 && progress.stage !== 4) || progress.scheduler === expectedScheduler;
   return progress.completed[progress.stage] === true &&
     deploymentProbePassed(progress.stage, progress.scheduler, probe) && schedulerSelected;
 }

@@ -32,6 +32,27 @@ function providerSnapshot(resources: readonly ProviderResource[]): unknown[] {
       expectedHead: resource.migrationInventory.expectedHead,
       checksumsVerified: resource.migrationInventory.checksumsVerified,
     } : null,
+    runtimeBindings: resource.runtimeBindings ? {
+      state: resource.runtimeBindings.state,
+      completeness: resource.runtimeBindings.completeness,
+      bindings: [...resource.runtimeBindings.bindings]
+        .map((binding) => ({
+          name: binding.name,
+          type: binding.type,
+          scopes: [...binding.scopes].sort(),
+          contexts: [...binding.contexts].sort(),
+          secret: binding.secret,
+        }))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+      configuredScheduler: resource.runtimeBindings.configuredScheduler ?? null,
+    } : null,
+    domainRoutes: resource.domainRoutes ? {
+      state: resource.domainRoutes.state,
+      completeness: resource.domainRoutes.completeness,
+      domains: [...resource.domainRoutes.domains]
+        .map(({ hostname, source }) => ({ hostname, source }))
+        .sort((left, right) => left.hostname.localeCompare(right.hostname)),
+    } : null,
   })).sort((left, right) => String(left.provider).localeCompare(String(right.provider)));
 }
 

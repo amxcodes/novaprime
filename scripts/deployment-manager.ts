@@ -153,8 +153,15 @@ function reportStatus(
       const migrations = provider.migrationInventory
         ? `Migrations ${provider.migrationInventory.state} (${provider.migrationInventory.appliedCount ?? "?"} applied; head ${provider.migrationInventory.migrationHead ?? "none"}; expected ${provider.migrationInventory.expectedHead ?? "unknown"})`
         : undefined;
+      const runtimeBindings = provider.runtimeBindings
+        ? `Runtime bindings ${provider.runtimeBindings.state}/${provider.runtimeBindings.completeness} (${provider.runtimeBindings.bindings.length} names${provider.runtimeBindings.configuredScheduler ? `; selector ${provider.runtimeBindings.configuredScheduler}` : ""})`
+        : undefined;
+      const domains = provider.domainRoutes
+        ? `Custom domains ${provider.domainRoutes.state}/${provider.domainRoutes.completeness} (${provider.domainRoutes.domains.map(({ hostname }) => hostname).join(", ") || "none observed"})`
+        : undefined;
       const summary = [provider.provider, provider.state, provider.target, provider.revision ? `revision ${provider.revision}` : undefined, provider.configuredScheduler
         ? `configured scheduler ${provider.configuredScheduler}` : undefined, scheduler, provider.schedulerInventory?.detail,
+        runtimeBindings, provider.runtimeBindings?.detail, domains, provider.domainRoutes?.detail,
         migrations, provider.migrationInventory?.detail, provider.detail]
         .filter(Boolean).join(" — ");
       write("  " + summary);

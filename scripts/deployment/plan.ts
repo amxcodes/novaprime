@@ -30,6 +30,52 @@ export interface DeploymentPreview {
   providerInventory?: ProviderResource[];
 }
 
+const netlifyRequiredRuntimeBindings = [
+  { name: "DATABASE_URL", secret: true },
+  { name: "BETTER_AUTH_SECRET", secret: true },
+  { name: "BETTER_AUTH_URL", secret: false },
+  { name: "NOVA_BOOTSTRAP_TOKEN", secret: true },
+  { name: "NOVA_SECRETS_ENCRYPTION_KEY", secret: true },
+  { name: "NOVA_BACKGROUND_JOB_SECRET", secret: true },
+  { name: "NOVA_BACKGROUND_SCHEDULER", secret: false },
+] as const;
+
+const cloudflareRequiredRuntimeBindings = [
+  { name: "HYPERDRIVE", type: "hyperdrive", secret: false },
+  { name: "BETTER_AUTH_SECRET", type: "secret_text", secret: true },
+  { name: "BETTER_AUTH_URL", type: "plain_text", secret: false },
+  { name: "NOVA_BOOTSTRAP_TOKEN", type: "secret_text", secret: true },
+  { name: "NOVA_SECRETS_ENCRYPTION_KEY", type: "secret_text", secret: true },
+  { name: "NOVA_BACKGROUND_JOB_SECRET", type: "secret_text", secret: true },
+  { name: "NOVA_BACKGROUND_SCHEDULER", type: "plain_text", secret: false },
+] as const;
+
+function runtimeConfigurationBlockers(
+  runtime: RequestedDeployment["runtime"],
+  expectedScheduler: string | null,
+  inventory: ProviderResource["runtimeBindings"],
+): string[] {
+  if (!inventory || inventory.state !== "verified" || inventory.completeness !== "selected-runtime") {
+    return ["TARGET_RUNTIME_BINDING_INVENTORY_INCOMPLETE"];
+  }
+  const required = runtime === "netlify" ? netlifyRequiredRuntimeBindings :
+    runtime === "cloudflare" ? cloudflareRequiredRuntimeBindings : [];
+  const blockers: string[] = [];
+  for (const expected of required) {
+    const binding = inventory.bindings.find(({ name }) => name === expected.name);
+    if (!binding || binding.secret !== expected.secret ||
+        (runtime === "netlify" && (!binding.scopes.includes("functions") ||
+          !binding.contexts.some((context) => context === "all" || context === "production"))) ||
+        (runtime === "cloudflare" && binding.type !== expected.type)) {
+      blockers.push(`TARGET_RUNTIME_REQUIRED_BINDING_INVALID:${expected.name}`);
+    }
+  }
+  if (expectedScheduler === null || inventory.configuredScheduler !== expectedScheduler) {
+    blockers.push("TARGET_RUNTIME_SCHEDULER_CONFIGURATION_MISMATCH");
+  }
+  return blockers;
+}
+
 export function buildDeploymentPreview(
   inventory: LocalDeploymentInventory,
   request: RequestedDeployment,
@@ -60,6 +106,13 @@ export function buildDeploymentPreview(
     const runtimeState = providerInventory.find(({ provider }) => provider === request.runtime);
     if (runtimeState?.state !== "identified") blockers.push("TARGET_RUNTIME_NOT_VERIFIED");
     else if (!runtimeState.revision) blockers.push("TARGET_RUNTIME_REVISION_UNAVAILABLE");
+    if (runtimeChanges && runtimeState?.state === "identified") {
+      const expectedScheduler = request.scheduler === "keep" ? currentScheduler : request.scheduler;
+      blockers.push(...runtimeConfigurationBlockers(request.runtime, expectedScheduler, runtimeState.runtimeBindings));
+      if (runtimeState.domainRoutes?.state !== "verified" || runtimeState.domainRoutes.completeness !== "selected-runtime") {
+        blockers.push("TARGET_RUNTIME_CUSTOM_DOMAIN_INVENTORY_INCOMPLETE");
+      }
+    }
     const databaseState = providerInventory.find(({ provider }) => provider === "supabase");
     if (request.database === "keep" && inventory.database.providerHint === "supabase" &&
         databaseState?.state !== "identified") {
@@ -150,15 +203,25 @@ export function buildDeploymentPreview(
       { id: "compare-runtime-secrets", resource: "secrets", operation: "compare required key presence without revealing values", execution: "provider-inventory-required" },
       { id: "verify-domain-control", resource: "domain", operation: "verify origin, DNS zone ownership, route and TLS", execution: "provider-inventory-required" },
       { id: "deploy-candidate", resource: "runtime", operation: "deploy " + request.runtime + " candidate and verify identity", execution: "not-implemented" },
-      { id: "promote-origin", resource: "domain", operation: "promote the reviewed hostname after candidate verification", execution: "not-implemented" },
     );
   } else {
     actions.push({ id: "verify-runtime", resource: "runtime", operation: "confirm the existing " + request.runtime + " runtime remains healthy", execution: "provider-inventory-required" });
   }
   if (schedulerChanges) {
     actions.push({ id: "handover-scheduler", resource: "scheduler", operation: "hand over to " + request.scheduler, execution: "not-implemented" });
+  } else if (runtimeChanges && currentScheduler === "supabase" && request.database === "keep") {
+    actions.push({
+      id: "repoint-supabase-cron",
+      resource: "scheduler",
+      operation: "preserve the Supabase Cron callback when the public origin stays the same; otherwise update it to the verified candidate HTTPS origin",
+      execution: "not-implemented",
+      reason: "The current job stores its callback origin in Supabase Vault. A stable origin follows the new route automatically; a changed origin requires updating the existing job, then verifying one active job and its pg_net response before retiring the old runtime.",
+    });
   } else {
     actions.push({ id: "verify-scheduler", resource: "scheduler", operation: "verify and retain the currently selected scheduler", execution: "provider-inventory-required" });
+  }
+  if (runtimeChanges) {
+    actions.push({ id: "promote-origin", resource: "domain", operation: "promote the reviewed hostname after candidate and scheduler verification", execution: "not-implemented" });
   }
 
   const identity = JSON.stringify({ request, source: inventory.source, localHints: {

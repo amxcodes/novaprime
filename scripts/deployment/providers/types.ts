@@ -17,6 +17,28 @@ export interface DatabaseMigrationInventory {
   detail?: string;
 }
 
+export interface RuntimeBindingInventory {
+  state: "verified" | "unavailable" | "not-inspected";
+  completeness: "selected-runtime" | "partial" | "not-inspected";
+  bindings: Array<{
+    name: string;
+    type: string;
+    scopes: string[];
+    contexts: string[];
+    secret: boolean;
+  }>;
+  /** This is retained only for the allowlisted non-secret scheduler selector. */
+  configuredScheduler?: string;
+  detail?: string;
+}
+
+export interface DomainRouteInventory {
+  state: "verified" | "unavailable" | "not-inspected";
+  completeness: "selected-runtime" | "partial" | "not-inspected";
+  domains: Array<{ hostname: string; source: "provider-default" | "custom-domain" }>;
+  detail?: string;
+}
+
 export interface ProviderResource {
   provider: ProviderName;
   state: "identified" | "target-required" | "not-configured" | "unavailable";
@@ -32,6 +54,8 @@ export interface ProviderResource {
   configuredScheduler?: string;
   schedulerInventory?: SchedulerTriggerInventory;
   migrationInventory?: DatabaseMigrationInventory;
+  runtimeBindings?: RuntimeBindingInventory;
+  domainRoutes?: DomainRouteInventory;
   detail?: string;
 }
 

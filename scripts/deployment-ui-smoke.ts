@@ -2,7 +2,6 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { DeploymentAssistant } from "../web/src/features/public/deployment/DeploymentAssistant.tsx";
 import {
-  DEPLOYMENT_SCHEDULERS,
   DEPLOYMENT_SCHEDULER_LABELS,
   DEPLOYMENT_STAGES,
 } from "../web/src/features/public/deployment/catalog.ts";
@@ -21,7 +20,6 @@ import {
   normalizeDeploymentProgress,
   resetDeploymentProgress,
   selectDeploymentPath,
-  selectDeploymentScheduler,
   selectDeploymentStage,
   setDeploymentStageCompletion,
 } from "../web/app/deployment-route.js";
@@ -46,7 +44,6 @@ function render(
     onReset() {},
     onSelectPath() {},
     onSelectStage() {},
-    onSelectScheduler() {},
     onCompleteChange() {},
     onProbe() {},
     onBack() {},
@@ -61,20 +58,15 @@ function has(markup: string, value: string, context: string) {
 }
 
 const pairings: ReadonlyArray<readonly [DeploymentPathId, DeploymentScheduler, string, string, string]> = [
-  ["cloudflare-supabase", "cloudflare", "Your Cloudflare Worker", "A production Worker deploy using the Cloudflare Cron Wrangler config", "cloudflare/wrangler.toml"],
   ["cloudflare-supabase", "supabase", "Your Supabase project (not the hosting provider)", "After NOVA passes readiness, the trusted-operator command creates the job in Supabase", "cloudflare/wrangler.supabase-cron.toml"],
-  ["netlify-supabase", "netlify", "Your Netlify site", "The production build reads NOVA_BACKGROUND_SCHEDULER", "NOVA_BACKGROUND_SCHEDULER=netlify"],
   ["netlify-supabase", "supabase", "Your Supabase project (not the hosting provider)", "After NOVA passes readiness, the trusted-operator command creates the job in Supabase", "NOVA_BACKGROUND_SCHEDULER=supabase"],
-  ["vercel-supabase", "vercel", "Your Vercel production project", "Production deploy reads NOVA_BACKGROUND_SCHEDULER in vercel.ts", "NOVA_BACKGROUND_SCHEDULER=vercel"],
-  ["vercel-supabase", "supabase", "Your Supabase project (not the hosting provider)", "After NOVA passes readiness, the trusted-operator command creates the job in Supabase", "publishes no Vercel Cron"],
-  ["vps-postgres", "vps", "The VPS/local server running NOVA", "The Docker Compose bootstrap starts one maintenance worker", "NOVA_BACKGROUND_SCHEDULER=vps"],
-  ["local-docker", "vps", "The VPS/local server running NOVA", "The Docker Compose bootstrap starts one maintenance worker", "NOVA_BACKGROUND_SCHEDULER=vps"],
+  ["vps-postgres", "vps", "The always-on computer or server running NOVA", "The Docker Compose bootstrap starts one maintenance worker", "NOVA_BACKGROUND_SCHEDULER=vps"],
 ];
 
 expect(DEPLOYMENT_STAGES.length === 7, "the guide must preserve the seven ordered stages");
 expect(
-  pairings.length === Object.values(DEPLOYMENT_SCHEDULERS).reduce((sum, values) => sum + values.length, 0),
-  "every supported provider/scheduler pairing must be covered",
+  pairings.length === 3,
+  "every supported deployment profile must be covered",
 );
 
 for (const [path, scheduler, lives, activates, providerSetting] of pairings) {
@@ -122,15 +114,16 @@ expect(
 has(readyMarkup, "Trusted operator computer → NOVA repository checkout", "ready Supabase action location");
 has(readyMarkup, "bun run supabase:scheduler</code>", "ready Supabase guarded command");
 has(readyMarkup, "type it exactly before any write", "project-ref confirmation");
-has(readyMarkup, "pg_cron</code> + <code>pg_net", "Supabase Cron implementation");
+has(readyMarkup, "pg_cron + pg_net", "Supabase Cron implementation");
 has(readyMarkup, "<details class=\"deployment-scheduler-plan\" open=\"\">", "ready action details open");
 has(readyMarkup, "only means pg_net queued", "asynchronous HTTP verification copy");
 has(readyMarkup, "aria-live=\"polite\" aria-atomic=\"true\"", "current stage announcement semantics");
 has(readyMarkup, "The checkbox is an operator attestation, not remote proof.", "operator attestation language");
 
-const runtimeProbe = { health: true, ready: true, scheduler: "vercel", checkedAt: "2026-10-05T00:00:00.000Z" };
-expect(deploymentCanCompleteStage("vercel-supabase", 3, "supabase", runtimeProbe), "runtime stage requires health and database readiness only");
-expect(!deploymentCanCompleteStage("vercel-supabase", 4, "supabase", runtimeProbe), "scheduler stage additionally requires exact selected scheduler match");
+const runtimeProbe = { health: true, ready: true, scheduler: "vps", checkedAt: "2026-10-05T00:00:00.000Z" };
+expect(deploymentCanCompleteStage("cloudflare-supabase", 3, "supabase", runtimeProbe), "runtime stage requires health and database readiness only");
+expect(!deploymentCanCompleteStage("cloudflare-supabase", 4, "supabase", runtimeProbe), "scheduler stage additionally requires exact selected scheduler match");
+expect(!deploymentCanCompleteStage("cloudflare-supabase", 4, "vps", runtimeProbe), "scheduler stage rejects a value outside the selected profile even when the probe agrees");
 
 const setupMarkup = render("cloudflare-supabase", "supabase", 0);
 has(setupMarkup, "On your trusted computer, run <code>bun run setup:supabase</code>", "inline command formatting");
@@ -153,7 +146,7 @@ const restored = normalizeDeploymentProgress({
   scheduler: "unsupported",
   completed: { 0: true, 4: true, 7: true, bogus: true },
 });
-expect(restored?.stage === 0 && restored.path === "cloudflare-supabase" && restored.scheduler === "", "invalid scheduler must return to the path-selection stage");
+expect(restored?.stage === 0 && restored.path === "cloudflare-supabase" && restored.scheduler === "supabase", "invalid scheduler must fall back to the selected profile default");
 expect(Object.keys(restored?.completed ?? {}).length === 0, "invalid scheduler must clear every stage attestation");
 expect(normalizeDeploymentProgress({ path: "vps-postgres", stage: -4, scheduler: "vps", completed: { 0: true } })?.stage === 0, "negative restored stage must clamp");
 expect(normalizeDeploymentProgress({ path: "vps-postgres", stage: 4, scheduler: "supabase", completed: { 4: true } })?.completed[4] === undefined, "unsupported schedule must invalidate stage-four attestation");
@@ -163,12 +156,8 @@ expect(!deploymentCanContinue({ path: "cloudflare-supabase", stage: 4, scheduler
 expect(normalizeDeploymentProgress([]) === null, "malformed array storage must be ignored");
 
 let progress = { path: "cloudflare-supabase", stage: 4, scheduler: "supabase", completed: { 0: true, 4: true } };
-progress = selectDeploymentPath(progress, "vercel-supabase");
-expect(progress.stage === 0 && progress.scheduler === "" && Object.keys(progress.completed).length === 0, "changing path must reset scheduler, progress, and probe context");
-progress = selectDeploymentScheduler({ path: "vercel-supabase", stage: 0, scheduler: "vercel", completed: { 0: true } }, "supabase");
-expect(Object.keys(progress.completed).length === 0, "changing scheduler must clear completion attestations");
-progress = selectDeploymentScheduler({ path: "vercel-supabase", stage: 0, scheduler: "supabase", completed: { 0: true } }, "supabase");
-expect(progress.completed[0] === true, "reselecting the same scheduler must preserve completion attestations");
+progress = selectDeploymentPath(progress, "netlify-supabase");
+expect(progress.stage === 0 && progress.scheduler === "supabase" && Object.keys(progress.completed).length === 0, "changing path must reset progress and select its single profile scheduler");
 progress = setDeploymentStageCompletion(progress, 0, false);
 progress = selectDeploymentStage(progress, 6);
 expect(progress.completed[0] === false && progress.stage === 6, "stage navigation must preserve attestation state");
@@ -215,4 +204,4 @@ for (const request of requests) {
 expect(await checkDeploymentEndpoint("/api/ready", "ready", async () => Response.json({ service: "other", status: "ready" })) === false, "unexpected service identity must fail closed");
 expect(await checkDeploymentEndpoint("/api/ready", "ready", async () => { throw new Error("offline"); }) === false, "network errors must fail closed");
 
-console.info("PASS: seven stages, every allowed provider/scheduler pairing, contiguous v2 storage restoration, bounded step navigation, credential-free health/readiness checks, stale probe invalidation, and readiness-gated Supabase Cron.");
+console.info("PASS: seven stages, all three fixed profiles, contiguous v2 storage restoration, bounded step navigation, credential-free health/readiness checks, stale probe invalidation, and readiness-gated Supabase Cron.");

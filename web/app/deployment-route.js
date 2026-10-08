@@ -15,8 +15,10 @@ export const deploymentProgressStorageKey = "nova-deployment-progress-v2";
 export function normalizeDeploymentProgress(saved) {
   if (!saved || typeof saved !== "object" || Array.isArray(saved)) return null;
   const path = DEPLOYMENT_PATHS.some((candidate) => candidate.id === saved.path) ? saved.path : "";
-  const scheduler = (DEPLOYMENT_SCHEDULERS[path] || []).includes(saved.scheduler) ? saved.scheduler : "";
+  const scheduler = path ? DEPLOYMENT_SCHEDULERS[path] : "";
+  const schedulerIsValid = saved.scheduler === scheduler;
   if (!path || !scheduler) return { path, stage: 0, scheduler, completed: {} };
+  if (!schedulerIsValid) return { path, stage: 0, scheduler, completed: {} };
   const completed = {};
   if (saved.completed && typeof saved.completed === "object" && !Array.isArray(saved.completed)) {
     DEPLOYMENT_STAGES.forEach((_, index) => {
@@ -35,19 +37,12 @@ export function normalizeDeploymentProgress(saved) {
 }
 
 export function selectDeploymentPath(_current, path) {
-  return { path, stage: 0, scheduler: "", completed: {} };
+  const supportedPath = DEPLOYMENT_PATHS.find((candidate) => candidate.id === path)?.id ?? "";
+  return { path: supportedPath, stage: 0, scheduler: DEPLOYMENT_SCHEDULERS[supportedPath] || "", completed: {} };
 }
 
 export function selectDeploymentStage(current, stage) {
   return { ...current, stage };
-}
-
-export function selectDeploymentScheduler(current, scheduler) {
-  return {
-    ...current,
-    scheduler,
-    completed: current.scheduler === scheduler ? current.completed : {},
-  };
 }
 
 export function setDeploymentStageCompletion(current, stage, completed) {

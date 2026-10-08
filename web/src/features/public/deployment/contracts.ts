@@ -1,11 +1,9 @@
 export type DeploymentPathId =
   | "cloudflare-supabase"
   | "netlify-supabase"
-  | "vercel-supabase"
-  | "vps-postgres"
-  | "local-docker";
+  | "vps-postgres";
 
-export type DeploymentScheduler = "cloudflare" | "netlify" | "vercel" | "supabase" | "vps";
+export type DeploymentScheduler = "supabase" | "vps";
 
 export interface DeploymentPath {
   id: DeploymentPathId;
@@ -36,7 +34,6 @@ export interface DeploymentAssistantProps {
   onReset: () => void;
   onSelectPath: (path: DeploymentPathId) => void;
   onSelectStage: (stage: number) => void;
-  onSelectScheduler: (scheduler: DeploymentScheduler) => void;
   onCompleteChange: (completed: boolean) => void;
   onProbe: () => void;
   onBack: () => void;

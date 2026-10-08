@@ -53,7 +53,7 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?Set BETTER_AUTH_URL in .env}
       NOVA_ALLOWED_ORIGINS: ${NOVA_ALLOWED_ORIGINS:-}
-      NOVA_TRUST_PROXY_HEADERS: ${NOVA_TRUST_PROXY_HEADERS:-false}
+      NOVA_TRUST_PROXY_HEADERS: ${NOVA_TRUST_PROXY_HEADERS:-true}
       NOVA_BOOTSTRAP_TOKEN: ${NOVA_BOOTSTRAP_TOKEN:?Set NOVA_BOOTSTRAP_TOKEN in .env}
       NOVA_SECRETS_ENCRYPTION_KEY: ${NOVA_SECRETS_ENCRYPTION_KEY:?Set NOVA_SECRETS_ENCRYPTION_KEY in .env}
       NOVA_BACKGROUND_JOB_SECRET: ${NOVA_BACKGROUND_JOB_SECRET:?Set NOVA_BACKGROUND_JOB_SECRET in .env}
@@ -65,8 +65,6 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-    ports:
-      - "${NOVA_API_BIND_ADDRESS:-127.0.0.1}:${NOVA_API_PORT:-3001}:3001"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 10s
@@ -74,6 +72,23 @@ services:
       retries: 5
       start_period: 10s
     command: node dist/index.js
+
+  nginx:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${NOVA_API_BIND_ADDRESS:-127.0.0.1}:${NOVA_API_PORT:-3001}:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   maintenance:
     build:

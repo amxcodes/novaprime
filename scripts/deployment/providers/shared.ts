@@ -25,6 +25,26 @@ export function safeHttpsOrigin(value: string | undefined): string | undefined {
   } catch { return undefined; }
 }
 
+export function safeHostname(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length === 0 || value.length > 320 || /[\u0000-\u0020]/.test(value)) return undefined;
+  try {
+    const url = new URL(value.includes("://") ? value : `https://${value}`);
+    if (!(["http:", "https:"].includes(url.protocol)) || url.username || url.password || url.port ||
+        (url.pathname !== "/" && url.pathname !== "") || url.search || url.hash) return undefined;
+    const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
+    if (hostname.length > 253 || hostname.length < 3 || !hostname.includes(".") ||
+        hostname.split(".").some((label) => label.length === 0 || label.length > 63 ||
+          !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label))) return undefined;
+    return hostname;
+  } catch { return undefined; }
+}
+
+export function safeSchedulerSelector(value: unknown): string | undefined {
+  return typeof value === "string" && ["cloudflare", "netlify", "vercel", "supabase", "vps"].includes(value)
+    ? value
+    : undefined;
+}
+
 export function safeReleaseSha(value: string | undefined): string | undefined {
   return value && /^(?:[a-f0-9]{7,64})$/i.test(value) ? value.toLowerCase() : undefined;
 }

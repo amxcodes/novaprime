@@ -42,7 +42,6 @@ function render(overrides = {}) {
     onReset() {},
     onSelectPath() {},
     onSelectStage() {},
-    onSelectScheduler() {},
     onCompleteChange() {},
     onProbe() {},
     onBack() {},
@@ -65,9 +64,12 @@ test("deployment assistant owns its outer surface and uses the shared action but
 });
 
 test("deployment assistant recommends the current Netlify and Supabase reference path", () => {
+  assert.equal(DEPLOYMENT_PATHS.length, 3);
   assert.equal(DEPLOYMENT_PATHS[0]?.id, "netlify-supabase");
   assert.equal(DEPLOYMENT_PATHS[0]?.badge, "Recommended");
   assert.equal(DEPLOYMENT_PATHS.find((path) => path.id === "cloudflare-supabase")?.badge, "Hosted");
+  assert.equal(DEPLOYMENT_PATHS[2]?.id, "vps-postgres");
+  assert.doesNotMatch(DEPLOYMENT_PATHS.map((path) => path.id).join(" "), /vercel|local-docker/);
 });
 
 test("Supabase setup tells customers which project token permissions it needs", () => {
@@ -80,7 +82,7 @@ test("Supabase setup tells customers which project token permissions it needs", 
 });
 
 test("deployment stage actions stay inside the feature-owned action row", () => {
-  const markup = render({ pathId: "local-docker", scheduler: "vps" });
+  const markup = render({ pathId: "vps-postgres", scheduler: "vps" });
 
   assert.match(markup, /class="module-formActions"/);
   assert.match(markup, /data-deployment-back/);

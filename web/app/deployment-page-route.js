@@ -5,7 +5,6 @@ import {
   deploymentCanSelectStage,
   resetDeploymentProgress,
   selectDeploymentPath,
-  selectDeploymentScheduler,
   selectDeploymentStage,
   setDeploymentStageCompletion,
 } from "./deployment-route.js";
@@ -60,9 +59,9 @@ export async function mountDeploymentPage({
 
   const feature = await loadFeature();
   if (!isCurrent() || !target.isConnected) return null;
-  const { DeploymentAssistant, DEPLOYMENT_STAGES, deploymentPathById, supportedDeploymentSchedulers } = feature;
+  const { DeploymentAssistant, DEPLOYMENT_STAGES, deploymentPathById } = feature;
   if (typeof DeploymentAssistant !== "function" || !Array.isArray(DEPLOYMENT_STAGES) ||
-      typeof deploymentPathById !== "function" || typeof supportedDeploymentSchedulers !== "function") {
+      typeof deploymentPathById !== "function") {
     throw new TypeError("Deployment feature exports are incomplete");
   }
 
@@ -93,13 +92,6 @@ export async function mountDeploymentPage({
         if (!isCurrent() || !Number.isInteger(stage) || stage < 0 || stage >= DEPLOYMENT_STAGES.length) return;
         if (!deploymentCanSelectStage(getProgress(), stage, getProbe())) return;
         setProgress(selectDeploymentStage(getProgress(), stage));
-        invalidateProbe();
-        persistProgress();
-        render();
-      },
-      onSelectScheduler: (scheduler) => {
-        if (!isCurrent() || !supportedDeploymentSchedulers(getProgress().path).includes(scheduler)) return;
-        setProgress(selectDeploymentScheduler(getProgress(), scheduler));
         invalidateProbe();
         persistProgress();
         render();
