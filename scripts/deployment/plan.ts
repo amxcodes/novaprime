@@ -65,6 +65,20 @@ export function buildDeploymentPreview(
         databaseState?.state !== "identified") {
       blockers.push("DATABASE_PROVIDER_NOT_VERIFIED");
     }
+    if (request.database === "keep" && inventory.database.providerHint === "supabase" &&
+        inventory.database.projectRef && databaseState?.state === "identified" && databaseState.target &&
+        inventory.database.projectRef !== databaseState.target) {
+      blockers.push("DATABASE_PROJECT_IDENTITY_MISMATCH");
+    }
+    if (request.database === "keep" && inventory.database.configured && liveIdentity?.state === "identified") {
+      if (!inventory.database.identityFingerprint) blockers.push("LOCAL_DATABASE_IDENTITY_UNVERIFIABLE");
+      else if (liveIdentity.databaseFingerprint &&
+          liveIdentity.databaseFingerprint !== inventory.database.identityFingerprint) {
+        blockers.push("LIVE_DATABASE_IDENTITY_MISMATCH");
+      } else if (!liveIdentity.databaseFingerprint) {
+        blockers.push("LIVE_DATABASE_IDENTITY_UNVERIFIED");
+      }
+    }
     if (runtimeChanges && request.database === "keep") {
       const migrationState = databaseState?.migrationInventory?.state;
       if (migrationState === "behind") blockers.push("DATABASE_MIGRATIONS_REQUIRED_BEFORE_RUNTIME_CHANGE");

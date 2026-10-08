@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
+import { databaseIdentityFingerprint } from "../../server/src/deployment-identity.ts";
 
 const execFileAsync = promisify(execFile);
 const commitPattern = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i;
@@ -23,6 +24,7 @@ export interface DatabaseInventory {
   providerHint: "supabase" | "postgresql" | "unknown";
   projectRef?: string;
   endpointLabel?: string;
+  identityFingerprint?: string;
 }
 
 export interface LocalDeploymentInventory {
@@ -105,6 +107,7 @@ export async function inspectLocalDeployment(
         throw new Error("DATABASE_PROJECT_REF_MISMATCH");
       }
       const projectRef = urlProjectRef ?? verifiedConfiguredRef;
+      const identityFingerprint = databaseIdentityFingerprint(connection, verifiedConfiguredRef);
       const databaseName = decodeURIComponent(url.pathname.slice(1));
       const port = url.port || "5432";
       const host = url.hostname.includes(":") ? "[" + url.hostname + "]" : url.hostname;
@@ -112,6 +115,7 @@ export async function inspectLocalDeployment(
         configured: true,
         providerHint: projectRef ? "supabase" : "postgresql",
         ...(projectRef ? { projectRef } : {}),
+        ...(identityFingerprint ? { identityFingerprint } : {}),
         endpointLabel: projectRef
           ? "Supabase project " + projectRef
           : "PostgreSQL " + host + ":" + port + "/" + (databaseName || "(default database)"),

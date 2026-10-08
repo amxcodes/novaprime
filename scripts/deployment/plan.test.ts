@@ -6,7 +6,10 @@ const inventory: LocalDeploymentInventory = {
   environmentSource: "test",
   source: { branch: "main", commit: "a".repeat(40), clean: true, dirtyPathCount: 0, packageVersion: "1.2.3" },
   runtimeHint: "netlify",
-  database: { configured: true, providerHint: "supabase", projectRef: "abcdefghijklmnopqrst", endpointLabel: "Supabase project abcdefghijklmnopqrst" },
+  database: {
+    configured: true, providerHint: "supabase", projectRef: "abcdefghijklmnopqrst",
+    endpointLabel: "Supabase project abcdefghijklmnopqrst", identityFingerprint: "b".repeat(64),
+  },
   schedulerHint: "supabase",
   secretPresence: {},
   providerCredentialPresence: {},
@@ -89,12 +92,42 @@ test("remote planning binds provider inventory and blocks an unverified runtime 
   expect(preview.blockers).not.toContain("DATABASE_PROVIDER_NOT_VERIFIED");
 });
 
+test("remote plans block a Supabase project or database endpoint that differs from the live deployment", () => {
+  const providers = [
+    { provider: "netlify" as const, state: "identified" as const, target: "site-1", revision: "deploy-1" },
+    { provider: "cloudflare" as const, state: "identified" as const, target: "acct/worker", revision: "etag-1" },
+    { provider: "vercel" as const, state: "identified" as const, target: "project-1", revision: "dpl-1" },
+    { provider: "supabase" as const, state: "identified" as const, target: "zyxwvutsrqponmlkjihg", runtime: "postgresql" },
+    {
+      provider: "nova" as const, state: "identified" as const, runtime: "netlify",
+      configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64),
+    },
+  ];
+  const selectedForWrongProject = buildDeploymentPreview(inventory, {
+    runtime: "netlify", database: "keep", scheduler: "keep",
+  }, providers);
+  expect(selectedForWrongProject.blockers).toContain("DATABASE_PROJECT_IDENTITY_MISMATCH");
+
+  const selectedForWrongEndpoint = buildDeploymentPreview({
+    ...inventory,
+    database: { ...inventory.database, identityFingerprint: "c".repeat(64) },
+  }, {
+    runtime: "netlify", database: "keep", scheduler: "keep",
+  }, providers.map((provider) => provider.provider === "supabase"
+    ? { ...provider, target: inventory.database.projectRef! }
+    : provider));
+  expect(selectedForWrongEndpoint.blockers).toContain("LIVE_DATABASE_IDENTITY_MISMATCH");
+});
+
 test("remote planning requires a stable provider revision for the selected runtime", () => {
   const providers = [
     { provider: "netlify" as const, state: "identified" as const, target: "site-1" },
     { provider: "cloudflare" as const, state: "identified" as const, target: "account/worker", revision: "etag-1" },
     { provider: "supabase" as const, state: "identified" as const, target: "abcdefghijklmnopqrst" },
-    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", configuredScheduler: "supabase" },
+    {
+      provider: "nova" as const, state: "identified" as const, runtime: "netlify",
+      configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64),
+    },
   ];
   const preview = buildDeploymentPreview(inventory, {
     runtime: "netlify", database: "keep", scheduler: "supabase",
@@ -118,7 +151,10 @@ test("remote plans stop on pending or diverged database migrations before a runt
         checksumsVerified: true,
       },
     },
-    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", configuredScheduler: "supabase" },
+    {
+      provider: "nova" as const, state: "identified" as const, runtime: "netlify",
+      configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64),
+    },
   ];
   const behind = buildDeploymentPreview(inventory, {
     runtime: "cloudflare", database: "keep", scheduler: "supabase",
@@ -162,7 +198,10 @@ test("remote plan detects duplicate or missing active NOVA schedulers", () => {
     },
     { provider: "netlify" as const, state: "identified" as const, target: "site-id" },
     { provider: "vercel" as const, state: "identified" as const, target: "project-id" },
-    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", configuredScheduler: "supabase" },
+    {
+      provider: "nova" as const, state: "identified" as const, runtime: "netlify",
+      configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64),
+    },
   ];
   const duplicate = buildDeploymentPreview(inventory, {
     runtime: "cloudflare", database: "keep", scheduler: "supabase",
@@ -196,7 +235,10 @@ test("a single-resource Cron read cannot close the global scheduler inventory ga
       state: "current" as const, appliedCount: 2, migrationHead: "0002_authentication_bootstrap.sql",
       expectedHead: "0002_authentication_bootstrap.sql", checksumsVerified: true,
     } },
-    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", configuredScheduler: "supabase" },
+    {
+      provider: "nova" as const, state: "identified" as const, runtime: "netlify",
+      configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64),
+    },
   ];
   const preview = buildDeploymentPreview(inventory, {
     runtime: "cloudflare", database: "keep", scheduler: "supabase",

@@ -74,7 +74,7 @@ test("plans persist outside the checkout with a random ID and private file mode"
       },
     },
   ]);
-  const stored = await saveDeploymentPlan(repo, preview, new Date("2026-10-07T00:00:00.000Z"));
+  const stored = await saveDeploymentPlan(repo, preview, new Date());
   expect(stored.id).toMatch(/^plan-[0-9a-f-]{36}$/i);
   expect(stored.preview).toMatchObject({ persisted: true, applyEnabled: false, previewId: stored.id });
   expect(await loadDeploymentPlan(repo, stored.id)).toEqual(stored);

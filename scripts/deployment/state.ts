@@ -79,11 +79,12 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
       (source.branch !== null && typeof source.branch !== "string") ||
       !localHints || !hasOnly(localHints, ["runtimeHint", "database", "schedulerHint"]) ||
       !validRuntime(localHints.runtimeHint) || !validScheduler(localHints.schedulerHint) ||
-      !database || !hasOnly(database, ["configured", "providerHint", "projectRef", "endpointLabel"]) ||
+      !database || !hasOnly(database, ["configured", "providerHint", "projectRef", "endpointLabel", "identityFingerprint"]) ||
       typeof database.configured !== "boolean" ||
       !["supabase", "postgresql", "unknown"].includes(String(database.providerHint)) ||
       (database.projectRef !== undefined && (typeof database.projectRef !== "string" || !/^[a-z0-9]{20}$/.test(database.projectRef))) ||
       (database.endpointLabel !== undefined && typeof database.endpointLabel !== "string") ||
+      (database.identityFingerprint !== undefined && (typeof database.identityFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(database.identityFingerprint))) ||
       !Array.isArray(actions) || !actions.every((item) => {
         const action = typeof item === "object" && item !== null && !Array.isArray(item) ? item as Record<string, unknown> : null;
         return action !== null && hasOnly(action, ["id", "resource", "operation", "execution", "reason"]) &&
