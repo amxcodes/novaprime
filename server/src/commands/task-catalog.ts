@@ -121,8 +121,12 @@ export async function readTaskCatalog(request: Request): Promise<Response> {
         actor.context.organisationId,
         ["tasks.catalog.view", "tasks.catalog.propose", "tasks.catalog.manage", "tasks.catalog.review"],
       );
+      const canView = permissions["tasks.catalog.view"] === true;
+      const canPropose = permissions["tasks.catalog.propose"] === true;
+      const canManage = permissions["tasks.catalog.manage"] === true;
+      const canReview = permissions["tasks.catalog.review"] === true;
       let entries: CatalogEntry[] = [];
-      if (permissions.view || permissions.manage) {
+      if (canView || canManage) {
         entries = (await transaction.query<CatalogEntry>(
           `SELECT entries.id, entries.title, entries.description, entries.priority,
                   entries.revision, entries.created_at, entries.updated_at,
@@ -136,7 +140,7 @@ export async function readTaskCatalog(request: Request): Promise<Response> {
         )).rows;
       }
       let proposals: Proposal[] = [];
-      if (permissions.review || permissions.propose) {
+      if (canReview || canPropose) {
         proposals = (await transaction.query<Proposal>(
           `SELECT proposals.id, proposals.catalog_entry_id, proposals.proposed_by_person_id, proposals.action,
                   proposals.expected_revision, proposals.title, proposals.description,
@@ -152,7 +156,7 @@ export async function readTaskCatalog(request: Request): Promise<Response> {
              AND ($2::boolean = false OR proposals.status = 'pending')
            ORDER BY proposals.created_at DESC
            LIMIT 100`,
-          [actor.context.organisationId, permissions.review, actor.context.userId],
+          [actor.context.organisationId, canReview, actor.context.userId],
         )).rows;
       }
       return {
@@ -165,7 +169,7 @@ export async function readTaskCatalog(request: Request): Promise<Response> {
         proposals: proposals.map((proposal) => projectTaskCatalogProposal(
           proposal,
           actor.context.userId,
-          permissions.review,
+          canReview,
         )),
         permissions,
       };
