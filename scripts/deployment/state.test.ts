@@ -64,6 +64,15 @@ test("plans persist outside the checkout with a random ID and private file mode"
         state: "verified" as const,
         completeness: "selected-runtime" as const,
         domains: [{ hostname: "nova.example.test", source: "custom-domain" as const }],
+        cloudflareRouting: {
+          state: "verified" as const,
+          completeness: "selected-runtime" as const,
+          zones: [{
+            zoneId: "c".repeat(32), hostnames: ["nova.example.test"], state: "verified" as const,
+            routes: [{ pattern: "other.example.test/*", script: "other-worker" }],
+            dnsRecords: [{ hostname: "nova.example.test", type: "A", proxied: true }],
+          }],
+        },
       },
     },
     {

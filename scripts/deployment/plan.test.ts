@@ -11,6 +11,22 @@ const cloudflareBindings = [
   { name: "NOVA_BACKGROUND_JOB_SECRET", type: "secret_text", scopes: ["worker"], contexts: ["production"], secret: true },
   { name: "NOVA_BACKGROUND_SCHEDULER", type: "plain_text", scopes: ["worker"], contexts: ["production"], secret: false },
 ];
+const cloudflareDomainRoutes = {
+  state: "verified" as const,
+  completeness: "selected-runtime" as const,
+  domains: [{ hostname: "nova.example.test", source: "custom-domain" as const }],
+  cloudflareRouting: {
+    state: "verified" as const,
+    completeness: "selected-runtime" as const,
+    zones: [{
+      zoneId: "c".repeat(32),
+      hostnames: ["nova.example.test"],
+      state: "verified" as const,
+      routes: [] as Array<{ pattern: string; script: string | null }>,
+      dnsRecords: [{ hostname: "nova.example.test", type: "A", proxied: true }],
+    }],
+  },
+};
 
 const inventory: LocalDeploymentInventory = {
   environmentSource: "test",
@@ -129,7 +145,7 @@ test("runtime move requires target production bindings, secret classification, a
     {
       provider: "cloudflare" as const, state: "identified" as const, target: "account/worker", revision: "worker-revision",
       runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings: cloudflareBindings, configuredScheduler: "supabase" },
-      domainRoutes: { state: "verified" as const, completeness: "selected-runtime" as const, domains: [{ hostname: "nova.example.test", source: "custom-domain" as const }] },
+      domainRoutes: cloudflareDomainRoutes,
       schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "resource-only" as const, triggers: [] },
     },
     {
@@ -146,6 +162,9 @@ test("runtime move requires target production bindings, secret classification, a
   expect(preview.blockers).not.toContain("TARGET_RUNTIME_SCHEDULER_CONFIGURATION_MISMATCH");
   expect(preview.blockers).not.toContain("CURRENT_PUBLIC_HOSTNAME_UNVERIFIED");
   expect(preview.blockers).not.toContain("TARGET_RUNTIME_PUBLIC_HOSTNAME_NOT_ATTACHED");
+  expect(preview.blockers).not.toContain("TARGET_CLOUDFLARE_ROUTE_DNS_INVENTORY_INCOMPLETE");
+  expect(preview.blockers).not.toContain("TARGET_CLOUDFLARE_DNS_RECORD_NOT_VISIBLE");
+  expect(preview.blockers).not.toContain("TARGET_CLOUDFLARE_ROUTE_SHADOWS_PUBLIC_HOSTNAME");
 
   for (const scheduler of ["keep", "supabase"] as const) {
     const liveIdentityOnly = buildDeploymentPreview({ ...inventory, runtimeHint: null, schedulerHint: null }, {
@@ -175,6 +194,29 @@ test("runtime move requires target production bindings, secret classification, a
     ...providers.slice(1),
   ], true);
   expect(targetHostnameMissing.blockers).toContain("TARGET_RUNTIME_PUBLIC_HOSTNAME_NOT_ATTACHED");
+
+  const shadowedRoute = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
+    { ...providers[0]!, domainRoutes: {
+      ...cloudflareDomainRoutes,
+      cloudflareRouting: { ...cloudflareDomainRoutes.cloudflareRouting, zones: [{
+        ...cloudflareDomainRoutes.cloudflareRouting.zones[0]!,
+        routes: [{ pattern: "*.example.test/*", script: "other-worker" }],
+      }] },
+    } },
+    ...providers.slice(1),
+  ], true);
+  expect(shadowedRoute.blockers).toContain("TARGET_CLOUDFLARE_ROUTE_SHADOWS_PUBLIC_HOSTNAME");
+
+  const dnsMissing = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
+    { ...providers[0]!, domainRoutes: {
+      ...cloudflareDomainRoutes,
+      cloudflareRouting: { ...cloudflareDomainRoutes.cloudflareRouting, zones: [{
+        ...cloudflareDomainRoutes.cloudflareRouting.zones[0]!, dnsRecords: [],
+      }] },
+    } },
+    ...providers.slice(1),
+  ], true);
+  expect(dnsMissing.blockers).toContain("TARGET_CLOUDFLARE_DNS_RECORD_NOT_VISIBLE");
 
   const currentHostnameUnknown = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
     ...providers.slice(0, -1),

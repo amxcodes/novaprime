@@ -35,7 +35,7 @@ application feature permissions.
 | PostgreSQL | Supabase Cloud bootstrap and direct PostgreSQL setup apply migrations and create/check the restricted runtime role. The update manager migrates an existing pinned target. | There is no automated database provisioning or cross-database data-copy/cutover workflow. A new target is not a schema migration. |
 | Scheduler | Cloudflare, Netlify, Vercel, Supabase Cron, and VPS use the shared protected tick contract. The Supabase command creates/removes its schedule. Provider build configuration selects the other hosted schedules. `nova:deployment status --remote` reads the selected Netlify site's latest published production deploy schedule list, selected Cloudflare Worker schedules, and project-pinned Supabase Cron rows when the owner URL is available. | Vercel Cron can be declared in deployment config and disabled in project settings, but Vercel's documented REST API does not provide a Cron inventory endpoint; code/config alone cannot confirm whether a listed job is disabled. VPS schedule inventory remains unverified. A single selected Worker/site does not prove account-wide completeness. There is no complete inventory across every account, runtime, and external trigger, nor a scheduler handover executor. A selector does not discover every duplicate schedule targeting the database. |
 | Source and release | `nova:update` prepares a pinned source candidate, applies approved migrations, and can offer a Git push. | A successful push is not proof that a host built, deployed, or serves that candidate. |
-| Diagnosis | `deployment:preflight` checks the configured database/schema; `deployment:doctor` adds safe repair guidance and optional public health/readiness probes. `nova:deployment status --remote` reads explicitly targeted provider metadata, selected runtime binding metadata, provider hostnames, and—when the owner URL is selected—Supabase migration and Cron inventory. | The manager does not inventory every provider account or external trigger, and it does not yet verify DNS ownership, Worker routes, or TLS readiness. Its inventory is not proof that unselected resources do not exist. |
+| Diagnosis | `deployment:preflight` checks the configured database/schema; `deployment:doctor` adds safe repair guidance and optional public health/readiness probes. `nova:deployment status --remote` reads explicitly targeted provider metadata, selected runtime binding metadata, provider hostnames, and—when the owner URL is selected—Supabase migration and Cron inventory. For an attached Cloudflare Worker domain, it also reads only that domain's zone routes and exact-host DNS record metadata. | The manager does not inventory every provider account or external trigger. It does not yet prove the public TLS handshake, final origin behavior, or that unselected resources do not exist. |
 | First install | The public deployment assistant describes supported combinations and the operator actions. | It is a guide, not a control plane; selecting a path does not change an account. |
 
 The supported topology vocabulary today is narrower than “any platform”: runtime
@@ -178,6 +178,12 @@ read-only inventory. Matching provider tokens and `NOVA_PUBLIC_ORIGIN` +
 `NOVA_BACKGROUND_JOB_SECRET` must come from the same explicitly selected
 environment file or operator process.
 
+For Cloudflare domain readiness, the read-only token also needs Workers Routes
+Read and DNS Read on the zones attached to the selected Worker domains. NOVA
+queries only those zone IDs and exact hostnames; it does not list unrelated
+zones or retain DNS record targets. An absent permission makes the selected
+route/DNS inventory incomplete and keeps the runtime move blocked.
+
 Provider API contracts used by this inventory:
 
 - Netlify `GET /api/v1/accounts/{account_id}/env`, filtered by `site_id`,
@@ -190,10 +196,13 @@ Provider API contracts used by this inventory:
   returns Worker bindings; the adapter stores binding metadata only. See the
   [Cloudflare Workers Scripts API](https://developers.cloudflare.com/api/operations/worker-script-list-workers).
 - Cloudflare `GET /accounts/{account_id}/workers/domains`, filtered by
-  `service`, enumerates Worker custom domains. Its result identifies the Worker
-  and TLS certificate ID, but does not prove certificate readiness, DNS
-  ownership, or zone Worker Routes. See [List Worker
-  Domains](https://developers.cloudflare.com/api/resources/workers/subresources/domains/methods/list/).
+  `service`, enumerates Worker custom domains. NOVA uses those records' zone IDs
+  to read only those zones' Worker Routes and exact-host DNS records. It stores
+  route patterns/Worker names and DNS names/types/proxy flags, never DNS targets.
+  This still does not prove a public TLS handshake or readiness response. See
+  [List Worker Domains](https://developers.cloudflare.com/api/resources/workers/subresources/domains/methods/list/),
+  [List Worker Routes](https://developers.cloudflare.com/api/resources/workers/subresources/routes/methods/list/),
+  and [List DNS Records](https://developers.cloudflare.com/api/resources/dns/subresources/records/methods/list/).
 
 Recheck these contracts when upgrading the adapters. In particular, a
 successful domain-list response must not be treated as proof that public DNS
@@ -722,13 +731,16 @@ plan's documented phase bounds and observed provider behavior.
      names/types, and its paginated Custom Domains. Supabase reads NOVA-targeting
      jobs from the database-pinned owner URL. Runtime-move plans block when
      required target bindings are absent, misclassified, or configured for a
-     different scheduler. Cloudflare's Worker Domain inventory exposes the
-     hostname, Worker, zone ID, and TLS certificate ID, but that metadata alone
-     does not prove the certificate is served at the public hostname. The
-     manager still needs selected-zone Worker Route and exact DNS-record reads
-     plus a public TLS/HTTPS probe before promotion. Worker Routes can run
-     before a Custom Domain, so a matching Custom Domain does not rule out a
-     route shadowing part of NOVA.
+   different scheduler. Cloudflare's Worker Domain inventory exposes the
+   hostname, Worker, zone ID, and TLS certificate ID. For those attached
+   domains, the manager now reads the selected zones' Worker Routes and
+   exact-host DNS record names/types/proxy flags, rejects incomplete reads,
+   and blocks a route that can intercept the current hostname unless that
+   route runs the selected NOVA Worker. These provider records still do not
+   prove that TLS is served publicly or that the candidate responds correctly;
+   a public HTTPS/readiness probe remains a promotion gate. Worker Routes can
+   run before a Custom Domain, so a matching Custom Domain does not rule out
+   a route shadowing part of NOVA.
      For Vercel, keep scheduler
      completeness partial until an explicit project-settings confirmation or
      supported read API can establish disabled/active state; source config is
@@ -736,13 +748,13 @@ plan's documented phase bounds and observed provider behavior.
      the operator reviews the customer's full NOVA footprint; scope confirmation
      never counts as provider inventory. Inspect every resource in that footprint
      and never infer that an absent API row means no schedule.
-   - Extend custom-domain/route ownership inventory from selected Netlify site
-     and Cloudflare Worker metadata to provider routes, zone ownership, DNS
-     state, TLS status, and runtime binding scopes/contexts. Runtime moves
-     must also prove that the exact current public hostname is attached to the
-     selected target; an empty or unrelated custom-domain list is not enough.
-     If the current hostname or target attachment cannot be verified, block
-     the move. Current binding inventory records names and secret flags only;
+   - Finish domain readiness inventory with selected-zone ownership/status,
+     the public TLS handshake, and an unauthenticated readiness probe through
+     the candidate hostname. Runtime moves must also prove that the exact
+     current public hostname is attached to the selected target; an empty or
+     unrelated custom-domain list is not enough. If the current hostname or
+     target attachment cannot be verified, block the move. Current binding
+     inventory records names and secret flags only;
      it never persists values. Verify API token permissions before
      implementing writes, with 401/403 stopping the plan.
    - Bind a saved plan to the exact source commit, provider resource IDs,

@@ -36,6 +36,19 @@ export interface DomainRouteInventory {
   state: "verified" | "unavailable" | "not-inspected";
   completeness: "selected-runtime" | "partial" | "not-inspected";
   domains: Array<{ hostname: string; source: "provider-default" | "custom-domain" }>;
+  cloudflareRouting?: {
+    state: "verified" | "unavailable";
+    completeness: "selected-runtime" | "partial";
+    zones: Array<{
+      zoneId: string;
+      hostnames: string[];
+      state: "verified" | "unavailable";
+      routes: Array<{ pattern: string; script: string | null }>;
+      dnsRecords: Array<{ hostname: string; type: string; proxied: boolean }>;
+      detail?: string;
+    }>;
+    detail?: string;
+  };
   detail?: string;
 }
 

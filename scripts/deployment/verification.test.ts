@@ -86,6 +86,45 @@ test("plan verification detects runtime binding and custom-domain changes", () =
   expect(verifyDeploymentPlanSnapshot(plan, local, changed).issues).toEqual(["REMOTE_INVENTORY_CHANGED"]);
 });
 
+test("plan verification detects changed Cloudflare route or exact-host DNS evidence", () => {
+  const cloudflare: ProviderResource = {
+    ...remote[0]!,
+    provider: "cloudflare",
+    target: "account/worker",
+    domainRoutes: {
+      state: "verified",
+      completeness: "selected-runtime",
+      domains: [{ hostname: "nova.example.test", source: "custom-domain" }],
+      cloudflareRouting: {
+        state: "verified",
+        completeness: "selected-runtime",
+        zones: [{
+          zoneId: "c".repeat(32),
+          hostnames: ["nova.example.test"],
+          state: "verified",
+          routes: [{ pattern: "other.example.test/*", script: "other-worker" }],
+          dnsRecords: [{ hostname: "nova.example.test", type: "A", proxied: true }],
+        }],
+      },
+    },
+  };
+  const cloudflarePlan = { preview: { ...plan.preview, providerInventory: [cloudflare] } } as StoredDeploymentPlan;
+  const changed = [{
+    ...cloudflare,
+    domainRoutes: {
+      ...cloudflare.domainRoutes!,
+      cloudflareRouting: {
+        ...cloudflare.domainRoutes!.cloudflareRouting!,
+        zones: [{
+          ...cloudflare.domainRoutes!.cloudflareRouting!.zones[0]!,
+          routes: [{ pattern: "nova.example.test/*", script: "unexpected-worker" }],
+        }],
+      },
+    },
+  }];
+  expect(verifyDeploymentPlanSnapshot(cloudflarePlan, local, changed).issues).toEqual(["REMOTE_INVENTORY_CHANGED"]);
+});
+
 test("remote-bound plans require a fresh remote read and clean exact source", () => {
   const dirty = { ...local, source: { ...local.source, clean: false, dirtyPathCount: 1 } };
   expect(verifyDeploymentPlanSnapshot(plan, dirty).issues).toEqual([

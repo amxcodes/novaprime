@@ -62,17 +62,21 @@ tokens and database-owner credentials must never enter the public browser
 assistant or employee application. Its current status/doctor/plan/verify
 commands are read-only. Remote inventory can inspect selected Netlify production
 variable names/scopes/contexts and Cloudflare Worker binding names/types, plus
-site domains and Cloudflare Worker custom domains. It never retains variable
-values; only the allowlisted scheduler selector is read as a configuration
-value. Cloudflare zone routes, DNS ownership, and TLS readiness are still not
-proved by this inventory. Runtime-move previews require the exact current
-public hostname to appear in the target provider's verified domain inventory;
+site domains and Cloudflare Worker custom domains. For each attached Worker
+domain, Cloudflare inventory reads that zone's Worker Routes and exact-host DNS
+record names, types, and proxy flags; it does not retain DNS targets or other
+variable values. Only the allowlisted scheduler selector is read as a
+configuration value. An overlapping route assigned to another Worker, a
+missing exact-host record, or incomplete route/DNS permissions blocks a
+Cloudflare runtime move. This metadata still does not prove public TLS or
+candidate readiness. Runtime-move previews require the exact current public
+hostname to appear in the target provider's verified domain inventory;
 unknown hostnames and unrelated or empty target-domain lists block the move.
 They also block if required production bindings are missing, have the wrong
 secret classification, or select a different scheduler. `apply` remains
-disabled until a selected transition has complete route/resource inventory,
-scoped write adapters, precondition checks, read-after-write verification,
-crash recovery, and a disposable live rehearsal.
+disabled until public route/TLS readiness, scoped write adapters, precondition
+checks, read-after-write verification, crash recovery, and a disposable live
+rehearsal are complete.
 
 Remote scheduler plans are scoped to the customer's actual NOVA footprint.
 Review all runtimes and schedulers that can call the selected database, then

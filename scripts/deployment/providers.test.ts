@@ -142,8 +142,10 @@ test("Netlify variable permission failure remains explicit without discarding si
 });
 
 test("Cloudflare inventory distinguishes one Worker's Cron triggers from global scheduler coverage", async () => {
+  const requested: URL[] = [];
   const fetcher: ProviderFetcher = async (input) => {
     const parsed = new URL(String(input));
+    requested.push(parsed);
     if (parsed.pathname.endsWith("/schedules")) {
       return Response.json({ success: true, result: { schedules: [{ cron: "*/5 * * * *" }] } });
     }
@@ -155,9 +157,19 @@ test("Cloudflare inventory distinguishes one Worker's Cron triggers from global 
     if (parsed.pathname.endsWith("/workers/domains")) {
       const page = Number(parsed.searchParams.get("page"));
       return Response.json({ success: true, result: [{
-        hostname: `app${page}.example.test`, service: "nova-api", zone_name: "example.test", secret_value: "omit-me",
+        hostname: `app${page}.example.test`, service: "nova-api", zone_id: "c".repeat(32), zone_name: "example.test", secret_value: "omit-me",
       }], result_info: { page, total_pages: 2 } });
     }
+    if (parsed.pathname.endsWith("/workers/routes")) return Response.json({
+      success: true,
+      result: [{ id: "route-id", pattern: "other.example.test/*", script: "other-worker" }],
+      result_info: { page: 1, total_pages: 1 },
+    });
+    if (parsed.pathname.endsWith("/dns_records")) return Response.json({
+      success: true,
+      result: [{ name: parsed.searchParams.get("name"), type: "A", proxied: true, content: "never-retain-dns-target" }],
+      result_info: { page: 1, total_pages: 1 },
+    });
     return Response.json({ success: true, result: { id: "nova-api", modified_on: "2026-10-07T00:00:00Z" } });
   };
   const resources = await discoverProviderResources({
@@ -185,9 +197,54 @@ test("Cloudflare inventory distinguishes one Worker's Cron triggers from global 
       { hostname: "app1.example.test", source: "custom-domain" },
       { hostname: "app2.example.test", source: "custom-domain" },
     ],
+    cloudflareRouting: {
+      state: "verified", completeness: "selected-runtime", zones: [{
+        zoneId: "c".repeat(32), hostnames: ["app1.example.test", "app2.example.test"], state: "verified",
+        routes: [{ pattern: "other.example.test/*", script: "other-worker" }],
+        dnsRecords: [
+          { hostname: "app1.example.test", type: "A", proxied: true },
+          { hostname: "app2.example.test", type: "A", proxied: true },
+        ],
+      }],
+    },
   });
   expect(JSON.stringify(cloudflare)).not.toContain("never-retain-secret-value");
   expect(JSON.stringify(cloudflare)).not.toContain("omit-me");
+  expect(JSON.stringify(cloudflare)).not.toContain("never-retain-dns-target");
+  expect(requested.filter(({ pathname }) => pathname.endsWith("/workers/routes")).map(({ pathname, searchParams }) => ({
+    pathname, page: searchParams.get("page"), zoneId: pathname.split("/").at(-3),
+  }))).toEqual([{ pathname: `/client/v4/zones/${"c".repeat(32)}/workers/routes`, page: "1", zoneId: "c".repeat(32) }]);
+  expect(requested.filter(({ pathname }) => pathname.endsWith("/dns_records")).map(({ searchParams }) => searchParams.get("name")).sort())
+    .toEqual(["app1.example.test", "app2.example.test"]);
+});
+
+test("Cloudflare route or DNS read permission failure leaves a partial domain inventory", async () => {
+  const fetcher: ProviderFetcher = async (input) => {
+    const parsed = new URL(String(input));
+    if (parsed.pathname.endsWith("/schedules")) return Response.json({ success: true, result: { schedules: [] } });
+    if (parsed.pathname.endsWith("/settings")) return Response.json({ success: true, result: { bindings: [] } });
+    if (parsed.pathname.endsWith("/workers/domains")) return Response.json({
+      success: true,
+      result: [{ hostname: "nova.example.test", service: "nova-api", zone_id: "c".repeat(32) }],
+      result_info: { page: 1, total_pages: 1 },
+    });
+    if (parsed.pathname.endsWith("/workers/routes")) return new Response("private Cloudflare error", { status: 403 });
+    if (parsed.pathname.endsWith("/dns_records")) throw new Error("route denial should stop the zone read");
+    return Response.json({ success: true, result: { id: "nova-api" } });
+  };
+  const resources = await discoverProviderResources({
+    CLOUDFLARE_API_TOKEN: "cloudflare-token",
+    CLOUDFLARE_ACCOUNT_ID: "a".repeat(32),
+    CLOUDFLARE_WORKER_NAME: "nova-api",
+  }, fetcher);
+  const cloudflare = resources.find(({ provider }) => provider === "cloudflare")!;
+  expect(cloudflare.state).toBe("identified");
+  expect(cloudflare.domainRoutes?.state).toBe("verified");
+  expect(cloudflare.domainRoutes?.cloudflareRouting).toMatchObject({
+    state: "unavailable", completeness: "partial", detail: "CLOUDFLARE_ROUTING_INVENTORY_INCOMPLETE",
+    zones: [{ zoneId: "c".repeat(32), state: "unavailable", detail: "MISSING_READ_PERMISSION" }],
+  });
+  expect(JSON.stringify(cloudflare)).not.toContain("private Cloudflare error");
 });
 
 test("Cloudflare inventory treats an explicit zero-page domain response as verified empty", async () => {
@@ -207,6 +264,7 @@ test("Cloudflare inventory treats an explicit zero-page domain response as verif
   }, fetcher);
   expect(resources.find(({ provider }) => provider === "cloudflare")?.domainRoutes).toEqual({
     state: "verified", completeness: "selected-runtime", domains: [],
+    cloudflareRouting: { state: "verified", completeness: "selected-runtime", zones: [] },
   });
 });
 

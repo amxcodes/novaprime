@@ -87,6 +87,15 @@ function isSchedulerAdapter(value: string | undefined): value is SchedulerAdapte
   return value === "cloudflare" || value === "netlify" || value === "vercel" || value === "supabase" || value === "vps";
 }
 
+function cloudflareRouteMayMatchHostname(pattern: string, hostname: string): boolean {
+  const routeHostname = pattern.split("/", 1)[0]?.toLowerCase();
+  if (!routeHostname) return true;
+  if (!routeHostname.includes("*")) return routeHostname === hostname;
+  const expression = routeHostname.split("*").map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+  try { return new RegExp(`^${expression}$`, "i").test(hostname); }
+  catch { return true; }
+}
+
 function schedulerScopeBlockers(
   providerInventory: readonly ProviderResource[],
   currentRuntime: RuntimeAdapter | null,
@@ -185,6 +194,27 @@ export function buildDeploymentPreview(
         if (!currentHostname) blockers.push("CURRENT_PUBLIC_HOSTNAME_UNVERIFIED");
         else if (!runtimeState.domainRoutes.domains.some(({ hostname }) => hostname === currentHostname)) {
           blockers.push("TARGET_RUNTIME_PUBLIC_HOSTNAME_NOT_ATTACHED");
+        }
+        if (request.runtime === "cloudflare") {
+          const routing = runtimeState.domainRoutes.cloudflareRouting;
+          if (routing?.state !== "verified" || routing.completeness !== "selected-runtime") {
+            blockers.push("TARGET_CLOUDFLARE_ROUTE_DNS_INVENTORY_INCOMPLETE");
+          } else {
+            const domain = runtimeState.domainRoutes.domains.find(({ hostname }) => hostname === currentHostname);
+            const zone = domain && routing.zones.find(({ hostnames }) => hostnames.includes(currentHostname));
+            if (!domain || !zone || zone.state !== "verified") {
+              blockers.push("TARGET_CLOUDFLARE_ZONE_FOR_PUBLIC_HOSTNAME_UNVERIFIED");
+            } else {
+              const targetWorker = runtimeState.target?.split("/").at(-1) ?? "";
+              if (!zone.dnsRecords.some(({ hostname }) => hostname === currentHostname)) {
+                blockers.push("TARGET_CLOUDFLARE_DNS_RECORD_NOT_VISIBLE");
+              }
+              if (zone.routes.some(({ pattern, script }) =>
+                cloudflareRouteMayMatchHostname(pattern, currentHostname) && script !== targetWorker)) {
+                blockers.push("TARGET_CLOUDFLARE_ROUTE_SHADOWS_PUBLIC_HOSTNAME");
+              }
+            }
+          }
         }
       }
     }

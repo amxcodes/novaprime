@@ -152,7 +152,7 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
           (provider.domainRoutes === undefined || (() => {
             const domains = typeof provider.domainRoutes === "object" && provider.domainRoutes !== null && !Array.isArray(provider.domainRoutes)
               ? provider.domainRoutes as Record<string, unknown> : null;
-            return domains !== null && hasOnly(domains, ["state", "completeness", "domains", "detail"]) &&
+            return domains !== null && hasOnly(domains, ["state", "completeness", "domains", "cloudflareRouting", "detail"]) &&
               ["verified", "unavailable", "not-inspected"].includes(String(domains.state)) &&
               ["selected-runtime", "partial", "not-inspected"].includes(String(domains.completeness)) &&
               (domains.detail === undefined || typeof domains.detail === "string") && Array.isArray(domains.domains) &&
@@ -161,7 +161,36 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
                 return domain !== null && hasOnly(domain, ["hostname", "source"]) &&
                   typeof domain.hostname === "string" && domain.hostname.length <= 253 && /^[a-z0-9.-]+$/.test(domain.hostname) &&
                   ["provider-default", "custom-domain"].includes(String(domain.source));
-              });
+              }) &&
+              (domains.cloudflareRouting === undefined || (() => {
+                const routing = typeof domains.cloudflareRouting === "object" && domains.cloudflareRouting !== null && !Array.isArray(domains.cloudflareRouting)
+                  ? domains.cloudflareRouting as Record<string, unknown> : null;
+                return routing !== null && hasOnly(routing, ["state", "completeness", "zones", "detail"]) &&
+                  ["verified", "unavailable"].includes(String(routing.state)) &&
+                  ["selected-runtime", "partial"].includes(String(routing.completeness)) &&
+                  (routing.detail === undefined || typeof routing.detail === "string") && Array.isArray(routing.zones) &&
+                  routing.zones.length <= 20 && routing.zones.every((value) => {
+                    const zone = typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
+                    return zone !== null && hasOnly(zone, ["zoneId", "hostnames", "state", "routes", "dnsRecords", "detail"]) &&
+                      typeof zone.zoneId === "string" && /^[a-f0-9]{32}$/.test(zone.zoneId) &&
+                      ["verified", "unavailable"].includes(String(zone.state)) &&
+                      (zone.detail === undefined || typeof zone.detail === "string") &&
+                      Array.isArray(zone.hostnames) && zone.hostnames.length <= 20 && zone.hostnames.every((hostname) =>
+                        typeof hostname === "string" && hostname.length <= 253 && /^[a-z0-9.-]+$/.test(hostname)) &&
+                      Array.isArray(zone.routes) && zone.routes.length <= 2_000 && zone.routes.every((item) => {
+                        const route = typeof item === "object" && item !== null && !Array.isArray(item) ? item as Record<string, unknown> : null;
+                        return route !== null && hasOnly(route, ["pattern", "script"]) &&
+                          typeof route.pattern === "string" && route.pattern.length <= 1_000 &&
+                          (route.script === null || (typeof route.script === "string" && /^[A-Za-z0-9._:-]{1,160}$/.test(route.script)));
+                      }) &&
+                      Array.isArray(zone.dnsRecords) && zone.dnsRecords.length <= 2_000 && zone.dnsRecords.every((item) => {
+                        const record = typeof item === "object" && item !== null && !Array.isArray(item) ? item as Record<string, unknown> : null;
+                        return record !== null && hasOnly(record, ["hostname", "type", "proxied"]) &&
+                          typeof record.hostname === "string" && record.hostname.length <= 253 && /^[a-z0-9.-]+$/.test(record.hostname) &&
+                          typeof record.type === "string" && /^[A-Z0-9]{1,16}$/.test(record.type) && typeof record.proxied === "boolean";
+                      });
+                  });
+              })());
           })());
       })))) return corrupt();
   return value as StoredDeploymentPlan;

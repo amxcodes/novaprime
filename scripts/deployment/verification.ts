@@ -52,6 +52,18 @@ function providerSnapshot(resources: readonly ProviderResource[]): unknown[] {
       domains: [...resource.domainRoutes.domains]
         .map(({ hostname, source }) => ({ hostname, source }))
         .sort((left, right) => left.hostname.localeCompare(right.hostname)),
+      cloudflareRouting: resource.domainRoutes.cloudflareRouting ? {
+        state: resource.domainRoutes.cloudflareRouting.state,
+        completeness: resource.domainRoutes.cloudflareRouting.completeness,
+        zones: [...resource.domainRoutes.cloudflareRouting.zones].map((zone) => ({
+          zoneId: zone.zoneId,
+          hostnames: [...zone.hostnames].sort(),
+          state: zone.state,
+          routes: [...zone.routes].sort((left, right) => left.pattern.localeCompare(right.pattern) || (left.script ?? "").localeCompare(right.script ?? "")),
+          dnsRecords: [...zone.dnsRecords].sort((left, right) =>
+            left.hostname.localeCompare(right.hostname) || left.type.localeCompare(right.type) || Number(left.proxied) - Number(right.proxied)),
+        })).sort((left, right) => left.zoneId.localeCompare(right.zoneId)),
+      } : null,
     } : null,
   })).sort((left, right) => String(left.provider).localeCompare(String(right.provider)));
 }
