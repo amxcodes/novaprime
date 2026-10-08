@@ -104,7 +104,7 @@ services:
       NOVA_DB_POOL_MAX: ${NOVA_DB_POOL_MAX:-10}
       NOVA_MAINTENANCE_ENDPOINT: "http://api:3001/api/internal/background/tick"
       NOVA_MAINTENANCE_LOOP: "true"
-      NOVA_MAINTENANCE_INTERVAL_SECONDS: ${NOVA_MAINTENANCE_INTERVAL_SECONDS:-60}
+      NOVA_MAINTENANCE_INTERVAL_SECONDS: ${NOVA_MAINTENANCE_INTERVAL_SECONDS:-300}
     depends_on:
       api:
         condition: service_healthy

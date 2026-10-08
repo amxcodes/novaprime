@@ -369,8 +369,9 @@ never a runtime secret.
 
 ## Scheduled maintenance
 
-Run the canonical background tick every five minutes (or more often for
-notification latency). It first closes attendance at each office's local
+Run the canonical background tick every five minutes by default (or more often
+for notification latency; Docker accepts `NOVA_MAINTENANCE_INTERVAL_SECONDS`
+from 10 to 86,400). It first closes attendance at each office's local
 midnight, then closes productive work sessions at the first boundary after
 their recorded office-local start date, then purges expired location evidence,
 enqueues due reminders and processes the optional notification outbox. The

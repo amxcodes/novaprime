@@ -33,7 +33,7 @@ describe("self-hosted Docker entry point", () => {
     const qaStart = compose.indexOf("\n  qa:");
     const maintenanceService = compose.slice(maintenanceStart, qaStart);
     expect(maintenanceService).toContain('NOVA_MAINTENANCE_LOOP: "true"');
-    expect(maintenanceService).toContain("NOVA_MAINTENANCE_INTERVAL_SECONDS: ${NOVA_MAINTENANCE_INTERVAL_SECONDS:-60}");
+    expect(maintenanceService).toContain("NOVA_MAINTENANCE_INTERVAL_SECONDS: ${NOVA_MAINTENANCE_INTERVAL_SECONDS:-300}");
     expect(maintenanceService).toContain("restart: unless-stopped");
   });
 });

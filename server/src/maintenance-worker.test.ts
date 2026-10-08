@@ -4,6 +4,8 @@ import {
   backgroundJobSecretMatches,
   backgroundSchedulerMatches,
   configuredBackgroundScheduler,
+  defaultMaintenanceIntervalSeconds,
+  maintenanceIntervalMilliseconds,
 } from "./maintenance-worker.js";
 
 const previous = process.env.NOVA_BACKGROUND_JOB_SECRET;
@@ -27,6 +29,19 @@ test("selects only a supported deployment scheduler", () => {
 
 test("serverless background notification work is kept to a small bounded batch", () => {
   expect(backgroundNotificationBatchSize).toBe(4);
+});
+
+test("self-hosted maintenance defaults to five minutes and accepts an explicit faster interval", () => {
+  expect(defaultMaintenanceIntervalSeconds).toBe(300);
+  expect(maintenanceIntervalMilliseconds(undefined)).toBe(300_000);
+  expect(maintenanceIntervalMilliseconds("60")).toBe(60_000);
+  expect(maintenanceIntervalMilliseconds("86400")).toBe(86_400_000);
+});
+
+test("self-hosted maintenance rejects malformed intervals rather than silently changing cadence", () => {
+  for (const value of ["", "0", "9", "86401", "1.5", "1e3", "five"]) {
+    expect(() => maintenanceIntervalMilliseconds(value)).toThrow("NOVA_MAINTENANCE_INTERVAL_SECONDS_INVALID");
+  }
 });
 
 test("background tick accepts only the exact deployment secret", () => {

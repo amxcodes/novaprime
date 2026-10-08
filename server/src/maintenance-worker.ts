@@ -10,6 +10,17 @@ export type BackgroundScheduler = typeof backgroundSchedulers[number];
 // ticks continue the remaining work without holding a function open for a
 // serial chain of provider timeouts.
 export const backgroundNotificationBatchSize = 4;
+export const defaultMaintenanceIntervalSeconds = 300;
+
+export function maintenanceIntervalMilliseconds(value: string | undefined): number {
+  if (value === undefined) return defaultMaintenanceIntervalSeconds * 1_000;
+  if (!/^\d+$/.test(value)) throw new Error("NOVA_MAINTENANCE_INTERVAL_SECONDS_INVALID");
+  const seconds = Number(value);
+  if (!Number.isSafeInteger(seconds) || seconds < 10 || seconds > 86_400) {
+    throw new Error("NOVA_MAINTENANCE_INTERVAL_SECONDS_INVALID");
+  }
+  return seconds * 1_000;
+}
 
 export function configuredBackgroundScheduler(): BackgroundScheduler | null {
   const configured = process.env.NOVA_BACKGROUND_SCHEDULER;
@@ -123,10 +134,7 @@ async function runEndpointTick(endpoint: string): Promise<BackgroundTickResult> 
 
 if (import.meta.main) {
   const loop = process.env.NOVA_MAINTENANCE_LOOP === "true";
-  const intervalSeconds = Number(process.env.NOVA_MAINTENANCE_INTERVAL_SECONDS ?? 60);
-  const interval = Number.isInteger(intervalSeconds) && intervalSeconds >= 10 && intervalSeconds <= 86_400
-    ? intervalSeconds * 1_000
-    : 60_000;
+  const interval = loop ? maintenanceIntervalMilliseconds(process.env.NOVA_MAINTENANCE_INTERVAL_SECONDS) : 0;
   const defaultEndpoint = `http://127.0.0.1:${process.env.PORT ?? "3001"}/api/internal/background/tick`;
   let skipLogged = false;
   do {

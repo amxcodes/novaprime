@@ -119,12 +119,14 @@ Use this workload for initial QA planning, not as a measured capacity promise:
 
 The tick count is a fixed schedule baseline; user-facing work grows with
 activity. Reviews, notifications, file traffic, and task start/stop behavior
-can change the estimate. Run a representative load test and watch p95 request
-and database latency, PostgreSQL CPU and connection headroom, function CPU,
-and egress before promising performance. Paid provider tiers provide quota and
-support headroom; they do not fix query, region, pooler, or runtime-latency
-problems. Customer employee count is not the same as hosting-provider team
-seat count.
+can change the estimate. Docker now defaults to the same five-minute cadence;
+operators can set `NOVA_MAINTENANCE_INTERVAL_SECONDS` from 10 to 86,400 to
+trade database work for notification latency. Run a representative load test
+and watch p95 request and database latency, PostgreSQL CPU and connection
+headroom, function CPU, and egress before promising performance. Paid provider
+tiers provide quota and support headroom; they do not fix query, region,
+pooler, or runtime-latency problems. Customer employee count is not the same
+as hosting-provider team seat count.
 
 ## Release gates
 
