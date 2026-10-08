@@ -74,6 +74,13 @@ disabled until a selected transition has complete route/resource inventory,
 scoped write adapters, precondition checks, read-after-write verification,
 crash recovery, and a disposable live rehearsal.
 
+Remote scheduler plans are scoped to the customer's actual NOVA footprint.
+Review all runtimes and schedulers that can call the selected database, then
+pass `--confirm-scheduler-scope`. This stores an operator attestation; it does
+not search or certify unrelated accounts. The plan still blocks on missing or
+incomplete inventory for the selected source runtime, target runtime, and
+current or target scheduler.
+
 Keep these resources separate in every plan:
 
 - source release and deployed runtime revision;

@@ -35,7 +35,7 @@ application feature permissions.
 | PostgreSQL | Supabase Cloud bootstrap and direct PostgreSQL setup apply migrations and create/check the restricted runtime role. The update manager migrates an existing pinned target. | There is no automated database provisioning or cross-database data-copy/cutover workflow. A new target is not a schema migration. |
 | Scheduler | Cloudflare, Netlify, Vercel, Supabase Cron, and VPS use the shared protected tick contract. The Supabase command creates/removes its schedule. Provider build configuration selects the other hosted schedules. `nova:deployment status --remote` reads the selected Netlify site's latest published production deploy schedule list, selected Cloudflare Worker schedules, and project-pinned Supabase Cron rows when the owner URL is available. | Vercel Cron can be declared in deployment config and disabled in project settings, but Vercel's documented REST API does not provide a Cron inventory endpoint; code/config alone cannot confirm whether a listed job is disabled. VPS schedule inventory remains unverified. A single selected Worker/site does not prove account-wide completeness. There is no complete inventory across every account, runtime, and external trigger, nor a scheduler handover executor. A selector does not discover every duplicate schedule targeting the database. |
 | Source and release | `nova:update` prepares a pinned source candidate, applies approved migrations, and can offer a Git push. | A successful push is not proof that a host built, deployed, or serves that candidate. |
-| Diagnosis | `deployment:preflight` checks the configured database/schema; `deployment:doctor` adds safe repair guidance and optional public health/readiness probes. `nova:deployment status --remote` reads explicitly targeted provider metadata and, when the owner URL is selected, Supabase migration and Cron inventory. | The manager does not yet verify all account resources, secret bindings/presence, custom domains or DNS, or every scheduler. Its inventory is not proof that unselected resources do not exist. |
+| Diagnosis | `deployment:preflight` checks the configured database/schema; `deployment:doctor` adds safe repair guidance and optional public health/readiness probes. `nova:deployment status --remote` reads explicitly targeted provider metadata, selected runtime binding metadata, provider hostnames, and—when the owner URL is selected—Supabase migration and Cron inventory. | The manager does not inventory every provider account or external trigger, and it does not yet verify DNS ownership, Worker routes, or TLS readiness. Its inventory is not proof that unselected resources do not exist. |
 | First install | The public deployment assistant describes supported combinations and the operator actions. | It is a guide, not a control plane; selecting a path does not change an account. |
 
 The supported topology vocabulary today is narrower than “any platform”: runtime
@@ -127,6 +127,7 @@ bun run nova:deployment status
 bun run nova:deployment status --env-file .env --remote
 bun run nova:deployment doctor
 bun run nova:deployment plan --runtime cloudflare --database keep --scheduler supabase --env-file .env --remote
+bun run nova:deployment plan --runtime cloudflare --database keep --scheduler keep --env-file .env --remote --confirm-scheduler-scope
 bun run nova:deployment plan --runtime netlify --database provision-supabase --scheduler supabase
 bun run nova:deployment show <plan-id>
 bun run nova:deployment verify <plan-id> --remote --env-file .env
@@ -160,11 +161,14 @@ metadata or permission status. The Supabase result is project-scoped; the
 Netlify result covers only the selected site's current published production
 deploy; the Cloudflare result covers only the selected Worker. Vercel scheduler
 inventory is not verified by this adapter, and other Netlify sites, Cloudflare
-Workers, Vercel projects, VPS instances, or external triggers may exist. The
-planner requires each known scheduler inventory to be project-scoped; a
-resource-only read does not close the global scheduler gate. Plans therefore
-remain blocked until every live triggering surface is accounted for. Absence
-in this inventory is not proof that no trigger or domain exists.
+Workers, Vercel projects, VPS instances, or external triggers may exist. Before
+using `--confirm-scheduler-scope`, the operator must review the customer's
+deployment footprint and confirm that the selected source/target runtimes and
+scheduler resources are the complete set that can call this NOVA database.
+The saved plan records the attestation and rechecks each selected resource; it
+does not claim that unselected accounts were scanned. Missing or incomplete
+inventory inside the confirmed footprint remains a blocker. Absence in an
+unqueried account is not proof that no trigger or domain exists.
 The supported read-only target variables are `NETLIFY_SITE_ID`,
 `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_WORKER_NAME`, `VERCEL_PROJECT_ID` (and
 optional `VERCEL_TEAM_ID`), and `NOVA_SUPABASE_PROJECT_REF`. Supabase Cron and
@@ -723,8 +727,10 @@ plan's documented phase bounds and observed provider behavior.
      For Vercel, keep scheduler
      completeness partial until an explicit project-settings confirmation or
      supported read API can establish disabled/active state; source config is
-     only evidence of declared jobs. Keep every uninspected account/resource
-     as an explicit blocker. Never infer that an absent API row means no schedule.
+     only evidence of declared jobs. Require `--confirm-scheduler-scope` after
+     the operator reviews the customer's full NOVA footprint; scope confirmation
+     never counts as provider inventory. Inspect every resource in that footprint
+     and never infer that an absent API row means no schedule.
    - Extend custom-domain/route ownership inventory from selected Netlify site
      and Cloudflare Worker metadata to provider routes, zone ownership, DNS
      state, TLS status, and runtime binding scopes/contexts. Runtime moves

@@ -68,7 +68,8 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
   const validRuntime = (value: unknown) => value === null || ["netlify", "cloudflare", "vercel", "vps"].includes(String(value));
   const validScheduler = (value: unknown) => value === null || ["cloudflare", "netlify", "vercel", "supabase", "vps"].includes(String(value));
   if (preview.persisted !== true || preview.applyEnabled !== false ||
-      !hasOnly(preview, ["previewId", "persisted", "applyEnabled", "request", "source", "localHints", "actions", "blockers", "providerInventory"]) ||
+      !hasOnly(preview, ["previewId", "persisted", "applyEnabled", "request", "source", "localHints", "actions", "blockers", "schedulerScopeConfirmed", "providerInventory"]) ||
+      (preview.schedulerScopeConfirmed !== undefined && typeof preview.schedulerScopeConfirmed !== "boolean") ||
       typeof preview.previewId !== "string" || preview.previewId !== record.id ||
       !request || !hasOnly(request, ["runtime", "database", "scheduler"]) ||
       !["netlify", "cloudflare", "vercel", "vps"].includes(String(request.runtime)) ||

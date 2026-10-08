@@ -14,6 +14,14 @@ test("command parsing requires a target runtime and keeps apply as an explicit u
     .toThrow("DEPLOYMENT_PLAN_ID_REQUIRED");
   expect(parseDeploymentManagerArguments(["plan", "--runtime", "cloudflare", "--scheduler", "supabase"]))
     .toMatchObject({ command: "plan", runtime: "cloudflare", scheduler: "supabase", database: "keep" });
+  expect(parseDeploymentManagerArguments([
+    "plan", "--runtime", "cloudflare", "--remote", "--confirm-scheduler-scope",
+  ])).toMatchObject({ command: "plan", runtime: "cloudflare", remote: true, confirmSchedulerScope: true });
+  expect(() => parseDeploymentManagerArguments([
+    "plan", "--runtime", "cloudflare", "--confirm-scheduler-scope",
+  ])).toThrow("DEPLOYMENT_SCHEDULER_SCOPE_CONFIRMATION_REQUIRES_REMOTE_PLAN");
+  expect(() => parseDeploymentManagerArguments(["status", "--confirm-scheduler-scope"]))
+    .toThrow("DEPLOYMENT_SCHEDULER_SCOPE_CONFIRMATION_REQUIRES_REMOTE_PLAN");
   expect(parseDeploymentManagerArguments(["status", "--remote", "--json"]))
     .toMatchObject({ command: "status", remote: true, json: true });
   expect(parseDeploymentManagerArguments([

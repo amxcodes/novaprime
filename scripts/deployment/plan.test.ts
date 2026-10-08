@@ -37,6 +37,9 @@ test("a preview is deterministic, secret-free and never claims apply is enabled"
     scheduler: "supabase",
   });
   expect(first.previewId).toBe(second.previewId);
+  expect(first.previewId).not.toBe(buildDeploymentPreview(inventory, {
+    runtime: "cloudflare", database: "keep", scheduler: "supabase",
+  }, undefined, true).previewId);
   expect(first.persisted).toBe(false);
   expect(first.applyEnabled).toBe(false);
   expect(first.blockers).toContain("GLOBAL_SCHEDULER_INVENTORY_NOT_REQUESTED");
@@ -112,7 +115,9 @@ test("remote planning binds provider inventory and blocks an unverified runtime 
   }, providers);
   expect(preview.providerInventory).toEqual(providers);
   expect(preview.blockers).toContain("TARGET_RUNTIME_NOT_VERIFIED");
-  expect(preview.blockers).toContain("GLOBAL_SCHEDULER_INVENTORY_INCOMPLETE");
+  expect(preview.blockers).toContain("SCHEDULER_SCOPE_CONFIRMATION_REQUIRED");
+  expect(preview.blockers).toContain("SCHEDULER_PROVIDER_INVENTORY_INCOMPLETE:cloudflare");
+  expect(preview.blockers).toContain("SCHEDULER_PROVIDER_INVENTORY_INCOMPLETE:supabase");
   expect(preview.blockers).toContain("DATABASE_MIGRATION_STATE_UNVERIFIED");
   expect(preview.blockers).not.toContain("DATABASE_PROVIDER_NOT_VERIFIED");
 });
@@ -134,7 +139,7 @@ test("runtime move requires target production bindings, secret classification, a
     { provider: "vercel" as const, state: "identified" as const, target: "project-id", schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [] } },
     { provider: "nova" as const, state: "identified" as const, runtime: "netlify", origin: "https://nova.example.test", configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64) },
   ];
-  const preview = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, providers);
+  const preview = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, providers, true);
   expect(preview.blockers).not.toContain("TARGET_RUNTIME_BINDING_INVENTORY_INCOMPLETE");
   expect(preview.blockers).not.toContain("TARGET_RUNTIME_SCHEDULER_CONFIGURATION_MISMATCH");
   expect(preview.blockers).not.toContain("CURRENT_PUBLIC_HOSTNAME_UNVERIFIED");
@@ -143,7 +148,7 @@ test("runtime move requires target production bindings, secret classification, a
   for (const scheduler of ["keep", "supabase"] as const) {
     const liveIdentityOnly = buildDeploymentPreview({ ...inventory, runtimeHint: null, schedulerHint: null }, {
       runtime: "cloudflare", database: "keep", scheduler,
-    }, providers);
+    }, providers, true);
     expect(liveIdentityOnly.blockers).not.toContain("CURRENT_RUNTIME_NOT_IDENTIFIED");
     expect(liveIdentityOnly.blockers).not.toContain("CURRENT_SCHEDULER_NOT_IDENTIFIED");
     expect(liveIdentityOnly.blockers).not.toContain("CROSS_PROVIDER_SCHEDULER_INVENTORY_NOT_IMPLEMENTED");
@@ -152,7 +157,7 @@ test("runtime move requires target production bindings, secret classification, a
   const invalid = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
     { ...providers[0]!, runtimeBindings: { state: "verified", completeness: "selected-runtime", bindings: cloudflareBindings.filter(({ name }) => name !== "HYPERDRIVE").map((binding) => binding.name === "BETTER_AUTH_SECRET" ? { ...binding, secret: false } : binding), configuredScheduler: "cloudflare" } },
     ...providers.slice(1),
-  ]);
+  ], true);
   expect(invalid.blockers).toContain("TARGET_RUNTIME_REQUIRED_BINDING_INVALID:HYPERDRIVE");
   expect(invalid.blockers).toContain("TARGET_RUNTIME_REQUIRED_BINDING_INVALID:BETTER_AUTH_SECRET");
   expect(invalid.blockers).toContain("TARGET_RUNTIME_SCHEDULER_CONFIGURATION_MISMATCH");
@@ -160,19 +165,19 @@ test("runtime move requires target production bindings, secret classification, a
   const domainUnknown = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
     { ...providers[0]!, domainRoutes: { state: "unavailable", completeness: "partial", domains: [], detail: "ROUTE_INVENTORY_FORBIDDEN" } },
     ...providers.slice(1),
-  ]);
+  ], true);
   expect(domainUnknown.blockers).toContain("TARGET_RUNTIME_CUSTOM_DOMAIN_INVENTORY_INCOMPLETE");
 
   const targetHostnameMissing = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
     { ...providers[0]!, domainRoutes: { state: "verified", completeness: "selected-runtime", domains: [] } },
     ...providers.slice(1),
-  ]);
+  ], true);
   expect(targetHostnameMissing.blockers).toContain("TARGET_RUNTIME_PUBLIC_HOSTNAME_NOT_ATTACHED");
 
   const currentHostnameUnknown = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
     ...providers.slice(0, -1),
     { ...providers.at(-1)!, origin: undefined },
-  ]);
+  ], true);
   expect(currentHostnameUnknown.blockers).toContain("CURRENT_PUBLIC_HOSTNAME_UNVERIFIED");
 });
 
@@ -291,7 +296,7 @@ test("remote plans stop on pending or diverged database migrations before a runt
   expect(diverged.blockers).toContain("DATABASE_MIGRATION_HISTORY_DIVERGED");
 });
 
-test("remote plan detects duplicate or missing active NOVA schedulers", () => {
+test("remote plan detects duplicate and missing triggers on the configured scheduler", () => {
   const baseProviders = [
     {
       provider: "cloudflare" as const,
@@ -328,17 +333,18 @@ test("remote plan detects duplicate or missing active NOVA schedulers", () => {
   const duplicate = buildDeploymentPreview(inventory, {
     runtime: "cloudflare", database: "keep", scheduler: "supabase",
   }, baseProviders);
-  expect(duplicate.blockers).toContain("DUPLICATE_SUPABASE_NOVA_CRON_TRIGGERS");
+  expect(duplicate.blockers).toContain("DUPLICATE_SUPABASE_SCHEDULER_TRIGGERS");
+  expect(duplicate.blockers).toContain("CONFIGURED_SCHEDULER_TRIGGER_COUNT_INVALID:supabase");
 
   const missing = buildDeploymentPreview(inventory, {
     runtime: "cloudflare", database: "keep", scheduler: "supabase",
   }, baseProviders.map((provider) => provider.provider === "supabase"
     ? { ...provider, schedulerInventory: { ...provider.schedulerInventory, triggers: [] } }
     : provider));
-  expect(missing.blockers).toContain("CONFIGURED_SUPABASE_SCHEDULER_HAS_NO_ACTIVE_NOVA_JOB");
+  expect(missing.blockers).toContain("CONFIGURED_SCHEDULER_TRIGGER_COUNT_INVALID:supabase");
 });
 
-test("a single-resource Cron read cannot close the global scheduler inventory gate", () => {
+test("selected scheduler scope requires confirmation and rejects an active unselected trigger", () => {
   const providers = [
     { provider: "netlify" as const, state: "identified" as const, schedulerInventory: {
       scope: "target-runtime" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [],
@@ -365,5 +371,53 @@ test("a single-resource Cron read cannot close the global scheduler inventory ga
   const preview = buildDeploymentPreview(inventory, {
     runtime: "cloudflare", database: "keep", scheduler: "supabase",
   }, providers);
-  expect(preview.blockers).toContain("GLOBAL_SCHEDULER_INVENTORY_INCOMPLETE");
+  expect(preview.blockers).toContain("SCHEDULER_SCOPE_CONFIRMATION_REQUIRED");
+  expect(preview.blockers).toContain("UNSELECTED_SCHEDULER_TRIGGER_PRESENT:cloudflare");
+  expect(preview.blockers).not.toContain("SCHEDULER_PROVIDER_INVENTORY_INCOMPLETE:vercel");
+});
+
+test("the curated hosted footprint does not require unrelated Vercel credentials", () => {
+  const providers = [
+    {
+      provider: "cloudflare" as const, state: "identified" as const, target: "account/worker",
+      schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "resource-only" as const, triggers: [] },
+      runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings: cloudflareBindings, configuredScheduler: "supabase" },
+      domainRoutes: { state: "verified" as const, completeness: "selected-runtime" as const, domains: [{ hostname: "nova.example.test", source: "custom-domain" as const }] },
+      revision: "worker-revision",
+    },
+    { provider: "netlify" as const, state: "identified" as const, target: "site-id", schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [] } },
+    { provider: "supabase" as const, state: "identified" as const, target: "abcdefghijklmnopqrst", schedulerInventory: { scope: "database-project" as const, state: "verified" as const, completeness: "project-scoped" as const, triggers: [{ id: "cron-1", name: "nova-background-tick", schedule: "*/5 * * * *", active: true }] }, migrationInventory: { state: "current" as const, appliedCount: 4, migrationHead: "0004_schema.sql", expectedHead: "0004_schema.sql", checksumsVerified: true } },
+    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", origin: "https://nova.example.test", configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64) },
+  ];
+  const preview = buildDeploymentPreview(inventory, {
+    runtime: "cloudflare", database: "keep", scheduler: "keep",
+  }, providers, true);
+  expect(preview.blockers).not.toContain("SCHEDULER_SCOPE_CONFIRMATION_REQUIRED");
+  expect(preview.blockers).not.toContain("SCHEDULER_PROVIDER_INVENTORY_INCOMPLETE:netlify");
+  expect(preview.blockers).not.toContain("SCHEDULER_PROVIDER_INVENTORY_INCOMPLETE:cloudflare");
+  expect(preview.blockers).not.toContain("SCHEDULER_PROVIDER_INVENTORY_INCOMPLETE:supabase");
+  expect(preview.blockers.some((blocker) => blocker.includes("vercel"))).toBe(false);
+});
+
+test("scheduler handover requires the target scheduler to be inactive before promotion", () => {
+  const providers = [
+    {
+      provider: "cloudflare" as const, state: "identified" as const, target: "account/worker", revision: "worker-revision",
+      schedulerInventory: { scope: "target-runtime" as const, state: "verified" as const, completeness: "resource-only" as const,
+        triggers: [{ id: "worker/schedule-1", name: "cloudflare-cron-trigger", schedule: "*/5 * * * *", active: true }] },
+      runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings: cloudflareBindings, configuredScheduler: "cloudflare" },
+      domainRoutes: { state: "verified" as const, completeness: "selected-runtime" as const, domains: [{ hostname: "nova.example.test", source: "custom-domain" as const }] },
+    },
+    { provider: "netlify" as const, state: "identified" as const, target: "site-id", schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [] } },
+    { provider: "supabase" as const, state: "identified" as const, target: "abcdefghijklmnopqrst",
+      schedulerInventory: { scope: "database-project" as const, state: "verified" as const, completeness: "project-scoped" as const,
+        triggers: [{ id: "cron-1", name: "nova-background-tick", schedule: "*/5 * * * *", active: true }] },
+      migrationInventory: { state: "current" as const, appliedCount: 4, migrationHead: "0004_schema.sql", expectedHead: "0004_schema.sql", checksumsVerified: true } },
+    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", origin: "https://nova.example.test", configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64) },
+  ];
+  const preview = buildDeploymentPreview(inventory, {
+    runtime: "cloudflare", database: "keep", scheduler: "cloudflare",
+  }, providers, true);
+  expect(preview.blockers).toContain("TARGET_SCHEDULER_ALREADY_ACTIVE:cloudflare");
+  expect(preview.blockers).not.toContain("CONFIGURED_SCHEDULER_TRIGGER_COUNT_INVALID:supabase");
 });

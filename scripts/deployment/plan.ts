@@ -28,6 +28,8 @@ export interface DeploymentPreview {
   localHints: Pick<LocalDeploymentInventory, "runtimeHint" | "database" | "schedulerHint">;
   actions: PlannedAction[];
   blockers: string[];
+  /** Operator attestation that the selected provider resources cover all NOVA triggers for this database. */
+  schedulerScopeConfirmed: boolean;
   providerInventory?: ProviderResource[];
 }
 
@@ -77,18 +79,84 @@ function runtimeConfigurationBlockers(
   return blockers;
 }
 
+function isRuntimeAdapter(value: string | undefined): value is RuntimeAdapter {
+  return value === "netlify" || value === "cloudflare" || value === "vercel" || value === "vps";
+}
+
+function isSchedulerAdapter(value: string | undefined): value is SchedulerAdapter {
+  return value === "cloudflare" || value === "netlify" || value === "vercel" || value === "supabase" || value === "vps";
+}
+
+function schedulerScopeBlockers(
+  providerInventory: readonly ProviderResource[],
+  currentRuntime: RuntimeAdapter | null,
+  request: RequestedDeployment,
+  currentScheduler: SchedulerAdapter | null,
+  schedulerScopeConfirmed: boolean,
+): string[] {
+  const blockers: string[] = [];
+  if (!schedulerScopeConfirmed) blockers.push("SCHEDULER_SCOPE_CONFIRMATION_REQUIRED");
+
+  const selectedScheduler = request.scheduler === "keep" ? currentScheduler : request.scheduler;
+  const required = new Set<string>();
+  for (const runtime of [currentRuntime, request.runtime]) {
+    if (runtime) required.add(runtime);
+  }
+  for (const scheduler of [currentScheduler, selectedScheduler]) {
+    if (scheduler) required.add(scheduler);
+  }
+
+  const changingScheduler = request.scheduler !== "keep" && request.scheduler !== currentScheduler;
+  for (const providerName of required) {
+    const provider = providerInventory.find(({ provider: name }) => name === providerName);
+    const scheduler = provider?.schedulerInventory;
+    const expectedCompleteness = providerName === "cloudflare" ? "resource-only" : "project-scoped";
+    if (provider?.state !== "identified" || !scheduler ||
+        (scheduler.state !== "verified" && scheduler.state !== "not-installed") ||
+        scheduler.completeness !== expectedCompleteness ||
+        scheduler.triggers.some(({ active }) => active === null)) {
+      blockers.push(`SCHEDULER_PROVIDER_INVENTORY_INCOMPLETE:${providerName}`);
+      continue;
+    }
+
+    const activeCount = scheduler.triggers.filter(({ active }) => active === true).length;
+    if (activeCount > 1) blockers.push(`DUPLICATE_${providerName.toUpperCase()}_SCHEDULER_TRIGGERS`);
+    if (changingScheduler && selectedScheduler === providerName && currentScheduler !== providerName && activeCount > 0) {
+      blockers.push(`TARGET_SCHEDULER_ALREADY_ACTIVE:${providerName}`);
+    }
+    if (changingScheduler && currentScheduler === providerName && activeCount !== 1) {
+      blockers.push(`CONFIGURED_SCHEDULER_TRIGGER_COUNT_INVALID:${providerName}`);
+    }
+    if (!changingScheduler && selectedScheduler === providerName && activeCount !== 1) {
+      blockers.push(`CONFIGURED_SCHEDULER_TRIGGER_COUNT_INVALID:${providerName}`);
+    }
+    if (selectedScheduler !== providerName && currentScheduler !== providerName && activeCount > 0) {
+      blockers.push(`UNSELECTED_SCHEDULER_TRIGGER_PRESENT:${providerName}`);
+    }
+  }
+
+  return blockers;
+}
+
 export function buildDeploymentPreview(
   inventory: LocalDeploymentInventory,
   request: RequestedDeployment,
   providerInventory?: ProviderResource[],
+  schedulerScopeConfirmed = false,
 ): DeploymentPreview {
   const blockers: string[] = [];
   const liveIdentity = providerInventory?.find(({ provider }) => provider === "nova");
+  const liveRuntime = liveIdentity?.state === "identified" && isRuntimeAdapter(liveIdentity.runtime)
+    ? liveIdentity.runtime
+    : undefined;
+  const liveScheduler = liveIdentity?.state === "identified" && isSchedulerAdapter(liveIdentity.configuredScheduler)
+    ? liveIdentity.configuredScheduler
+    : undefined;
   const currentRuntime = liveIdentity?.state === "identified"
-    ? liveIdentity.runtime ?? inventory.runtimeHint
+    ? liveRuntime ?? inventory.runtimeHint
     : inventory.runtimeHint;
   const currentScheduler = liveIdentity?.state === "identified"
-    ? liveIdentity.configuredScheduler ?? inventory.schedulerHint
+    ? liveScheduler ?? inventory.schedulerHint
     : inventory.schedulerHint;
   const runtimeChanges = currentRuntime !== request.runtime;
   const schedulerChanges = request.scheduler !== "keep" && request.scheduler !== currentScheduler;
@@ -159,31 +227,7 @@ export function buildDeploymentPreview(
         blockers.push("LOCAL_SCHEDULER_HINT_DIFFERS_FROM_LIVE_SCHEDULER");
       }
     }
-    const schedulerProviders = providerInventory.filter(({ provider }) =>
-      ["netlify", "cloudflare", "vercel", "supabase"].includes(provider));
-    const incompleteSchedulerTargets = schedulerProviders.some((provider) =>
-      provider.state !== "identified" ||
-      (provider.schedulerInventory?.state !== "verified" && provider.schedulerInventory?.state !== "not-installed") ||
-      provider.schedulerInventory.completeness !== "project-scoped");
-    if (incompleteSchedulerTargets) blockers.push("GLOBAL_SCHEDULER_INVENTORY_INCOMPLETE");
-    const supabaseTriggers = providerInventory.find(({ provider }) => provider === "supabase")?.schedulerInventory?.triggers ?? [];
-    if (supabaseTriggers.filter(({ active }) => active).length > 1) {
-      blockers.push("DUPLICATE_SUPABASE_NOVA_CRON_TRIGGERS");
-    }
-    const cloudflareTriggers = providerInventory.find(({ provider }) => provider === "cloudflare")?.schedulerInventory?.triggers ?? [];
-    if (cloudflareTriggers.filter(({ active }) => active).length > 1) {
-      blockers.push("DUPLICATE_CLOUDFLARE_NOVA_CRON_TRIGGERS");
-    }
-    if (liveIdentity?.configuredScheduler === "supabase" &&
-        providerInventory.find(({ provider }) => provider === "supabase")?.schedulerInventory?.state === "verified" &&
-        !supabaseTriggers.some(({ active }) => active)) {
-      blockers.push("CONFIGURED_SUPABASE_SCHEDULER_HAS_NO_ACTIVE_NOVA_JOB");
-    }
-    if (liveIdentity?.configuredScheduler === "cloudflare" &&
-        providerInventory.find(({ provider }) => provider === "cloudflare")?.schedulerInventory?.state === "verified" &&
-        !cloudflareTriggers.some(({ active }) => active)) {
-      blockers.push("CONFIGURED_CLOUDFLARE_SCHEDULER_HAS_NO_ACTIVE_TRIGGER");
-    }
+    blockers.push(...schedulerScopeBlockers(providerInventory, currentRuntime, request, currentScheduler, schedulerScopeConfirmed));
   } else {
     blockers.push("GLOBAL_SCHEDULER_INVENTORY_NOT_REQUESTED");
   }
@@ -195,7 +239,7 @@ export function buildDeploymentPreview(
     actions.push(
       { id: "discover-current-runtime", resource: "runtime", operation: "inspect deployed provider/account/project and live commit", execution: "provider-inventory-required" },
       { id: "discover-current-database", resource: "database", operation: "verify exact live database identity and migration head", execution: "provider-inventory-required" },
-      { id: "inventory-schedulers", resource: "scheduler", operation: "enumerate every trigger targeting this database", execution: "provider-inventory-required" },
+      { id: "inventory-schedulers", resource: "scheduler", operation: "verify every trigger in the operator-confirmed deployment footprint for this database", execution: "provider-inventory-required" },
     );
   }
   if (request.database === "keep") {
@@ -231,7 +275,7 @@ export function buildDeploymentPreview(
     actions.push({ id: "promote-origin", resource: "domain", operation: "promote the reviewed hostname after candidate and scheduler verification", execution: "not-implemented" });
   }
 
-  const identity = JSON.stringify({ request, source: inventory.source, localHints: {
+  const identity = JSON.stringify({ request, schedulerScopeConfirmed, source: inventory.source, localHints: {
     runtimeHint: inventory.runtimeHint,
     database: inventory.database,
     schedulerHint: inventory.schedulerHint,
@@ -246,6 +290,7 @@ export function buildDeploymentPreview(
     localHints: { runtimeHint: inventory.runtimeHint, database: inventory.database, schedulerHint: inventory.schedulerHint },
     actions,
     blockers: [...new Set(blockers)],
+    schedulerScopeConfirmed,
     ...(providerInventory ? { providerInventory } : {}),
   };
 }

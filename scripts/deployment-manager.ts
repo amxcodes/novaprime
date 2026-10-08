@@ -26,6 +26,7 @@ interface Options {
   planId?: string;
   remote: boolean;
   json: boolean;
+  confirmSchedulerScope: boolean;
 }
 
 const runtimes = new Set<RuntimeAdapter>(["netlify", "cloudflare", "vercel", "vps"]);
@@ -44,7 +45,7 @@ export function parseDeploymentManagerArguments(args: readonly string[]): Option
     throw new Error("DEPLOYMENT_COMMAND_NOT_AVAILABLE:" + command);
   }
   if (command === "help" && args.length > 1) throw new Error("DEPLOYMENT_HELP_CANNOT_BE_COMBINED");
-  const options: Options = { command, database: "keep", scheduler: "keep", remote: false, json: false };
+  const options: Options = { command, database: "keep", scheduler: "keep", remote: false, json: false, confirmSchedulerScope: false };
   if (command === "show" || command === "apply") {
     if (args.length !== 2 || !/^plan-[0-9a-f-]{36}$/i.test(args[1]!)) throw new Error("DEPLOYMENT_PLAN_ID_REQUIRED");
     options.planId = args[1];
@@ -75,6 +76,12 @@ export function parseDeploymentManagerArguments(args: readonly string[]): Option
       options.remote = true;
       continue;
     }
+    if (argument === "--confirm-scheduler-scope") {
+      if (seen.has(argument)) throw new Error("DEPLOYMENT_OPTION_DUPLICATE:" + argument);
+      seen.add(argument);
+      options.confirmSchedulerScope = true;
+      continue;
+    }
     if (argument === "--env-file" || argument === "--api-origin" ||
         argument === "--runtime" || argument === "--database" || argument === "--scheduler") {
       if (seen.has(argument)) throw new Error("DEPLOYMENT_OPTION_DUPLICATE:" + argument);
@@ -98,6 +105,9 @@ export function parseDeploymentManagerArguments(args: readonly string[]): Option
     throw new Error("DEPLOYMENT_OPTION_UNSUPPORTED:" + argument);
   }
   if (options.command === "plan" && !options.runtime) throw new Error("DEPLOYMENT_PLAN_RUNTIME_REQUIRED");
+  if (options.confirmSchedulerScope && (options.command !== "plan" || !options.remote)) {
+    throw new Error("DEPLOYMENT_SCHEDULER_SCOPE_CONFIRMATION_REQUIRES_REMOTE_PLAN");
+  }
   if (options.command !== "plan" && (options.runtime || seen.has("--database") || seen.has("--scheduler"))) {
     throw new Error("DEPLOYMENT_PLAN_OPTIONS_REQUIRE_PLAN_COMMAND");
   }
@@ -222,15 +232,15 @@ export async function runDeploymentManager(
     const options = parseDeploymentManagerArguments(args);
     if (options.command === "help") {
       write([
-        "NOVA Deployment Manager — local, read-only foundation",
+        "NOVA Deployment Manager — local deployment inventory and planning",
         "  bun run nova:deployment status [--env-file <path>] [--remote] [--json]",
         "  bun run nova:deployment doctor [--env-file <path>] [--api-origin https://nova.example]",
-        "  bun run nova:deployment plan --runtime <netlify|cloudflare|vercel|vps> [--database <keep|provision-supabase|move>] [--scheduler <keep|provider>] [--env-file <path>] [--remote]",
+        "  bun run nova:deployment plan --runtime <netlify|cloudflare|vercel|vps> [--database <keep|provision-supabase|move>] [--scheduler <keep|provider>] [--env-file <path>] [--remote] [--confirm-scheduler-scope]",
         "  bun run nova:deployment show <plan-id>",
         "  bun run nova:deployment verify <plan-id> [--env-file <path>] [--remote] [--json]",
         "  bun run nova:deployment apply <plan-id>  (not enabled; provider writes are not implemented)",
         "",
-        "Remote inventory is read-only and requires explicit target IDs in the selected environment. No deploy, DNS, scheduler, or database-move write is enabled.",
+        "Remote inventory is read-only and requires explicit target IDs in the selected environment. --confirm-scheduler-scope attests that these are the complete NOVA runtime/scheduler resources for this database; unselected systems are not searched. No deploy, DNS, scheduler, or database-move write is enabled.",
       ].join("\n"));
       return 0;
     }
@@ -293,12 +303,14 @@ export async function runDeploymentManager(
       runtime: options.runtime!,
       database: options.database,
       scheduler: options.scheduler,
-    }, providerInventory);
+    }, providerInventory, options.confirmSchedulerScope);
     const stored = await saveDeploymentPlan(repoRoot, preview);
     write(JSON.stringify(stored, null, 2));
     write("Saved immutable, private plan; " + (options.remote
       ? "only explicitly targeted read-only provider inventory was requested"
-      : "no provider was contacted") + "; no provider resource was changed. Review with `bun run nova:deployment show " + stored.id + "`. Apply remains disabled until provider write adapters and live transition verification are implemented.");
+      : "no provider was contacted") + (options.confirmSchedulerScope
+        ? "; operator-confirmed scheduler footprint recorded"
+        : "; scheduler footprint is unconfirmed") + "; no provider resource was changed. Review with `bun run nova:deployment show " + stored.id + "`. Apply remains disabled until provider write adapters and live transition verification are implemented.");
     return preview.blockers.length > 0 || preview.actions.some(({ execution }) => execution !== "locally-verified") ? 2 : 0;
   } catch (error) {
     const message = error instanceof Error && /^DEPLOYMENT_[A-Z0-9_:-]+$/.test(error.message)
