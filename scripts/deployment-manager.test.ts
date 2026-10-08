@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  formatDockerComposeStatus,
   parseDeploymentManagerArguments,
   runDeploymentManager,
 } from "./deployment-manager.ts";
@@ -54,4 +55,20 @@ test("status only prints credential presence and never values", async () => {
   expect(output.join("\n")).not.toContain(token);
   expect(output.join("\n")).toContain('"configured": true');
   expect(output.join("\n")).toContain('"schedulerHint": "supabase"');
+});
+
+test("human-readable local Compose status explains unknown scope and includes safe exit codes", () => {
+  expect(formatDockerComposeStatus(undefined)).toContain("no VPS runtime or scheduler hint is set");
+  expect(formatDockerComposeStatus({
+    state: "verified",
+    services: [
+      { service: "api", state: "exited", health: null, exitCode: 1 },
+      { service: "postgres", state: "running", health: "healthy", exitCode: null },
+    ],
+  })).toBe("Docker Compose services (read-only): api=exited (exit code 1), postgres=running/healthy");
+  expect(formatDockerComposeStatus({
+    state: "unavailable",
+    services: [],
+    detail: "DOCKER_CLI_NOT_FOUND",
+  })).toContain("unavailable (DOCKER_CLI_NOT_FOUND)");
 });

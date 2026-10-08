@@ -33,6 +33,23 @@ const runtimes = new Set<RuntimeAdapter>(["netlify", "cloudflare", "vercel", "vp
 const schedulers = new Set<SchedulerAdapter | "keep">(["cloudflare", "netlify", "vercel", "supabase", "vps", "keep"]);
 const databaseChanges = new Set<DatabaseChange>(["keep", "provision-supabase", "move"]);
 
+export function formatDockerComposeStatus(
+  inventory: Awaited<ReturnType<typeof inspectLocalDeployment>>["dockerCompose"],
+): string {
+  if (!inventory) {
+    return "Docker Compose services: not queried; no VPS runtime or scheduler hint is set in the selected environment. Use --env-file to select the deployment configuration.";
+  }
+  if (inventory.state === "unavailable") {
+    return "Docker Compose services: unavailable (" + (inventory.detail ?? "DOCKER_COMPOSE_UNAVAILABLE") + "); no raw command output or environment values were exposed.";
+  }
+  const services = inventory.services;
+  return "Docker Compose services (read-only): " + (services.length
+    ? services.map(({ service, state, health, exitCode }) =>
+      `${service}=${state}${health ? `/${health}` : ""}${exitCode === null ? "" : ` (exit code ${exitCode})`}`,
+    ).join(", ")
+    : "no NOVA services observed in this Compose project");
+}
+
 function requiredValue(args: readonly string[], index: number, option: string): string {
   const value = args[index + 1]?.trim();
   if (!value || value.startsWith("--")) throw new Error("DEPLOYMENT_OPTION_VALUE_REQUIRED:" + option);
@@ -149,16 +166,7 @@ function reportStatus(
   write("Runtime hint: " + (inventory.runtimeHint ?? "unknown; live provider inventory is not connected yet"));
   write("Database: " + (inventory.database.endpointLabel ?? (inventory.database.configured ? "configured but not safely identifiable" : "not configured in selected environment")));
   write("Scheduler hint: " + (inventory.schedulerHint ?? "unknown; all active providers must be inventoried"));
-  if (!inventory.dockerCompose) {
-    write("Docker Compose services: not queried; selected runtime and scheduler are not VPS.");
-  } else if (inventory.dockerCompose.state === "unavailable") {
-    write("Docker Compose services: unavailable (" + (inventory.dockerCompose.detail ?? "DOCKER_COMPOSE_UNAVAILABLE") + "); no raw command output or environment values were exposed.");
-  } else {
-    const services = inventory.dockerCompose.services;
-    write("Docker Compose services (read-only): " + (services.length
-      ? services.map(({ service, state, health }) => `${service}=${state}${health ? `/${health}` : ""}`).join(", ")
-      : "no NOVA services observed in this Compose project"));
-  }
+  write(formatDockerComposeStatus(inventory.dockerCompose));
   write("Runtime secrets (presence only): " + Object.entries(inventory.secretPresence)
     .map(([key, present]) => key + "=" + (present ? "set" : "missing")).join(", "));
   write("Provider credentials (presence only): " + Object.entries(inventory.providerCredentialPresence)
