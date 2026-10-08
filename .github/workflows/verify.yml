@@ -28,6 +28,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          npx --yes wrangler@4.141.0 --version
           worker_log="$(mktemp)"
           response=""
           npx --yes wrangler@4.141.0 dev --local \
@@ -41,13 +42,14 @@ jobs:
             rm -f "$worker_log"
           }
           trap cleanup EXIT
-          for attempt in $(seq 1 60); do
+          for attempt in $(seq 1 120); do
             if ! kill -0 "$worker_pid" 2>/dev/null; then break; fi
             response="$(curl -fsS http://127.0.0.1:8799/ 2>/dev/null)" && break || true
-            sleep 0.25
+            sleep 0.5
           done
           if [[ -z "$response" ]]; then
             echo "Cloudflare Worker did not become ready"
+            tail -n 80 "$worker_log"
             exit 1
           fi
           printf '%s' "$response" | node -e '

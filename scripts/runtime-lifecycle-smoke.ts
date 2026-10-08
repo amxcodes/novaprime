@@ -1478,8 +1478,15 @@ async function main(): Promise<void> {
   assertStatus("role_revokes_catalog_visibility", await updateRole(roleInput), 200);
   const hiddenBillableCatalog = await request("GET", "/task-catalog", undefined, firstEmployee.cookie);
   assertStatus("catalog_visibility_is_separate_from_task_creation", hiddenBillableCatalog, 200);
-  assert(hiddenBillableCatalog.body?.permissions?.view === false
-    && hiddenBillableCatalog.body?.entries?.length === 0,
+  const hiddenCatalogPermissions = hiddenBillableCatalog.body?.permissions ?? {};
+  console.info("restricted_catalog_visibility_observation", JSON.stringify({
+    permissionKeys: Object.keys(hiddenCatalogPermissions).sort(),
+    canView: hiddenCatalogPermissions["tasks.catalog.view"] === true,
+    entryCount: Array.isArray(hiddenBillableCatalog.body?.entries) ? hiddenBillableCatalog.body.entries.length : -1,
+  }));
+  assert(hiddenCatalogPermissions["tasks.catalog.view"] === false
+    && Array.isArray(hiddenBillableCatalog.body?.entries)
+    && hiddenBillableCatalog.body.entries.length === 0,
   "task_creation_permission_does_not_grant_catalog_visibility");
   const tasksBeforeHiddenDefinitionAttempt = (await sql<{ count: number }>(
     `SELECT count(*)::integer AS count FROM nova.tasks
