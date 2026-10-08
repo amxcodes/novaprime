@@ -70,6 +70,29 @@ test("identity endpoint requires the deployment bearer secret and avoids migrati
   expect(reads).toBe(1);
 });
 
+test("self-hosted Compose can identify its runtime and exact deployed source revision", async () => {
+  const commit = "f".repeat(40);
+  const handler = createDeploymentIdentityHandler({
+    environment: {
+      NOVA_BACKGROUND_JOB_SECRET: "deployment-only-test-secret",
+      DATABASE_URL: "postgresql://nova_app:password@db.customer.example:5432/nova",
+      NOVA_RUNTIME_ADAPTER: "vps",
+      NOVA_RUNTIME_ID: "docker-compose",
+      NOVA_RELEASE_SHA: commit,
+      NOVA_BACKGROUND_SCHEDULER: "vps",
+    },
+    readDatabaseState: async () => ({ schemaReady: true, migrationLedgerPresent: true }),
+  });
+  const response = await handler(new Request("https://nova.example/api/internal/deployment/identity", {
+    headers: { authorization: "Bearer deployment-only-test-secret" },
+  }));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    runtime: { adapter: "vps", id: "docker-compose", releaseSha: commit },
+    scheduler: "vps",
+  });
+});
+
 test("identity endpoint rejects a configured project ref that contradicts the actual DB endpoint", async () => {
   const handler = createDeploymentIdentityHandler({
     environment: {

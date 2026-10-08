@@ -52,9 +52,10 @@ claim that every PostgreSQL-compatible provider is interchangeable.
 release in an isolated candidate, validates the migration manifest and target
 ledger, asks for backup confirmation, applies supported migrations, checks the
 restricted application role, and can offer an explicit push to the customer's
-repository. A successful push is not proof of a host deployment. Local Docker
-activation and hosted deployment/readiness verification remain separate until
-the updater adds and rehearses those steps.
+repository. A push can optionally be followed by a protected exact-commit
+identity check when the runtime publishes its full release SHA; that check does
+not prove application readiness. Local Docker build/restart remains an
+operator action, followed by a readiness check.
 
 `bun run nova:deployment` owns infrastructure diagnosis and future runtime,
 scheduler, domain, and database moves. It is a local operator tool; provider

@@ -36,4 +36,13 @@ describe("self-hosted Docker entry point", () => {
     expect(maintenanceService).toContain("NOVA_MAINTENANCE_INTERVAL_SECONDS: ${NOVA_MAINTENANCE_INTERVAL_SECONDS:-300}");
     expect(maintenanceService).toContain("restart: unless-stopped");
   });
+
+  test("self-hosted API publishes its runtime identity without inventing a release SHA", () => {
+    const apiStart = compose.indexOf("\n  api:");
+    const proxyStart = compose.indexOf("\n  nginx:");
+    const apiService = compose.slice(apiStart, proxyStart);
+    expect(apiService).toContain("NOVA_RUNTIME_ADAPTER: ${NOVA_RUNTIME_ADAPTER:-vps}");
+    expect(apiService).toContain("NOVA_RUNTIME_ID: ${NOVA_RUNTIME_ID:-docker-compose}");
+    expect(apiService).toContain("NOVA_RELEASE_SHA: ${NOVA_RELEASE_SHA:-}");
+  });
 });

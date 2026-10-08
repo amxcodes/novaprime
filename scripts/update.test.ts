@@ -260,6 +260,45 @@ describe("update coordinator integration", () => {
     expect(git(fixture.root, ["status", "--porcelain"])).toBe("");
   }, 60_000);
 
+  it("verifies the exact pushed commit after a successful customer-repository push", async () => {
+    const fixture = await makeRepository();
+    const harness = makeRuntime(fixture, {
+      migrationResult: "success",
+      onPushConsent: async () => true,
+      promptLine: async (prompt) => prompt.startsWith("Destination branch")
+        ? "production"
+        : prompt.replace(/^Type exactly: /, ""),
+    });
+    let verifiedCommit: string | undefined;
+    let pushCount = 0;
+    let pushedBranch: string | undefined;
+    harness.runtime.offerPushAdapters = {
+      ...harness.runtime.offerPushAdapters,
+      pushUpdateBranch: async (input) => {
+        pushCount += 1;
+        pushedBranch = input.destinationBranch;
+        return {
+          localBranch: "nova/update/v0.2.0",
+          commit: fixture.releaseCommit,
+          destination: {
+            remoteName: "origin",
+            remoteUrl: "https://github.com/customer/nova-test.git",
+            branch: "production",
+          },
+        };
+      },
+      verifyHostedDeployment: async (commit) => { verifiedCommit = commit; },
+    };
+
+    await runGuided({ mode: "apply", resume: false, help: false }, harness.runtime);
+
+    expect(pushCount).toBe(1);
+    expect(pushedBranch).toBe("production");
+    expect(verifiedCommit).toBe(fixture.releaseCommit);
+    expect(harness.getJournal()?.phase).toBe("complete");
+    expect(harness.counts()).toMatchObject({ databaseWriteCalls: 1, preflightCalls: 1 });
+  }, 60_000);
+
   it("resume selects the journaled release and refuses a different fingerprinted target before planning writes", async () => {
     const fixture = await makeRepository();
     const worktreeRoot = join(fixture.temporaryRoot, "updater-state", "worktrees");

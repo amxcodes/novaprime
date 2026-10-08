@@ -44,6 +44,7 @@ import {
   updateTargetFingerprint,
   type UpdateJournal,
 } from "./update/state.js";
+import { normalizeHostedDeploymentOrigin, waitForHostedCommit } from "./update/host-verification.ts";
 import { confirm, promptLine, promptSecret, requireInteractiveTerminal } from "./update/terminal.js";
 
 const repoRoot = resolve(import.meta.dir, "..");
@@ -66,6 +67,7 @@ interface OfferPushAdapters {
   verifyPinnedReleaseStillCurrent: typeof verifyPinnedReleaseStillCurrent;
   pushUpdateBranch: typeof pushUpdateBranch;
   saveUpdateJournal: typeof saveUpdateJournal;
+  verifyHostedDeployment: (commit: string) => Promise<void>;
 }
 
 interface MigrationApplyAdapters {
@@ -706,6 +708,42 @@ function isSupportedCustomerPushRemote(remote: GitRemoteInfo): boolean {
   }
 }
 
+async function verifyHostedDeploymentAfterPush(
+  commit: string,
+  askConfirm: typeof confirm,
+): Promise<void> {
+  const configuredOrigin = process.env.NOVA_PUBLIC_ORIGIN ?? process.env.BETTER_AUTH_URL;
+  const secret = process.env.NOVA_BACKGROUND_JOB_SECRET;
+  if (!configuredOrigin || !secret) {
+    console.info("Hosted deployment was not checked. Set NOVA_PUBLIC_ORIGIN and NOVA_BACKGROUND_JOB_SECRET in the selected environment, then run `bun run nova:deployment status --remote` to inspect the deployed identity.");
+    return;
+  }
+  const origin = normalizeHostedDeploymentOrigin(configuredOrigin);
+  if (!origin) {
+    console.info("Hosted deployment was not checked: configure NOVA_PUBLIC_ORIGIN as an exact HTTPS origin without a path, credentials, or query string.");
+    return;
+  }
+  if (!await askConfirm(
+    `Check whether ${origin} serves commit ${commit.slice(0, 12)}? This sends the configured background secret only to this origin's protected read-only identity endpoint and checks up to 21 times at 30-second intervals; slow requests can extend the wait to about 13.5 minutes.`,
+  )) {
+    console.info("Hosted deployment check skipped; no identity request was sent.");
+    return;
+  }
+
+  console.info(`Waiting for ${origin} to report the pushed commit through NOVA's protected read-only identity endpoint…`);
+  const result = await waitForHostedCommit({ origin, secret, expectedCommit: commit });
+  if (result.status === "verified") {
+    console.info(`HOST_DEPLOYMENT_VERIFIED: ${result.runtime ?? "runtime"} serves exact commit ${result.release.slice(0, 12)} at ${origin}.`);
+  } else if (result.status === "pending") {
+    const observed = result.observedRelease
+      ? ` It still reports ${result.observedRelease.slice(0, 12)}.`
+      : " The runtime has not yet reported a full release SHA.";
+    console.info(`HOST_DEPLOYMENT_PENDING: ${origin} did not report the pushed commit after ${result.checks} checks.${observed} The source push succeeded; the provider deployment remains unverified.`);
+  } else {
+    console.info(`HOST_DEPLOYMENT_UNVERIFIED: ${result.detail}. The source push succeeded; check the host deployment and run \`bun run nova:deployment status --remote\` after the runtime reports a full commit SHA.`);
+  }
+}
+
 async function offerPush(
   checkout: GitCheckoutInfo,
   candidatePath: string,
@@ -724,6 +762,7 @@ async function offerPush(
     verifyPinnedReleaseStillCurrent,
     pushUpdateBranch,
     saveUpdateJournal,
+    verifyHostedDeployment: (commit) => verifyHostedDeploymentAfterPush(commit, overrides.confirm ?? confirm),
     ...overrides,
   };
   const sourceBeforePush = await services.inspectGitCheckout(services.repoRoot);
@@ -782,7 +821,8 @@ async function offerPush(
   }
   journal.phase = "complete";
   await services.saveUpdateJournal(journal);
-  console.info(`Push accepted: ${pushed.commit.slice(0, 12)} → ${pushed.destination.remoteName}/${pushed.destination.branch}. Provider deployment is pending and unverified.`);
+  console.info(`Push accepted: ${pushed.commit.slice(0, 12)} → ${pushed.destination.remoteName}/${pushed.destination.branch}. Hosted activation has not yet been confirmed.`);
+  await services.verifyHostedDeployment(pushed.commit);
 }
 
 export async function runGuided(options: Options, overrides: UpdateRuntimeOverrides = {}): Promise<void> {
@@ -823,6 +863,8 @@ export async function runGuided(options: Options, overrides: UpdateRuntimeOverri
   const pushAdapters: Partial<OfferPushAdapters> = {
     repoRoot: root,
     inspectGitCheckout: inspect,
+    confirm: askConfirm,
+    promptLine: askLine,
     verifyPinnedReleaseStillCurrent: verifyRelease,
     saveUpdateJournal: saveJournal,
     ...overrides.offerPushAdapters,

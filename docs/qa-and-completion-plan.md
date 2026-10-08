@@ -454,9 +454,9 @@ draft also loaded. These are narrow browser proofs, not full Work/HR journeys
 or accessibility/responsive readiness.
 
 The live local browser rendered and exercised the deployment path selector for
-Cloudflare + Supabase, Netlify + Supabase, Vercel + Supabase and direct
-PostgreSQL/VPS, including each eligible scheduler choice and Supabase Cron
-alternative. Setup rendered public-origin and attendance-mode controls;
+Cloudflare + Supabase, Netlify + Supabase, the legacy Vercel + Supabase adapter,
+and direct PostgreSQL/VPS, including each eligible scheduler choice and
+Supabase Cron alternative. Setup rendered public-origin and attendance-mode controls;
 sign-in and forgot-password navigation worked; the reset route rendered and
 removed a synthetic token from the visible URL. An unauthenticated direct visit
 to `?view=work` returned the public landing screen. Work/Today/Admin views exist,
