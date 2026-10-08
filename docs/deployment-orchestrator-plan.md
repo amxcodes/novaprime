@@ -1,10 +1,11 @@
 # NOVA deployment manager
 
 **Status:** product requirement and implementation plan. Implemented foundation:
-read-only local status/doctor, optional explicitly targeted remote provider
-inventory, immutable per-checkout plans stored outside the repository, plan
-readback, protected deployment identity, and a read-only Supabase migration
-ledger comparison. Provider mutations, operation resume/rollback execution,
+read-only local status/doctor (including allowlisted Docker Compose service
+state for VPS hints), optional explicitly targeted remote provider inventory,
+immutable per-checkout plans stored outside the repository, plan readback,
+protected deployment identity, and a read-only Supabase migration ledger
+comparison. Provider mutations, operation resume/rollback execution,
 complete scheduler inventory/handover, project provisioning, and database
 moves remain unimplemented. A private,
 plan-bound journal store now validates sequenced operation events, but no
@@ -31,7 +32,7 @@ application feature permissions.
 
 | Area | Present in this repository | Missing for orchestration |
 | --- | --- | --- |
-| Runtime adapters | Netlify Functions, Vercel Functions, Cloudflare Worker, and VPS/Docker run the NOVA API through provider-specific entry points. | The adapters do not create or configure customer provider projects. |
+| Runtime adapters | Netlify Functions, Vercel Functions, Cloudflare Worker, and VPS/Docker run the NOVA API through provider-specific entry points. Local status can read the selected Compose project's allowlisted service state, health and exit code without returning environment values. | The adapters do not create or configure customer provider projects; Compose inventory does not inspect external hosts or prove public Nginx/TLS routing. |
 | PostgreSQL | Supabase Cloud bootstrap and direct PostgreSQL setup apply migrations and create/check the restricted runtime role. The update manager migrates an existing pinned target. | There is no automated database provisioning or cross-database data-copy/cutover workflow. A new target is not a schema migration. |
 | Scheduler | Cloudflare, Netlify, Vercel, Supabase Cron, and VPS use the shared protected tick contract. The Supabase command creates/removes its schedule. Provider build configuration selects the other hosted schedules. `nova:deployment status --remote` reads the selected Netlify site's latest published production deploy schedule list, selected Cloudflare Worker schedules, and project-pinned Supabase Cron rows when the owner URL is available. | Vercel Cron can be declared in deployment config and disabled in project settings, but Vercel's documented REST API does not provide a Cron inventory endpoint; code/config alone cannot confirm whether a listed job is disabled. VPS schedule inventory remains unverified. A single selected Worker/site does not prove account-wide completeness. There is no complete inventory across every account, runtime, and external trigger, nor a scheduler handover executor. A selector does not discover every duplicate schedule targeting the database. |
 | Source and release | `nova:update` prepares a pinned source candidate, applies approved migrations, and can offer a Git push. | A successful push is not proof that a host built, deployed, or serves that candidate. |

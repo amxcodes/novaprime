@@ -61,7 +61,10 @@ operator action, followed by a readiness check.
 scheduler, domain, and database moves. It is a local operator tool; provider
 tokens and database-owner credentials must never enter the public browser
 assistant or employee application. Its current status/doctor/plan/verify
-commands are read-only. Remote inventory can inspect selected Netlify production
+commands are read-only. Local status reads only allowlisted Compose service
+names, state, health, and exit code for this repository's selected project; it
+does not return container IDs, ports, logs, or environment values. Remote
+inventory can inspect selected Netlify production
 variable names/scopes/contexts and Cloudflare Worker binding names/types, plus
 site domains and Cloudflare Worker custom domains. For each attached Worker
 domain, Cloudflare inventory reads that zone's Worker Routes and exact-host DNS

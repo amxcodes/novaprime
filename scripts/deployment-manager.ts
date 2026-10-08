@@ -149,6 +149,16 @@ function reportStatus(
   write("Runtime hint: " + (inventory.runtimeHint ?? "unknown; live provider inventory is not connected yet"));
   write("Database: " + (inventory.database.endpointLabel ?? (inventory.database.configured ? "configured but not safely identifiable" : "not configured in selected environment")));
   write("Scheduler hint: " + (inventory.schedulerHint ?? "unknown; all active providers must be inventoried"));
+  if (!inventory.dockerCompose) {
+    write("Docker Compose services: not queried; selected runtime and scheduler are not VPS.");
+  } else if (inventory.dockerCompose.state === "unavailable") {
+    write("Docker Compose services: unavailable (" + (inventory.dockerCompose.detail ?? "DOCKER_COMPOSE_UNAVAILABLE") + "); no raw command output or environment values were exposed.");
+  } else {
+    const services = inventory.dockerCompose.services;
+    write("Docker Compose services (read-only): " + (services.length
+      ? services.map(({ service, state, health }) => `${service}=${state}${health ? `/${health}` : ""}`).join(", ")
+      : "no NOVA services observed in this Compose project"));
+  }
   write("Runtime secrets (presence only): " + Object.entries(inventory.secretPresence)
     .map(([key, present]) => key + "=" + (present ? "set" : "missing")).join(", "));
   write("Provider credentials (presence only): " + Object.entries(inventory.providerCredentialPresence)

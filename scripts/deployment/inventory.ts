@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { databaseIdentityFingerprint } from "../../server/src/deployment-identity.ts";
+import { inspectDockerCompose, type DockerComposeInventory } from "./docker-inventory.ts";
 
 const execFileAsync = promisify(execFile);
 const commitPattern = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i;
@@ -33,6 +34,7 @@ export interface LocalDeploymentInventory {
   runtimeHint: RuntimeAdapter | null;
   database: DatabaseInventory;
   schedulerHint: SchedulerAdapter | null;
+  dockerCompose?: DockerComposeInventory;
   secretPresence: Readonly<Record<string, boolean>>;
   providerCredentialPresence: Readonly<Record<string, boolean>>;
 }
@@ -66,6 +68,7 @@ export async function inspectLocalDeployment(
   repoRoot: string,
   environment: Readonly<Record<string, string>>,
   environmentSource: string,
+  composeInspector: typeof inspectDockerCompose = inspectDockerCompose,
 ): Promise<LocalDeploymentInventory> {
   const root = resolve(repoRoot);
   const [reportedRoot, commit, branch, status] = await Promise.all([
@@ -132,6 +135,11 @@ export async function inspectLocalDeployment(
     "NOVA_BOOTSTRAP_TOKEN",
   ] as const;
   const providerKeys = ["NETLIFY_AUTH_TOKEN", "CLOUDFLARE_API_TOKEN", "VERCEL_TOKEN", "SUPABASE_ACCESS_TOKEN"] as const;
+  const runtimeHint = safeRuntime(environment.NOVA_RUNTIME_ADAPTER);
+  const schedulerHint = safeScheduler(environment.NOVA_BACKGROUND_SCHEDULER);
+  const dockerCompose = runtimeHint === "vps" || schedulerHint === "vps"
+    ? await composeInspector(root)
+    : undefined;
   return {
     environmentSource,
     source: {
@@ -141,9 +149,10 @@ export async function inspectLocalDeployment(
       dirtyPathCount: status ? status.split("\n").length : 0,
       packageVersion,
     },
-    runtimeHint: safeRuntime(environment.NOVA_RUNTIME_ADAPTER),
+    runtimeHint,
     database,
-    schedulerHint: safeScheduler(environment.NOVA_BACKGROUND_SCHEDULER),
+    schedulerHint,
+    ...(dockerCompose ? { dockerCompose } : {}),
     secretPresence: Object.fromEntries(secretKeys.map((key) => [key, Boolean(environment[key])])),
     providerCredentialPresence: Object.fromEntries(providerKeys.map((key) => [key, Boolean(environment[key])])),
   };
