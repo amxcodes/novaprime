@@ -102,7 +102,8 @@ test("each runtime publishes the generated Vite graph and preserves the shared A
   expect(workerConfig).toContain('run_worker_first = ["/api/*"]');
   expect(workerConfig).toContain('html_handling = "drop-trailing-slash"');
   expect(workerConfig).toContain('not_found_handling = "none"');
-  expect(dockerfile).toContain("COPY --from=build /app/web ./web");
+  expect(dockerfile).toContain("COPY --from=build /app/web/review-actions.js /app/web/ui-preferences.js ./web/");
+  expect(dockerfile).toContain("COPY --from=web-build /app/web/dist ./web/dist");
   expect(serverEntry).toContain('new URL("../../web/", import.meta.url)');
   expect(serverEntry).toContain('new URL("../../web/dist/", import.meta.url)');
   expect(serverEntry).toContain("font/woff2");

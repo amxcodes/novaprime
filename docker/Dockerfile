@@ -12,6 +12,11 @@ COPY web ./web
 RUN bun install --frozen-lockfile
 RUN bun run --cwd server build
 
+FROM build AS web-build
+
+COPY vite.config.ts ./vite.config.ts
+RUN bun run build:web
+
 FROM build AS migrate
 
 CMD ["bun", "run", "--cwd", "server", "migrate"]
@@ -24,7 +29,8 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/server/node_modules ./server/node_modules
 COPY --from=build /app/server/package.json ./server/package.json
 COPY --from=build /app/server/dist ./server/dist
-COPY --from=build /app/web ./web
+COPY --from=build /app/web/review-actions.js /app/web/ui-preferences.js ./web/
+COPY --from=web-build /app/web/dist ./web/dist
 
 WORKDIR /app/server
 

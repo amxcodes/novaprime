@@ -6,16 +6,30 @@ import {
   configuredBackgroundScheduler,
   defaultMaintenanceIntervalSeconds,
   maintenanceIntervalMilliseconds,
+  runEndpointTickWithRetry,
 } from "./maintenance-worker.js";
 
 const previous = process.env.NOVA_BACKGROUND_JOB_SECRET;
 const previousScheduler = process.env.NOVA_BACKGROUND_SCHEDULER;
+const previousFetch = globalThis.fetch;
+const successfulTick = {
+  closedAttendance: 0,
+  closedProvisionalWfhAttendance: 0,
+  closedWorkSessions: 0,
+  purgedEvidence: 0,
+  expiredRequests: 0,
+  reconciledReviewers: 0,
+  purgedIdempotencyKeys: 0,
+  notifications: 0,
+  dueNotifications: 0,
+} as const;
 
 afterEach(() => {
   if (previous === undefined) delete process.env.NOVA_BACKGROUND_JOB_SECRET;
   else process.env.NOVA_BACKGROUND_JOB_SECRET = previous;
   if (previousScheduler === undefined) delete process.env.NOVA_BACKGROUND_SCHEDULER;
   else process.env.NOVA_BACKGROUND_SCHEDULER = previousScheduler;
+  globalThis.fetch = previousFetch;
 });
 
 test("selects only a supported deployment scheduler", () => {
@@ -49,4 +63,82 @@ test("background tick accepts only the exact deployment secret", () => {
   expect(backgroundJobSecretMatches("tick-secret")).toBe(true);
   expect(backgroundJobSecretMatches("tick-secret-extra")).toBe(false);
   expect(backgroundJobSecretMatches(null)).toBe(false);
+});
+
+test("self-hosted endpoint retries transient connection failures with bounded backoff", async () => {
+  process.env.NOVA_BACKGROUND_JOB_SECRET = "tick-secret";
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    if (calls < 3) {
+      const cause = Object.assign(new Error("connection refused"), { code: "ECONNREFUSED" });
+      throw new TypeError("fetch failed", { cause });
+    }
+    return new Response(JSON.stringify({ tick: successfulTick }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const pauses: number[] = [];
+
+  await expect(runEndpointTickWithRetry(
+    "http://api:3001/api/internal/background/tick",
+    async (milliseconds) => { pauses.push(milliseconds); },
+  )).resolves.toEqual(successfulTick);
+  expect(calls).toBe(3);
+  expect(pauses).toEqual([1_000, 2_000]);
+});
+
+test("self-hosted endpoint does not retry HTTP failures", async () => {
+  process.env.NOVA_BACKGROUND_JOB_SECRET = "tick-secret";
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ error: "BACKGROUND_SCHEDULER_NOT_CONFIGURED" }), { status: 503 });
+  }) as unknown as typeof fetch;
+  const pauses: number[] = [];
+
+  await expect(runEndpointTickWithRetry(
+    "http://api:3001/api/internal/background/tick",
+    async (milliseconds) => { pauses.push(milliseconds); },
+  )).rejects.toThrow("BACKGROUND_JOB_HTTP_503");
+  expect(calls).toBe(1);
+  expect(pauses).toEqual([]);
+});
+
+test("self-hosted endpoint retries only the API's transient background-tick failure", async () => {
+  process.env.NOVA_BACKGROUND_JOB_SECRET = "tick-secret";
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    if (calls === 1) {
+      return new Response(JSON.stringify({ error: "BACKGROUND_JOB_FAILED" }), { status: 503 });
+    }
+    return new Response(JSON.stringify({ tick: successfulTick }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const pauses: number[] = [];
+
+  await expect(runEndpointTickWithRetry(
+    "http://api:3001/api/internal/background/tick",
+    async (milliseconds) => { pauses.push(milliseconds); },
+  )).resolves.toEqual(successfulTick);
+  expect(calls).toBe(2);
+  expect(pauses).toEqual([1_000]);
+});
+
+test("self-hosted endpoint stops after the maximum connection retries", async () => {
+  process.env.NOVA_BACKGROUND_JOB_SECRET = "tick-secret";
+  const failure = new TypeError("fetch failed", {
+    cause: Object.assign(new Error("connection refused"), { code: "ECONNREFUSED" }),
+  });
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    throw failure;
+  }) as unknown as typeof fetch;
+  const pauses: number[] = [];
+
+  await expect(runEndpointTickWithRetry(
+    "http://api:3001/api/internal/background/tick",
+    async (milliseconds) => { pauses.push(milliseconds); },
+  )).rejects.toBe(failure);
+  expect(calls).toBe(5);
+  expect(pauses).toEqual([1_000, 2_000, 4_000, 8_000]);
 });

@@ -1,5 +1,29 @@
 # NOVA verification matrix
 
+## Latest deployment profile follow-up — 2026-10-10
+
+The local PostgreSQL 17 gate now covers 79 migrations and passed the
+100-employee Node-pool lifecycle with 2,433 assertions. A request-scoped direct
+client profile passed functional checks but hit PostgreSQL's default client
+limit during the 100-employee burst; this does not model Cloudflare
+Hyperdrive. The fresh Docker profile verified API health/readiness, generated
+web entry pages and JavaScript assets, and the `vps` scheduler selection. That
+build caught and fixed a production-image omission: the image now builds and
+ships Vite output instead of relying on excluded `dist` files or unbundled
+source. Pre-fix startup runs exposed a connection refusal and a database-
+startup 503 because the Compose API healthcheck tested process liveness only.
+It now waits for `/api/ready`, and the VPS worker retries
+transient network failures and the API's specific retryable database-tick 503
+with bounded backoff; configuration and auth failures remain immediate. A
+fresh clean-start run produced only successful first ticks. Only the uniquely
+named QA database volume and Compose resources were deleted after that run.
+
+The available project-scoped Supabase management token returned 403 for the
+target project's migration ledger; no live migration or other cloud write was
+attempted. No hosted Netlify/Cloudflare rollout or real Hyperdrive pooling
+load test is claimed. Detailed commands and evidence are recorded in
+[`runtime-smoke.md`](runtime-smoke.md).
+
 Evidence snapshot: 2026-09-27. The latest end-to-end PostgreSQL 17 QA command
 passed twice in WSL Docker using fresh generated databases and private,
 unpublished QA services: migrations 0001–0074, all 53 rollback/RLS fixtures,

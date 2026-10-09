@@ -28,7 +28,9 @@ if (loadEmployeeCount && loadEmployeeCount !== "0") {
 if (qaDbPoolMax || qaAuthPoolMax) {
   console.info(`QA pool profile: database=${qaDbPoolMax ?? "configured default"}, auth=${qaAuthPoolMax ?? "configured default"}`);
 }
-if (qaRequestScoped) console.info("QA profile: request-scoped PostgreSQL clients (Hyperdrive-style)");
+if (qaRequestScoped) {
+  console.info("QA profile: request-scoped direct PostgreSQL clients; this local test does not include Hyperdrive pooling");
+}
 const composePrefix = (forWsl = false) => [
   "compose",
   "--project-name",

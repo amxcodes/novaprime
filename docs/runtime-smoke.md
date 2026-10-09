@@ -1,5 +1,50 @@
 # NOVA runtime smoke runbook
 
+## Latest deployment verification — 2026-10-10
+
+`bun run qa:postgres` passed against isolated PostgreSQL 17 with 79 migrations,
+rollback/RLS fixtures, specialized attendance/WFH/leave/geofence checks,
+application-role preflight, and the 0072→0074 upgrade rehearsal. Its bounded
+Node-pool profile also passed the 100-employee lifecycle (2,433 assertions):
+work-context p95 1,084.4 ms, task creation/self-assignment 599.7 ms, timer
+start 779.5 ms, timer stop 394.7 ms, and assignment reads 410.0 ms. The burst
+left 100 tasks, 100 assignments, 100 closed timers and zero open timers. This
+is a one-shot local PostgreSQL workload, not a hosted latency/SLA result or a
+sustained soak. A request-scoped direct-PostgreSQL run passed the functional
+checks; its 100-employee burst exceeded PostgreSQL's default connection limit
+(`53300`). That local path bypasses Hyperdrive and must not be used as a proxy
+for managed Hyperdrive pooling or as a reason to increase production pool
+defaults.
+
+A full isolated Docker profile build exposed that the production API image
+did not build or include the Vite application: `.dockerignore` excludes
+`dist`, and the image had copied source files instead. The Dockerfile now has a
+web-build stage and copies the generated bundle plus only the two shared web
+modules imported by the server. Its regression test checks that build/copy
+contract. With the corrected image, the local Compose profile served
+`/api/health`, `/api/ready`, the homepage, invitation/reset entry pages and the
+compiled JavaScript asset with HTTP 200; readiness selected the `vps`
+scheduler, and the isolated PostgreSQL ledger contained 79 migrations. The
+pre-fix startup runs exposed both a connection refusal and a database startup
+503. API logs identified PostgreSQL still starting up: the API health
+check tested process liveness, allowing dependent services to start before
+database-backed readiness. The Compose API healthcheck now uses `/api/ready`,
+and the VPS worker retries transient network failures with bounded
+1/2/4/8-second backoff, plus the API's specific `BACKGROUND_JOB_FAILED` 503
+for a retryable tick failure. Configuration, scheduler-selection and auth
+failures are not retried. A fresh clean-start run showed only successful first
+ticks, readiness selected `vps`, the homepage and generated JavaScript asset
+returned 200, and the database ledger contained 79 migrations. The exact
+disposable Compose project, database volume and containers were removed after
+the run.
+
+The QA Supabase management token available to this workspace returned 403 for
+the target project's migration-ledger endpoint, so a live read-only ledger
+check was not possible in this pass. No cloud migration, scheduler change,
+provider deployment, or customer database write was attempted. Netlify and
+Cloudflare production builds, real Hyperdrive concurrency, provider Cron, and
+the three-profile migration rehearsal remain release gates.
+
 ## Cloudflare Worker runtime — 2026-09-26
 
 Wrangler 4.141.0 `deploy --dry-run` passed against the production Worker config

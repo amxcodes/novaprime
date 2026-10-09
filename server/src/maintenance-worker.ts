@@ -126,10 +126,55 @@ async function runEndpointTick(endpoint: string): Promise<BackgroundTickResult> 
       "x-nova-background-scheduler": "vps",
     },
   });
-  if (!response.ok) throw new Error(`BACKGROUND_JOB_HTTP_${response.status}`);
+  if (!response.ok) {
+    if (response.status === 503) {
+      const body = await response.json().catch(() => null) as { error?: unknown } | null;
+      if (body?.error === "BACKGROUND_JOB_FAILED") {
+        throw new Error("BACKGROUND_JOB_TICK_RETRYABLE");
+      }
+    }
+    throw new Error(`BACKGROUND_JOB_HTTP_${response.status}`);
+  }
   const payload = await response.json() as { tick?: BackgroundTickResult };
   if (!payload.tick) throw new Error("BACKGROUND_JOB_RESPONSE_INVALID");
   return payload.tick;
+}
+
+const transientEndpointErrorCodes = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EAI_AGAIN",
+  "ENOTFOUND",
+  "ETIMEDOUT",
+]);
+
+function isTransientEndpointConnectionError(error: unknown): boolean {
+  let current = error;
+  const visited = new Set<unknown>();
+  while (current && typeof current === "object" && !visited.has(current)) {
+    visited.add(current);
+    const candidate = current as { cause?: unknown; code?: unknown };
+    if (current instanceof Error && current.message === "BACKGROUND_JOB_TICK_RETRYABLE") return true;
+    if (typeof candidate.code === "string" && transientEndpointErrorCodes.has(candidate.code)) return true;
+    current = candidate.cause;
+  }
+  return false;
+}
+
+export async function runEndpointTickWithRetry(
+  endpoint: string,
+  pause: (milliseconds: number) => Promise<void> = wait,
+): Promise<BackgroundTickResult> {
+  const retryDelays = [1_000, 2_000, 4_000, 8_000] as const;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await runEndpointTick(endpoint);
+    } catch (error) {
+      const delay = retryDelays[attempt];
+      if (delay === undefined || !isTransientEndpointConnectionError(error)) throw error;
+      await pause(delay);
+    }
+  }
 }
 
 if (import.meta.main) {
@@ -144,7 +189,7 @@ if (import.meta.main) {
         skipLogged = true;
       } else {
         const endpoint = process.env.NOVA_MAINTENANCE_ENDPOINT ?? defaultEndpoint;
-        const result = await runEndpointTick(endpoint);
+        const result = await runEndpointTickWithRetry(endpoint);
         console.info(`[NOVA background] closed ${result.closedAttendance} attendance row(s), ${result.closedWorkSessions} work session(s), expired ${result.expiredRequests} request(s), reconciled ${result.reconciledReviewers} reviewer(s), purged ${result.purgedEvidence} evidence row(s) and ${result.purgedIdempotencyKeys} idempotency key(s), created ${result.dueNotifications} reminder(s), processed ${result.notifications} notification(s)`);
       }
     } catch (error) {
