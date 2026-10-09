@@ -15,6 +15,8 @@ test("command parsing requires a target runtime and keeps apply as an explicit u
     .toThrow("DEPLOYMENT_PLAN_ID_REQUIRED");
   expect(parseDeploymentManagerArguments(["plan", "--runtime", "cloudflare", "--scheduler", "supabase"]))
     .toMatchObject({ command: "plan", runtime: "cloudflare", scheduler: "supabase", database: "keep" });
+  expect(() => parseDeploymentManagerArguments(["plan", "--runtime", "vercel"]))
+    .toThrow("DEPLOYMENT_RUNTIME_UNSUPPORTED");
   expect(parseDeploymentManagerArguments([
     "plan", "--runtime", "cloudflare", "--remote", "--confirm-scheduler-scope",
   ])).toMatchObject({ command: "plan", runtime: "cloudflare", remote: true, confirmSchedulerScope: true });
@@ -36,6 +38,13 @@ test("command parsing requires a target runtime and keeps apply as an explicit u
   ])).toThrow("DEPLOYMENT_PLAN_OPTIONS_REQUIRE_PLAN_COMMAND");
   expect(() => parseDeploymentManagerArguments(["plan", "--runtime", "netlify", "--runtime", "cloudflare"]))
     .toThrow("DEPLOYMENT_OPTION_DUPLICATE:--runtime");
+});
+
+test("new deployment plans expose only the three curated runtime profiles", () => {
+  for (const runtime of ["netlify", "cloudflare", "vps"] as const) {
+    expect(parseDeploymentManagerArguments(["plan", "--runtime", runtime]).runtime).toBe(runtime);
+  }
+  expect(parseDeploymentManagerArguments(["help"])).toMatchObject({ command: "help" });
 });
 
 test("status only prints credential presence and never values", async () => {

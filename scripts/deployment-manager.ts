@@ -29,7 +29,7 @@ interface Options {
   confirmSchedulerScope: boolean;
 }
 
-const runtimes = new Set<RuntimeAdapter>(["netlify", "cloudflare", "vercel", "vps"]);
+const runtimes = new Set<RuntimeAdapter>(["netlify", "cloudflare", "vps"]);
 const schedulers = new Set<SchedulerAdapter | "keep">(["cloudflare", "netlify", "vercel", "supabase", "vps", "keep"]);
 const databaseChanges = new Set<DatabaseChange>(["keep", "provision-supabase", "move"]);
 
@@ -259,7 +259,7 @@ export async function runDeploymentManager(
         "NOVA Deployment Manager — local deployment inventory and planning",
         "  bun run nova:deployment status [--env-file <path>] [--remote] [--json]",
         "  bun run nova:deployment doctor [--env-file <path>] [--api-origin https://nova.example]",
-        "  bun run nova:deployment plan --runtime <netlify|cloudflare|vercel|vps> [--database <keep|provision-supabase|move>] [--scheduler <keep|provider>] [--env-file <path>] [--remote] [--confirm-scheduler-scope]",
+        "  bun run nova:deployment plan --runtime <netlify|cloudflare|vps> [--database <keep|provision-supabase|move>] [--scheduler <keep|provider>] [--env-file <path>] [--remote] [--confirm-scheduler-scope]",
         "  bun run nova:deployment show <plan-id>",
         "  bun run nova:deployment verify <plan-id> [--env-file <path>] [--remote] [--json]",
         "  bun run nova:deployment apply <plan-id>  (not enabled; provider writes are not implemented)",
