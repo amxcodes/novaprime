@@ -1,5 +1,8 @@
 # NOVA Update Manager
 
+For how updater releases fit the customer deployment lifecycle and current
+release gates, see the [deployment and update roadmap](deployment-roadmap.md).
+
 The NOVA Update Manager coordinates a reviewed source release with its database migrations from an operator's local checkout. It prepares the source in a separate Git worktree, verifies the release's migration hashes, checks the selected database ledger, applies approved migrations, and can offer an explicit push to a configured customer GitHub repository. It is the source-and-schema upgrade tool; `bun run deployment:doctor` is the read-only support check for an already deployed installation. Moving a live installation between hosting providers, schedulers, or databases belongs to the separate [deployment manager](deployment-orchestrator-plan.md); its status, doctor, plan, and snapshot-verification foundation is implemented, while provider mutations remain gated pending complete inventory, recovery tests, and a disposable live rehearsal.
 
 ## Release availability

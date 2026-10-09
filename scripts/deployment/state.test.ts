@@ -97,11 +97,26 @@ test("plans persist outside the checkout with a random ID and private file mode"
         checksumsVerified: true,
       },
     },
+    {
+      provider: "netlify" as const,
+      state: "identified" as const,
+      target: "site-id",
+      runtimeBindings: {
+        state: "verified" as const,
+        completeness: "selected-runtime" as const,
+        bindings: [{ name: "NOVA_BACKGROUND_SCHEDULER", type: "environment-variable", scopes: ["functions"], contexts: ["production"], secret: false }],
+        configuredScheduler: "supabase",
+        buildSchedulerAvailable: true,
+        configuredBuildScheduler: "supabase",
+      },
+    },
   ], true);
   const stored = await saveDeploymentPlan(repo, preview, new Date());
   expect(stored.id).toMatch(/^plan-[0-9a-f-]{36}$/i);
   expect(stored.preview).toMatchObject({ persisted: true, applyEnabled: false, previewId: stored.id, schedulerScopeConfirmed: true });
   expect(await loadDeploymentPlan(repo, stored.id)).toEqual(stored);
+  expect(stored.preview.providerInventory?.find(({ provider }) => provider === "netlify")?.runtimeBindings)
+    .toMatchObject({ buildSchedulerAvailable: true, configuredBuildScheduler: "supabase" });
   const root = stateRoot();
   const hashDirs = await readdir(root);
   expect(hashDirs).toHaveLength(1);
@@ -112,6 +127,12 @@ test("plans persist outside the checkout with a random ID and private file mode"
   const persistedPath = join(root, (await readdir(root))[0]!, `${stored.id}.json`);
   const editedPlan = JSON.parse(await readFile(persistedPath, "utf8")) as Record<string, unknown>;
   const persistedPreview = editedPlan.preview as { providerInventory: Array<Record<string, unknown>> };
+  const netlify = persistedPreview.providerInventory.find(({ provider }) => provider === "netlify")!;
+  const netlifyBindings = netlify.runtimeBindings as Record<string, unknown>;
+  netlifyBindings.configuredBuildScheduler = "untrusted-selector";
+  await writeFile(persistedPath, JSON.stringify(editedPlan));
+  await expect(loadDeploymentPlan(repo, stored.id)).rejects.toThrow("DEPLOYMENT_PLAN_CORRUPT");
+  netlifyBindings.configuredBuildScheduler = "supabase";
   const cloudflare = persistedPreview.providerInventory.find(({ provider }) => provider === "cloudflare")!;
   const runtimeBindings = cloudflare.runtimeBindings as { bindings: Array<Record<string, unknown>> };
   runtimeBindings.bindings[0]!.value = "must-not-enter-plan-state";

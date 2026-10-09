@@ -77,6 +77,10 @@ function runtimeConfigurationBlockers(
   if (expectedScheduler === null || inventory.configuredScheduler !== expectedScheduler) {
     blockers.push("TARGET_RUNTIME_SCHEDULER_CONFIGURATION_MISMATCH");
   }
+  if (runtime === "netlify" && (inventory.buildSchedulerAvailable !== true ||
+      inventory.configuredBuildScheduler !== expectedScheduler)) {
+    blockers.push("TARGET_NETLIFY_BUILD_SCHEDULER_CONFIGURATION_MISMATCH");
+  }
   return blockers;
 }
 
@@ -145,6 +149,66 @@ function schedulerScopeBlockers(
     }
   }
 
+  for (const providerName of ["cloudflare", "netlify", "vercel", "supabase", "vps"] as const) {
+    if (required.has(providerName)) continue;
+    const provider = providerInventory.find(({ provider: name }) => name === providerName);
+    if (provider?.state === "identified" && provider.schedulerInventory?.triggers.some(({ active }) => active === true)) {
+      blockers.push(`UNSELECTED_SCHEDULER_TRIGGER_PRESENT:${providerName}`);
+    }
+  }
+
+  return blockers;
+}
+
+function isNetlifyCronToSupabaseStage(
+  currentRuntime: RuntimeAdapter | null,
+  currentScheduler: SchedulerAdapter | null,
+  request: RequestedDeployment,
+): boolean {
+  return currentRuntime === "netlify" && currentScheduler === "netlify" &&
+    request.runtime === "netlify" && request.database === "keep" && request.scheduler === "supabase";
+}
+
+function netlifyCronToSupabaseBlockers(providerInventory: readonly ProviderResource[]): string[] {
+  const blockers: string[] = [];
+  const netlify = providerInventory.find(({ provider }) => provider === "netlify");
+  const sourceSchedules = netlify?.schedulerInventory;
+  if (sourceSchedules?.state !== "verified" || sourceSchedules.completeness !== "project-scoped" ||
+      sourceSchedules.triggers.length !== 1 || sourceSchedules.triggers[0]?.id !== "nova-background-tick" ||
+      sourceSchedules.triggers[0]?.name !== "nova-background-tick" ||
+      sourceSchedules.triggers[0]?.schedule !== "*/5 * * * *" || sourceSchedules.triggers[0]?.active !== true) {
+    blockers.push("NETLIFY_SOURCE_CRON_NOT_EXACTLY_ONE_NOVA_TICK");
+  }
+
+  const bindings = netlify?.runtimeBindings;
+  if (!bindings || bindings.state !== "verified" || bindings.completeness !== "selected-runtime") {
+    blockers.push("NETLIFY_SOURCE_BINDING_INVENTORY_INCOMPLETE");
+  } else {
+    const functionSelector = bindings.bindings.find(({ name }) => name === "NOVA_BACKGROUND_SCHEDULER");
+    if (!functionSelector || functionSelector.secret || !functionSelector.scopes.includes("functions") ||
+        !functionSelector.contexts.some((context) => context === "all" || context === "production") ||
+        bindings.configuredScheduler !== "netlify") blockers.push("NETLIFY_FUNCTION_SCHEDULER_SELECTOR_MISMATCH");
+    if (bindings.buildSchedulerAvailable !== true) blockers.push("NETLIFY_BUILD_SCHEDULER_SELECTOR_UNAVAILABLE");
+    else if (bindings.configuredBuildScheduler !== "netlify") blockers.push("NETLIFY_BUILD_SCHEDULER_SELECTOR_MISMATCH");
+  }
+
+  const liveIdentity = providerInventory.find(({ provider }) => provider === "nova");
+  let verifiedOrigin = false;
+  try {
+    const origin = new URL(liveIdentity?.target ?? "");
+    verifiedOrigin = liveIdentity?.state === "identified" && origin.protocol === "https:" &&
+      !origin.username && !origin.password && origin.origin === liveIdentity?.target;
+  } catch { /* The callback origin must come from the protected identity endpoint. */ }
+  if (!verifiedOrigin) blockers.push("NOVA_PUBLIC_ORIGIN_UNVERIFIED");
+  if (liveIdentity?.schemaReady !== true || liveIdentity.migrationLedgerPresent !== true) {
+    blockers.push("LIVE_NOVA_SCHEMA_NOT_READY");
+  }
+
+  const supabaseSchedules = providerInventory.find(({ provider }) => provider === "supabase")?.schedulerInventory;
+  if (supabaseSchedules?.state !== "not-installed" || supabaseSchedules.completeness !== "project-scoped" ||
+      supabaseSchedules.triggers.length !== 0) {
+    blockers.push("SUPABASE_CRON_TARGET_NOT_EMPTY_OR_UNVERIFIED");
+  }
   return blockers;
 }
 
@@ -170,13 +234,15 @@ export function buildDeploymentPreview(
     : inventory.schedulerHint;
   const runtimeChanges = currentRuntime !== request.runtime;
   const schedulerChanges = request.scheduler !== "keep" && request.scheduler !== currentScheduler;
+  const stagedNetlifyCronToSupabase = isNetlifyCronToSupabaseStage(currentRuntime, currentScheduler, request);
   if (!inventory.source.clean) blockers.push("SOURCE_WORKTREE_NOT_CLEAN");
   if (request.database === "keep" && !inventory.database.configured) blockers.push("DATABASE_TARGET_NOT_CONFIGURED");
   if (request.database === "provision-supabase") blockers.push("SUPABASE_PROJECT_PROVISIONING_NOT_IMPLEMENTED");
   if (request.database === "move") blockers.push("DATABASE_MOVE_REQUIRES_MAINTENANCE_GATE_AND_REHEARSAL");
   if (currentRuntime === null) blockers.push("CURRENT_RUNTIME_NOT_IDENTIFIED");
   if (currentScheduler === null) blockers.push("CURRENT_SCHEDULER_NOT_IDENTIFIED");
-  if (request.scheduler !== "keep" && currentScheduler !== null && request.scheduler !== currentScheduler) {
+  if (request.scheduler !== "keep" && currentScheduler !== null && request.scheduler !== currentScheduler &&
+      !stagedNetlifyCronToSupabase) {
     blockers.push("CROSS_PROVIDER_SCHEDULER_INVENTORY_NOT_IMPLEMENTED");
   }
   if (providerInventory) {
@@ -248,6 +314,7 @@ export function buildDeploymentPreview(
         providerInventory.find(({ provider }) => provider === request.scheduler)?.state !== "identified") {
       blockers.push("SCHEDULER_PROVIDER_NOT_VERIFIED");
     }
+    if (stagedNetlifyCronToSupabase) blockers.push(...netlifyCronToSupabaseBlockers(providerInventory));
     if (liveIdentity?.state !== "identified") {
       blockers.push("LIVE_NOVA_IDENTITY_NOT_VERIFIED");
     } else {
@@ -289,7 +356,30 @@ export function buildDeploymentPreview(
   } else {
     actions.push({ id: "verify-runtime", resource: "runtime", operation: "confirm the existing " + request.runtime + " runtime remains healthy", execution: "provider-inventory-required" });
   }
-  if (schedulerChanges) {
+  if (stagedNetlifyCronToSupabase) {
+    actions.push(
+      {
+        id: "deploy-netlify-api-only",
+        resource: "runtime",
+        operation: "set the Netlify Build and Functions scheduler selectors to supabase, deploy the API-only function set, and verify the published deploy has no NOVA scheduled function",
+        execution: "not-implemented",
+        reason: "This stage disables Netlify Cron before any Supabase Cron job is created, avoiding overlap.",
+      },
+      {
+        id: "create-supabase-cron",
+        resource: "scheduler",
+        operation: "create exactly one named nova-background-tick job for the selected Supabase database and verified HTTPS NOVA origin",
+        execution: "not-implemented",
+        reason: "Run the existing bun run supabase:scheduler command from a trusted operator checkout after the API-only Netlify deploy is verified.",
+      },
+      {
+        id: "verify-supabase-cron",
+        resource: "scheduler",
+        operation: "verify exactly one active Supabase job and a successful tick in cron.job_run_details and net._http_response",
+        execution: "not-implemented",
+      },
+    );
+  } else if (schedulerChanges) {
     actions.push({ id: "handover-scheduler", resource: "scheduler", operation: "hand over to " + request.scheduler, execution: "not-implemented" });
   } else if (runtimeChanges && currentScheduler === "supabase" && request.database === "keep") {
     actions.push({

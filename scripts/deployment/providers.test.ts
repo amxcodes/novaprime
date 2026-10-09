@@ -98,17 +98,25 @@ test("Netlify inventory records production binding metadata and hostnames but ne
     if (url.includes("/sites/site-id/deploys")) return Response.json([{
       state: "ready", context: "production", published: true, commit_sha: "a".repeat(40), function_schedules: [],
     }]);
-    if (url.includes("/accounts/team-id/env?")) return Response.json([
-      { key: "DATABASE_URL", scopes: ["functions"], values: [{ context: "production", value: variableValue }], is_secret: true },
-      { key: "BETTER_AUTH_URL", scopes: ["functions"], values: [{ context: "all", value: originValue }], is_secret: false },
-      { key: "NOVA_BACKGROUND_SCHEDULER", scopes: ["functions"], values: [{ context: "production", value: "supabase" }], is_secret: false },
-    ]);
+    if (url.includes("/accounts/team-id/env?")) {
+      const scope = new URL(url).searchParams.get("scope");
+      if (scope === "builds") return Response.json([
+        { key: "NOVA_BACKGROUND_SCHEDULER", scopes: ["builds"], values: [{ context: "production", value: "supabase" }], is_secret: false },
+        { key: "PRIVATE_BUILD_VALUE", scopes: ["builds"], values: [{ context: "production", value: variableValue }], is_secret: true },
+      ]);
+      return Response.json([
+        { key: "DATABASE_URL", scopes: ["functions"], values: [{ context: "production", value: variableValue }], is_secret: true },
+        { key: "BETTER_AUTH_URL", scopes: ["functions"], values: [{ context: "all", value: originValue }], is_secret: false },
+        { key: "NOVA_BACKGROUND_SCHEDULER", scopes: ["functions"], values: [{ context: "production", value: "supabase" }], is_secret: false },
+      ]);
+    }
     throw new Error("unexpected read");
   };
   const resources = await discoverProviderResources({ NETLIFY_AUTH_TOKEN: "token", NETLIFY_SITE_ID: "site-id" }, fetcher);
   const netlify = resources.find(({ provider }) => provider === "netlify")!;
   expect(netlify.runtimeBindings).toMatchObject({
     state: "verified", completeness: "selected-runtime", configuredScheduler: "supabase",
+    buildSchedulerAvailable: true, configuredBuildScheduler: "supabase",
     bindings: [
       { name: "BETTER_AUTH_URL", contexts: ["all"], scopes: ["functions"], secret: false },
       { name: "DATABASE_URL", contexts: ["production"], scopes: ["functions"], secret: true },
@@ -124,6 +132,47 @@ test("Netlify inventory records production binding metadata and hostnames but ne
   });
   expect(JSON.stringify(netlify)).not.toContain(variableValue);
   expect(JSON.stringify(netlify)).not.toContain(originValue);
+});
+
+test("Netlify inventory reads both production variable scopes and does not accept a missing build selector", async () => {
+  const scopes: string[] = [];
+  const fetcher: ProviderFetcher = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/sites/site-id")) return Response.json({ id: "site-id", account_id: "team-id" });
+    if (url.includes("/deploys")) return Response.json([{ state: "ready", context: "production", published: true, function_schedules: [] }]);
+    if (url.includes("/env?")) {
+      const scope = new URL(url).searchParams.get("scope") ?? "";
+      scopes.push(scope);
+      if (scope === "functions") return Response.json([
+        { key: "NOVA_BACKGROUND_SCHEDULER", scopes: ["functions"], values: [{ context: "production", value: "netlify" }], is_secret: false },
+      ]);
+      return Response.json([]);
+    }
+    throw new Error("unexpected read");
+  };
+  const resources = await discoverProviderResources({ NETLIFY_AUTH_TOKEN: "token", NETLIFY_SITE_ID: "site-id" }, fetcher);
+  const netlify = resources.find(({ provider }) => provider === "netlify")!;
+  expect(scopes.sort()).toEqual(["builds", "functions"]);
+  expect(netlify.runtimeBindings).toMatchObject({ state: "verified", configuredScheduler: "netlify", buildSchedulerAvailable: false });
+  expect(netlify.runtimeBindings).not.toHaveProperty("configuredBuildScheduler");
+});
+
+test("Netlify build-scope permission failure leaves scheduler bindings unavailable", async () => {
+  const fetcher: ProviderFetcher = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/sites/site-id")) return Response.json({ id: "site-id", account_id: "team-id" });
+    if (url.includes("/deploys")) return Response.json([{ state: "ready", context: "production", published: true, function_schedules: [] }]);
+    if (url.includes("/env?")) {
+      return new URL(url).searchParams.get("scope") === "builds"
+        ? new Response("private permission response", { status: 403 })
+        : Response.json([{ key: "NOVA_BACKGROUND_SCHEDULER", scopes: ["functions"], values: [{ context: "production", value: "netlify" }], is_secret: false }]);
+    }
+    throw new Error("unexpected read");
+  };
+  const resources = await discoverProviderResources({ NETLIFY_AUTH_TOKEN: "token", NETLIFY_SITE_ID: "site-id" }, fetcher);
+  const netlify = resources.find(({ provider }) => provider === "netlify")!;
+  expect(netlify.runtimeBindings).toMatchObject({ state: "unavailable", completeness: "partial", detail: "MISSING_READ_PERMISSION", bindings: [] });
+  expect(JSON.stringify(netlify)).not.toContain("private permission response");
 });
 
 test("Netlify variable permission failure remains explicit without discarding site identity", async () => {

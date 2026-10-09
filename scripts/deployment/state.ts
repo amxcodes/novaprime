@@ -135,10 +135,12 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
           (provider.runtimeBindings === undefined || (() => {
             const runtime = typeof provider.runtimeBindings === "object" && provider.runtimeBindings !== null && !Array.isArray(provider.runtimeBindings)
               ? provider.runtimeBindings as Record<string, unknown> : null;
-            return runtime !== null && hasOnly(runtime, ["state", "completeness", "bindings", "configuredScheduler", "detail"]) &&
+            return runtime !== null && hasOnly(runtime, ["state", "completeness", "bindings", "configuredScheduler", "buildSchedulerAvailable", "configuredBuildScheduler", "detail"]) &&
               ["verified", "unavailable", "not-inspected"].includes(String(runtime.state)) &&
               ["selected-runtime", "partial", "not-inspected"].includes(String(runtime.completeness)) &&
               (runtime.configuredScheduler === undefined || ["cloudflare", "netlify", "vercel", "supabase", "vps"].includes(String(runtime.configuredScheduler))) &&
+              (runtime.buildSchedulerAvailable === undefined || typeof runtime.buildSchedulerAvailable === "boolean") &&
+              (runtime.configuredBuildScheduler === undefined || ["cloudflare", "netlify", "vercel", "supabase", "vps"].includes(String(runtime.configuredBuildScheduler))) &&
               (runtime.detail === undefined || typeof runtime.detail === "string") && Array.isArray(runtime.bindings) &&
               runtime.bindings.length <= 500 && runtime.bindings.every((value) => {
                 const binding = typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;

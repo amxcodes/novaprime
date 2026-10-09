@@ -1,5 +1,8 @@
 # NOVA deployment profiles
 
+For the consolidated customer workflows and implementation sequence, see the
+[deployment and update roadmap](deployment-roadmap.md).
+
 **Status:** curated customer deployment contract. Provider automation remains
 limited to the boundaries described below.
 

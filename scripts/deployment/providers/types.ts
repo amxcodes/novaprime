@@ -29,6 +29,9 @@ export interface RuntimeBindingInventory {
   }>;
   /** This is retained only for the allowlisted non-secret scheduler selector. */
   configuredScheduler?: string;
+  /** Netlify build-time selector is read separately because it controls the bundled function set. */
+  buildSchedulerAvailable?: boolean;
+  configuredBuildScheduler?: string;
   detail?: string;
 }
 

@@ -239,7 +239,7 @@ test("Netlify target bindings must be Functions-scoped and available in producti
   const baseProviders = [
     {
       provider: "netlify" as const, state: "identified" as const, target: "site-id", revision: "deploy-id",
-      runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings, configuredScheduler: "supabase" },
+      runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings, configuredScheduler: "supabase", buildSchedulerAvailable: true, configuredBuildScheduler: "supabase" },
       domainRoutes: { state: "verified" as const, completeness: "selected-runtime" as const, domains: [{ hostname: "nova.example.test", source: "custom-domain" as const }] },
     },
     { provider: "nova" as const, state: "identified" as const, runtime: "cloudflare", origin: "https://nova.example.test", configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64) },
@@ -263,6 +263,81 @@ test("Netlify target bindings must be Functions-scoped and available in producti
       binding.name === "DATABASE_URL" ? { ...binding, contexts: ["deploy-preview"] } : binding) },
   }, baseProviders[1]!]);
   expect(wrongContext.blockers).toContain("TARGET_RUNTIME_REQUIRED_BINDING_INVALID:DATABASE_URL");
+
+  const missingBuildSelector = buildDeploymentPreview(source, request, [{
+    ...baseProviders[0]!,
+    runtimeBindings: { ...baseProviders[0]!.runtimeBindings!, buildSchedulerAvailable: false, configuredBuildScheduler: undefined },
+  }, baseProviders[1]!]);
+  expect(missingBuildSelector.blockers).toContain("TARGET_NETLIFY_BUILD_SCHEDULER_CONFIGURATION_MISMATCH");
+});
+
+test("Netlify Cron to Supabase Cron is a staged scheduler-only plan with exact source and empty target", () => {
+  const sourceInventory = { ...inventory, runtimeHint: "netlify" as const, schedulerHint: "netlify" as const };
+  const netlifyBindings = [
+    ["DATABASE_URL", true], ["BETTER_AUTH_SECRET", true], ["BETTER_AUTH_URL", false],
+    ["NOVA_BOOTSTRAP_TOKEN", true], ["NOVA_SECRETS_ENCRYPTION_KEY", true],
+    ["NOVA_BACKGROUND_JOB_SECRET", true], ["NOVA_BACKGROUND_SCHEDULER", false],
+  ] as const;
+  const providers = [
+    {
+      provider: "netlify" as const, state: "identified" as const, target: "site-id", revision: "deploy-id",
+      schedulerInventory: { scope: "target-runtime" as const, state: "verified" as const, completeness: "project-scoped" as const,
+        triggers: [{ id: "nova-background-tick", name: "nova-background-tick", schedule: "*/5 * * * *", active: true }] },
+      runtimeBindings: {
+        state: "verified" as const, completeness: "selected-runtime" as const,
+        bindings: netlifyBindings.map(([name, secret]) => ({ name, type: "environment-variable", scopes: ["functions"], contexts: ["production"], secret })),
+        configuredScheduler: "netlify", buildSchedulerAvailable: true, configuredBuildScheduler: "netlify",
+      },
+    },
+    { provider: "supabase" as const, state: "identified" as const, target: sourceInventory.database.projectRef!,
+      schedulerInventory: { scope: "database-project" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [] } },
+    { provider: "nova" as const, state: "identified" as const, target: "https://nova.example.test", runtime: "netlify", configuredScheduler: "netlify", databaseFingerprint: sourceInventory.database.identityFingerprint!, schemaReady: true, migrationLedgerPresent: true },
+  ];
+  const preview = buildDeploymentPreview(sourceInventory, { runtime: "netlify", database: "keep", scheduler: "supabase" }, providers, true);
+  const actionIds = preview.actions.map(({ id }) => id);
+  expect(preview.blockers).not.toContain("CROSS_PROVIDER_SCHEDULER_INVENTORY_NOT_IMPLEMENTED");
+  expect(preview.blockers).not.toContain("NETLIFY_SOURCE_CRON_NOT_EXACTLY_ONE_NOVA_TICK");
+  expect(preview.blockers).toHaveLength(0);
+  expect(preview.applyEnabled).toBe(false);
+  expect(actionIds.indexOf("deploy-netlify-api-only")).toBeLessThan(actionIds.indexOf("create-supabase-cron"));
+  expect(actionIds.indexOf("create-supabase-cron")).toBeLessThan(actionIds.indexOf("verify-supabase-cron"));
+  expect(preview.actions.filter(({ id }) => id.startsWith("deploy-netlify") || id.includes("supabase-cron")))
+    .toHaveLength(3);
+
+  const unexpectedNetlifySchedule = buildDeploymentPreview(sourceInventory, { runtime: "netlify", database: "keep", scheduler: "supabase" }, [
+    { ...providers[0]!, schedulerInventory: { ...providers[0]!.schedulerInventory!, triggers: [
+      { id: "other-job", name: "other-job", schedule: "*/5 * * * *", active: true },
+    ] } }, ...providers.slice(1),
+  ], true);
+  expect(unexpectedNetlifySchedule.blockers).toContain("NETLIFY_SOURCE_CRON_NOT_EXACTLY_ONE_NOVA_TICK");
+
+  const activeSupabase = buildDeploymentPreview(sourceInventory, { runtime: "netlify", database: "keep", scheduler: "supabase" }, [
+    providers[0]!,
+    { ...providers[1]!, schedulerInventory: { ...providers[1]!.schedulerInventory!, state: "verified", triggers: [
+      { id: "12", name: "nova-background-tick", schedule: "*/5 * * * *", active: true },
+    ] } }, providers[2]!,
+  ], true);
+  expect(activeSupabase.blockers).toContain("SUPABASE_CRON_TARGET_NOT_EMPTY_OR_UNVERIFIED");
+
+  const wrongBuildSelector = buildDeploymentPreview(sourceInventory, { runtime: "netlify", database: "keep", scheduler: "supabase" }, [
+    { ...providers[0]!, runtimeBindings: { ...providers[0]!.runtimeBindings!, configuredBuildScheduler: "supabase" } }, ...providers.slice(1),
+  ], true);
+  expect(wrongBuildSelector.blockers).toContain("NETLIFY_BUILD_SCHEDULER_SELECTOR_MISMATCH");
+
+  const secretFunctionSelector = buildDeploymentPreview(sourceInventory, { runtime: "netlify", database: "keep", scheduler: "supabase" }, [
+    { ...providers[0]!, runtimeBindings: { ...providers[0]!.runtimeBindings!, bindings: providers[0]!.runtimeBindings!.bindings.map((binding) =>
+      binding.name === "NOVA_BACKGROUND_SCHEDULER" ? { ...binding, secret: true } : binding) } }, ...providers.slice(1),
+  ], true);
+  expect(secretFunctionSelector.blockers).toContain("NETLIFY_FUNCTION_SCHEDULER_SELECTOR_MISMATCH");
+
+  const secondKnownCron = buildDeploymentPreview(sourceInventory, { runtime: "netlify", database: "keep", scheduler: "supabase" }, [
+    ...providers,
+    { provider: "cloudflare" as const, state: "identified" as const, schedulerInventory: {
+      scope: "target-runtime" as const, state: "verified" as const, completeness: "resource-only" as const,
+      triggers: [{ id: "worker/schedule-1", name: "cloudflare-cron-trigger", schedule: "*/5 * * * *", active: true }],
+    } },
+  ], true);
+  expect(secondKnownCron.blockers).toContain("UNSELECTED_SCHEDULER_TRIGGER_PRESENT:cloudflare");
 });
 
 test("remote plans block a Supabase project or database endpoint that differs from the live deployment", () => {

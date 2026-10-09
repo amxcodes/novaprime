@@ -3,9 +3,11 @@
 NOVA is a portable people-operations foundation. PostgreSQL is the persistence
 and security foundation; Better Auth is embedded in the shared API. The three
 supported deployment profiles are Netlify + Supabase, Cloudflare + Supabase,
-and self-hosted Docker + PostgreSQL behind Nginx. See
-[`docs/deployment-profiles.md`](docs/deployment-profiles.md) for their
-boundaries and release gates.
+and self-hosted Docker + PostgreSQL behind Nginx. See the
+[customer deployment and update roadmap](docs/deployment-roadmap.md) for the
+combined decisions, implementation status, and release gates, and
+[`docs/deployment-profiles.md`](docs/deployment-profiles.md) for profile
+details.
 
 ## Local first run
 

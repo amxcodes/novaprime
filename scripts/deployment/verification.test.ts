@@ -32,6 +32,8 @@ const remote: ProviderResource[] = [{
     completeness: "selected-runtime",
     bindings: [{ name: "NOVA_BACKGROUND_SCHEDULER", type: "plain_text", scopes: ["worker"], contexts: ["production"], secret: false }],
     configuredScheduler: "supabase",
+    buildSchedulerAvailable: true,
+    configuredBuildScheduler: "supabase",
   },
   domainRoutes: {
     state: "verified",
@@ -88,6 +90,14 @@ test("plan verification detects runtime binding and custom-domain changes", () =
     ...remote[0]!,
     runtimeBindings: { ...remote[0]!.runtimeBindings!, configuredScheduler: "cloudflare" },
     domainRoutes: { ...remote[0]!.domainRoutes!, domains: [{ hostname: "other.example.test", source: "custom-domain" as const }] },
+  }];
+  expect(verifyDeploymentPlanSnapshot(plan, local, changed).issues).toEqual(["REMOTE_INVENTORY_CHANGED"]);
+});
+
+test("plan verification detects changed Netlify build-time scheduler selection", () => {
+  const changed = [{
+    ...remote[0]!,
+    runtimeBindings: { ...remote[0]!.runtimeBindings!, configuredBuildScheduler: "netlify" },
   }];
   expect(verifyDeploymentPlanSnapshot(plan, local, changed).issues).toEqual(["REMOTE_INVENTORY_CHANGED"]);
 });

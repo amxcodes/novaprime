@@ -42,6 +42,18 @@ function productionBindings(value: unknown): RuntimeBindingInventory {
   };
 }
 
+function netlifyBuildScheduler(value: unknown): Pick<RuntimeBindingInventory, "buildSchedulerAvailable" | "configuredBuildScheduler"> {
+  const inventory = productionBindings(value);
+  const binding = inventory.bindings.find(({ name }) => name === "NOVA_BACKGROUND_SCHEDULER");
+  const available = inventory.state === "verified" && binding !== undefined && binding.secret === false &&
+    binding.scopes.includes("builds") && binding.contexts.some((context) => context === "all" || context === "production") &&
+    Boolean(inventory.configuredScheduler);
+  return {
+    buildSchedulerAvailable: available,
+    ...(available && inventory.configuredScheduler ? { configuredBuildScheduler: inventory.configuredScheduler } : {}),
+  };
+}
+
 function siteDomains(site: Record<string, unknown>): DomainRouteInventory {
   if (!Array.isArray(site.domain_aliases) || !Object.hasOwn(site, "custom_domain")) {
     return { state: "unavailable", completeness: "partial", domains: [], detail: "NETLIFY_SITE_DOMAIN_INVENTORY_INCOMPLETE" };
@@ -117,10 +129,19 @@ export async function inspectNetlify(
       const accountId = safeProviderId(firstString(site.account_id));
       if (!accountId) return { state: "unavailable", completeness: "partial", bindings: [], detail: "NETLIFY_ACCOUNT_ID_UNAVAILABLE" };
       try {
-        const query = new URLSearchParams({ site_id: id, context_name: "production", scope: "functions" });
-        const variables = await getProviderJson<unknown>(fetcher,
-          `https://api.netlify.com/api/v1/accounts/${encodeURIComponent(accountId)}/env?${query}`, token, "netlify");
-        return productionBindings(variables);
+        const readScope = async (scope: "builds" | "functions") => {
+          const query = new URLSearchParams({ site_id: id, context_name: "production", scope });
+          return await getProviderJson<unknown>(fetcher,
+            `https://api.netlify.com/api/v1/accounts/${encodeURIComponent(accountId)}/env?${query}`, token, "netlify");
+        };
+        const [functionsVariables, buildVariables] = await Promise.all([readScope("functions"), readScope("builds")]);
+        const functions = productionBindings(functionsVariables);
+        const build = netlifyBuildScheduler(buildVariables);
+        if (functions.state !== "verified") return functions;
+        return {
+          ...functions,
+          ...build,
+        };
       } catch (error) {
         return { state: "unavailable", completeness: "partial", bindings: [], detail: inventoryError(error) };
       }

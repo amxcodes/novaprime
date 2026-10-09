@@ -46,6 +46,8 @@ function providerSnapshot(resources: readonly ProviderResource[]): unknown[] {
         }))
         .sort((left, right) => left.name.localeCompare(right.name)),
       configuredScheduler: resource.runtimeBindings.configuredScheduler ?? null,
+      buildSchedulerAvailable: resource.runtimeBindings.buildSchedulerAvailable ?? null,
+      configuredBuildScheduler: resource.runtimeBindings.configuredBuildScheduler ?? null,
     } : null,
     domainRoutes: resource.domainRoutes ? {
       state: resource.domainRoutes.state,

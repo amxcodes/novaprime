@@ -1,5 +1,8 @@
 # NOVA deployment manager
 
+For the consolidated customer decisions, current implementation status, and
+delivery order, see the [deployment and update roadmap](deployment-roadmap.md).
+
 **Status:** product requirement and implementation plan. Implemented foundation:
 read-only local status/doctor (including allowlisted Docker Compose service
 state for VPS hints), optional explicitly targeted remote provider inventory,
@@ -187,10 +190,11 @@ route/DNS inventory incomplete and keeps the runtime move blocked.
 
 Provider API contracts used by this inventory:
 
-- Netlify `GET /api/v1/accounts/{account_id}/env`, filtered by `site_id`,
-  `context_name=production`, and `scope=functions`. The response includes
-  variable values, so the adapter must continue discarding them except for the
-  allowlisted non-secret scheduler selector. See the [Netlify environment
+- Netlify `GET /api/v1/accounts/{account_id}/env`, queried for the selected
+  `site_id`, `context_name=production`, and each of `scope=functions` and
+  `scope=builds`. The response includes variable values, so the adapter must
+  continue discarding them except for the allowlisted non-secret scheduler
+  selector. See the [Netlify environment
   variables API](https://open-api.netlify.com/) and its [API
   guide](https://docs.netlify.com/api-and-cli-guides/api-guides/get-started-with-api/).
 - Cloudflare `GET /accounts/{account_id}/workers/scripts/{script_name}/settings`
@@ -726,9 +730,14 @@ plan's documented phase bounds and observed provider behavior.
    operation executor. Finish this phase in this order:
    - Netlify inventory reads `function_schedules` only from the latest
      published production deploy and inspects the selected site's production
-     Functions variable names, scopes, contexts, and secret flags. The parser
-     discards variable values, except the allowlisted background-scheduler
-     selector. Cloudflare reads only the selected Worker, its binding
+     Functions and Builds variable names, scopes, contexts, and secret flags.
+     It discards variable values, except the allowlisted background-scheduler
+     selector; the Builds-scope selector is recorded separately because it
+     controls which scheduled function is bundled. The read-only planner now
+     describes the staged Netlify Cron → Supabase Cron prerequisite only when
+     the exact `nova-background-tick` is active, both selectors agree, the
+     protected origin and schema are ready, and the Supabase target is empty.
+     This plan remains non-executable. Cloudflare reads only the selected Worker, its binding
      names/types, and its paginated Custom Domains. Supabase reads NOVA-targeting
      jobs from the database-pinned owner URL. Runtime-move plans block when
      required target bindings are absent, misclassified, or configured for a
