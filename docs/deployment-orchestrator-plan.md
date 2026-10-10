@@ -783,7 +783,14 @@ plan's documented phase bounds and observed provider behavior.
      still match on re-verification. This proves only the currently routed
      public service is ready; it does not prove a future candidate is ready.
      Finish candidate verification with a candidate-specific origin after
-     implementing the deploy executor. Runtime moves must also prove that the exact
+     implementing the deploy executor. Cloudflare Version URLs reuse the
+     selected Worker's configured production bindings, so block candidate
+     upload until the manager can verify a worker-scoped Access application,
+     restrictive operator identity policy, and absence of public destination
+     overrides that take precedence. The current manager does not inventory
+     Access apps/policies and therefore emits
+     `TARGET_CLOUDFLARE_CANDIDATE_ACCESS_POLICY_NOT_INVENTORIED`; an operator
+     reminder alone is not a passing check. Runtime moves must also prove that the exact
      current public hostname is attached to the selected target; an empty or
      unrelated custom-domain list is not enough. If the current hostname or
      target attachment cannot be verified, block the move. Runtime binding

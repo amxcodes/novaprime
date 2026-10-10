@@ -255,6 +255,9 @@ export function buildDeploymentPreview(
       const expectedScheduler = request.scheduler === "keep" ? currentScheduler : request.scheduler;
       blockers.push(...runtimeConfigurationBlockers(request.runtime, expectedScheduler, runtimeState.runtimeBindings));
       if (request.runtime === "cloudflare") {
+        // Version URLs execute with the selected Worker's configured bindings. Until
+        // Access protection is inventoried for this exact Worker, fail closed.
+        blockers.push("TARGET_CLOUDFLARE_CANDIDATE_ACCESS_POLICY_NOT_INVENTORIED");
         const hyperdrive = runtimeState.runtimeBindings?.hyperdrive;
         if (!hyperdrive || hyperdrive.databaseTarget === "unverified") blockers.push("TARGET_CLOUDFLARE_HYPERDRIVE_DATABASE_UNVERIFIED");
         else if (hyperdrive.databaseTarget === "mismatch") blockers.push("TARGET_CLOUDFLARE_HYPERDRIVE_DATABASE_MISMATCH");
@@ -365,7 +368,15 @@ export function buildDeploymentPreview(
     actions.push(
       { id: "compare-runtime-secrets", resource: "secrets", operation: "compare required key presence without revealing values", execution: "provider-inventory-required" },
       { id: "verify-domain-control", resource: "domain", operation: "verify origin, DNS zone ownership, route and TLS", execution: "provider-inventory-required" },
-      { id: "deploy-candidate", resource: "runtime", operation: "deploy " + request.runtime + " candidate and verify identity", execution: "not-implemented" },
+      {
+        id: "deploy-candidate",
+        resource: "runtime",
+        operation: "deploy " + request.runtime + " candidate and verify identity",
+        execution: "not-implemented",
+        ...(request.runtime === "cloudflare" ? {
+          reason: "Cloudflare Version URLs use this Worker's configured bindings. The manager does not yet verify a worker-scoped Access policy or check higher-priority public destination overrides, so candidate upload stays blocked until both are inventoried.",
+        } : {}),
+      },
     );
   } else {
     actions.push({ id: "verify-runtime", resource: "runtime", operation: "confirm the existing " + request.runtime + " runtime remains healthy", execution: "provider-inventory-required" });

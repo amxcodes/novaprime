@@ -141,6 +141,28 @@ test("remote planning binds provider inventory and blocks an unverified runtime 
   expect(preview.blockers).not.toContain("DATABASE_PROVIDER_NOT_VERIFIED");
 });
 
+test("Cloudflare runtime plans block candidate upload until worker-scoped Access protection is inventoried", () => {
+  const providers = [
+    {
+      provider: "cloudflare" as const, state: "identified" as const, target: "account/worker", revision: "worker-revision",
+      runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings: cloudflareBindings, hyperdrive: { configurationId: "hyperdrive-id", databaseTarget: "verified" as const, runtimeRole: "verified" as const }, configuredScheduler: "supabase" },
+      domainRoutes: cloudflareDomainRoutes,
+    },
+    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", origin: "https://nova.example.test", configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64), publicReadiness: "ready" as const },
+  ];
+  const preview = buildDeploymentPreview(inventory, {
+    runtime: "cloudflare", database: "keep", scheduler: "keep",
+  }, providers, true);
+  expect(preview.blockers).toContain("TARGET_CLOUDFLARE_CANDIDATE_ACCESS_POLICY_NOT_INVENTORIED");
+  expect(preview.actions.find(({ id }) => id === "deploy-candidate")?.reason)
+    .toContain("worker-scoped Access policy");
+
+  const netlify = buildDeploymentPreview(inventory, {
+    runtime: "netlify", database: "keep", scheduler: "keep",
+  }, providers, true);
+  expect(netlify.blockers).not.toContain("TARGET_CLOUDFLARE_CANDIDATE_ACCESS_POLICY_NOT_INVENTORIED");
+});
+
 test("runtime move requires target production bindings, secret classification, and matching scheduler selector", () => {
   const providers = [
     {
