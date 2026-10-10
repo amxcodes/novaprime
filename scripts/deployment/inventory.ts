@@ -8,6 +8,12 @@ import { inspectDockerCompose, type DockerComposeInventory } from "./docker-inve
 const execFileAsync = promisify(execFile);
 const commitPattern = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i;
 const projectRefPattern = /^[a-z0-9]{20}$/;
+export const deploymentProviderCredentialKeys = [
+  "NETLIFY_AUTH_TOKEN",
+  "CLOUDFLARE_API_TOKEN",
+  "VERCEL_TOKEN",
+  "SUPABASE_ACCESS_TOKEN",
+] as const;
 
 export type RuntimeAdapter = "netlify" | "cloudflare" | "vercel" | "vps";
 export type SchedulerAdapter = "cloudflare" | "netlify" | "vercel" | "supabase" | "vps";
@@ -140,7 +146,6 @@ export async function inspectLocalDeployment(
     "NOVA_BACKGROUND_JOB_SECRET",
     "NOVA_BOOTSTRAP_TOKEN",
   ] as const;
-  const providerKeys = ["NETLIFY_AUTH_TOKEN", "CLOUDFLARE_API_TOKEN", "VERCEL_TOKEN", "SUPABASE_ACCESS_TOKEN"] as const;
   const runtimeHint = safeRuntime(environment.NOVA_RUNTIME_ADAPTER);
   const schedulerHint = safeScheduler(environment.NOVA_BACKGROUND_SCHEDULER);
   const composeInspector = options.composeInspector ?? inspectDockerCompose;
@@ -161,6 +166,6 @@ export async function inspectLocalDeployment(
     schedulerHint,
     ...(dockerCompose ? { dockerCompose } : {}),
     secretPresence: Object.fromEntries(secretKeys.map((key) => [key, Boolean(environment[key])])),
-    providerCredentialPresence: Object.fromEntries(providerKeys.map((key) => [key, Boolean(environment[key])])),
+    providerCredentialPresence: Object.fromEntries(deploymentProviderCredentialKeys.map((key) => [key, Boolean(environment[key])])),
   };
 }

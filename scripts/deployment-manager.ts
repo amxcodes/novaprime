@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
-import type { RuntimeAdapter, SchedulerAdapter } from "./deployment/inventory.ts";
-import { inspectLocalDeployment } from "./deployment/inventory.ts";
+import type { LocalDeploymentInventory, RuntimeAdapter, SchedulerAdapter } from "./deployment/inventory.ts";
+import { deploymentProviderCredentialKeys, inspectLocalDeployment } from "./deployment/inventory.ts";
 import { buildDeploymentPreview, type DatabaseChange } from "./deployment/plan.ts";
 import {
   environmentForDeploymentConfig,
@@ -11,6 +11,7 @@ import { runDeploymentDoctor } from "./deployment-doctor.ts";
 import { discoverProviderResources } from "./deployment/providers.ts";
 import { loadDeploymentPlan, saveDeploymentPlan } from "./deployment/state.ts";
 import { verifyDeploymentPlanSnapshot } from "./deployment/verification.ts";
+import { promptSecret } from "./update/terminal.ts";
 
 const repoRoot = resolve(import.meta.dir, "..");
 const preflightPath = resolve(repoRoot, "scripts/deployment-preflight.ts");
@@ -32,6 +33,72 @@ interface Options {
 const runtimes = new Set<RuntimeAdapter>(["netlify", "cloudflare", "vps"]);
 const schedulers = new Set<SchedulerAdapter | "keep">(["cloudflare", "netlify", "vercel", "supabase", "vps", "keep"]);
 const databaseChanges = new Set<DatabaseChange>(["keep", "provision-supabase", "move"]);
+
+async function promptRemoteCredentials(
+  environment: Record<string, string>,
+  databaseProjectRef: string | undefined,
+  prompt: typeof promptSecret,
+  interactive: boolean,
+): Promise<void> {
+  if (!interactive) return;
+  const supabaseProjectRef = databaseProjectRef ?? environment.NOVA_SUPABASE_PROJECT_REF;
+  const targets: Partial<Record<(typeof deploymentProviderCredentialKeys)[number], string>> = {
+    ...(environment.NETLIFY_SITE_ID ? { NETLIFY_AUTH_TOKEN: "Netlify site " + environment.NETLIFY_SITE_ID } : {}),
+    ...(environment.CLOUDFLARE_ACCOUNT_ID && environment.CLOUDFLARE_WORKER_NAME
+      ? { CLOUDFLARE_API_TOKEN: "Cloudflare Worker " + environment.CLOUDFLARE_WORKER_NAME }
+      : {}),
+    ...(environment.VERCEL_PROJECT_ID ? { VERCEL_TOKEN: "Vercel project " + environment.VERCEL_PROJECT_ID } : {}),
+    ...(supabaseProjectRef ? { SUPABASE_ACCESS_TOKEN: "Supabase project " + supabaseProjectRef } : {}),
+  };
+  for (const key of deploymentProviderCredentialKeys) {
+    const target = targets[key];
+    if (target && !environment[key]?.trim()) {
+      const entered = await prompt(`${target} management token (press Enter to skip)`);
+      if (/[\r\n\0]/.test(entered) || entered.length > 8_192) {
+        throw new Error("DEPLOYMENT_REMOTE_CREDENTIAL_INVALID:" + key);
+      }
+      const value = entered.trim();
+      if (value) environment[key] = value;
+    }
+  }
+}
+
+function inventoryWithCredentialPresence(
+  inventory: LocalDeploymentInventory,
+  environment: Readonly<Record<string, string>>,
+): LocalDeploymentInventory {
+  return {
+    ...inventory,
+    providerCredentialPresence: Object.fromEntries(
+      deploymentProviderCredentialKeys.map((key) => [key, Boolean(environment[key])]),
+    ),
+  };
+}
+
+async function remoteInventory(
+  options: Options,
+  environment: Record<string, string>,
+  inventory: LocalDeploymentInventory,
+  dependencies: {
+    promptSecret?: typeof promptSecret;
+    interactive?: boolean;
+    discoverProviders?: typeof discoverProviderResources;
+  },
+  probePublicReadiness = false,
+): Promise<Awaited<ReturnType<typeof discoverProviderResources>> | undefined> {
+  if (!options.remote) return undefined;
+  await promptRemoteCredentials(
+    environment,
+    inventory.database.projectRef,
+    dependencies.promptSecret ?? promptSecret,
+    Boolean(!options.json && (dependencies.interactive ?? (process.stdin.isTTY && process.stdout.isTTY))),
+  );
+  return await (dependencies.discoverProviders ?? discoverProviderResources)(
+    environment,
+    fetch,
+    probePublicReadiness ? { probePublicReadiness: true } : {},
+  );
+}
 
 export function formatDockerComposeStatus(
   inventory: Awaited<ReturnType<typeof inspectLocalDeployment>>["dockerCompose"],
@@ -252,6 +319,9 @@ export async function runDeploymentManager(
     write?: (value: string) => void;
     runDoctor?: typeof runDeploymentDoctor;
     inspectDeployment?: typeof inspectLocalDeployment;
+    promptSecret?: typeof promptSecret;
+    interactive?: boolean;
+    discoverProviders?: typeof discoverProviderResources;
   } = {},
 ): Promise<number> {
   const write = dependencies.write ?? console.info;
@@ -268,6 +338,7 @@ export async function runDeploymentManager(
         "  bun run nova:deployment apply <plan-id>  (not enabled; provider writes are not implemented)",
         "",
         "Remote inventory is read-only and requires explicit target IDs in the selected environment. --confirm-scheduler-scope attests that these are the complete NOVA runtime/scheduler resources for this database; unselected systems are not searched. No deploy, DNS, scheduler, or database-move write is enabled.",
+        "Interactive remote commands request missing target tokens with masked input and keep them in memory only; JSON and non-interactive commands never prompt.",
       ].join("\n"));
       return 0;
     }
@@ -277,8 +348,9 @@ export async function runDeploymentManager(
     const inspectDeployment = dependencies.inspectDeployment ?? inspectLocalDeployment;
     const inspectionOptions = { environmentFilePath: selected.path };
     if (options.command === "status") {
-      const inventory = await inspectDeployment(repoRoot, selected.values, selected.label, inspectionOptions);
-      const remote = options.remote ? await discoverProviderResources(selected.values) : undefined;
+      let inventory = await inspectDeployment(repoRoot, selected.values, selected.label, inspectionOptions);
+      const remote = await remoteInventory(options, selected.values, inventory, dependencies);
+      if (options.remote) inventory = inventoryWithCredentialPresence(inventory, selected.values);
       reportStatus(inventory, options.json, write, remote);
       return 0;
     }
@@ -303,7 +375,7 @@ export async function runDeploymentManager(
     if (options.command === "verify") {
       const plan = await loadDeploymentPlan(repoRoot, options.planId!);
       const inventory = await inspectDeployment(repoRoot, selected.values, selected.label, inspectionOptions);
-      const remote = options.remote ? await discoverProviderResources(selected.values, fetch, { probePublicReadiness: true }) : undefined;
+      const remote = await remoteInventory(options, selected.values, inventory, dependencies, true);
       const verification = verifyDeploymentPlanSnapshot(plan, inventory, remote);
       const result = {
         planId: plan.id,
@@ -327,7 +399,7 @@ export async function runDeploymentManager(
     }
 
     const inventory = await inspectDeployment(repoRoot, selected.values, selected.label, inspectionOptions);
-    const providerInventory = options.remote ? await discoverProviderResources(selected.values, fetch, { probePublicReadiness: true }) : undefined;
+    const providerInventory = await remoteInventory(options, selected.values, inventory, dependencies, true);
     const preview = buildDeploymentPreview(inventory, {
       runtime: options.runtime!,
       database: options.database,
@@ -342,9 +414,13 @@ export async function runDeploymentManager(
         : "; scheduler footprint is unconfirmed") + "; no provider resource was changed. Review with `bun run nova:deployment show " + stored.id + "`. Apply remains disabled until provider write adapters and live transition verification are implemented.");
     return preview.blockers.length > 0 || preview.actions.some(({ execution }) => execution !== "locally-verified") ? 2 : 0;
   } catch (error) {
-    const message = error instanceof Error && /^DEPLOYMENT_[A-Z0-9_:-]+$/.test(error.message)
-      ? error.message
-      : "DEPLOYMENT_MANAGER_FAILED: check command arguments and the local deployment runbook.";
+    const message = error instanceof Error && error.message === "UPDATE_CANCELLED"
+      ? "DEPLOYMENT_REMOTE_CREDENTIAL_CANCELLED"
+      : error instanceof Error && error.message === "UPDATE_HIDDEN_SECRET_INPUT_UNAVAILABLE"
+        ? "DEPLOYMENT_REMOTE_CREDENTIAL_INPUT_UNAVAILABLE"
+        : error instanceof Error && /^DEPLOYMENT_[A-Z0-9_:-]+$/.test(error.message)
+          ? error.message
+          : "DEPLOYMENT_MANAGER_FAILED: check command arguments and the local deployment runbook.";
     write(message);
     return 1;
   }

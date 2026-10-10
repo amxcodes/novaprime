@@ -7,6 +7,19 @@ import {
 } from "./deployment-manager.ts";
 import type { LocalDeploymentInventory } from "./deployment/inventory.ts";
 
+function deploymentInventory(overrides: Partial<LocalDeploymentInventory> = {}): LocalDeploymentInventory {
+  return {
+    environmentSource: "test",
+    source: { branch: "main", commit: "a".repeat(40), clean: true, dirtyPathCount: 0, packageVersion: "1.0.0" },
+    runtimeHint: null,
+    database: { configured: false, providerHint: "unknown" },
+    schedulerHint: null,
+    secretPresence: {},
+    providerCredentialPresence: {},
+    ...overrides,
+  };
+}
+
 test("command parsing requires a target runtime and keeps apply as an explicit unavailable boundary", () => {
   expect(parseDeploymentManagerArguments(["--help"]).command).toBe("help");
   expect(() => parseDeploymentManagerArguments(["plan"])).toThrow("DEPLOYMENT_PLAN_RUNTIME_REQUIRED");
@@ -60,6 +73,10 @@ test("status only prints credential presence and never values", async () => {
       NOVA_BACKGROUND_SCHEDULER: "supabase",
     },
     write: (line) => output.push(line),
+    inspectDeployment: async () => deploymentInventory({
+      database: { configured: true, providerHint: "postgresql" },
+      schedulerHint: "supabase",
+    }),
   });
   expect(code).toBe(0);
   expect(output.join("\n")).not.toContain(password);
@@ -90,6 +107,105 @@ test("status passes the selected env file to local deployment inspection", async
   });
   expect(code).toBe(0);
   expect(selectedEnvironmentFile).toBe(resolve(import.meta.dir, "..", ".env.example"));
+});
+
+test("remote status prompts only for configured targets and keeps entered tokens in memory", async () => {
+  const output: string[] = [];
+  const prompts: string[] = [];
+  const callerEnvironment: NodeJS.ProcessEnv = {
+    NETLIFY_SITE_ID: "site-123",
+    CLOUDFLARE_ACCOUNT_ID: "cf-account",
+    CLOUDFLARE_WORKER_NAME: "nova-api",
+    CLOUDFLARE_API_TOKEN: "existing-cf-token",
+    VERCEL_PROJECT_ID: "vercel-project",
+    NOVA_SUPABASE_PROJECT_REF: "abcdefghijklmnopqrst",
+  };
+  let discovered: Record<string, string> | undefined;
+  const code = await runDeploymentManager(["status", "--remote"], {
+    environment: callerEnvironment,
+    write: (line) => output.push(line),
+    interactive: true,
+    promptSecret: async (label) => {
+      prompts.push(label);
+      return "  entered-token-" + prompts.length + "  ";
+    },
+    inspectDeployment: async () => deploymentInventory(),
+    discoverProviders: async (environment) => {
+      discovered = { ...environment };
+      return [];
+    },
+  });
+
+  expect(code).toBe(0);
+  expect(prompts).toEqual([
+    "Netlify site site-123 management token (press Enter to skip)",
+    "Vercel project vercel-project management token (press Enter to skip)",
+    "Supabase project abcdefghijklmnopqrst management token (press Enter to skip)",
+  ]);
+  expect(discovered).toMatchObject({
+    NETLIFY_AUTH_TOKEN: "entered-token-1",
+    CLOUDFLARE_API_TOKEN: "existing-cf-token",
+    VERCEL_TOKEN: "entered-token-2",
+    SUPABASE_ACCESS_TOKEN: "entered-token-3",
+  });
+  expect(callerEnvironment).not.toHaveProperty("NETLIFY_AUTH_TOKEN");
+  expect(callerEnvironment).not.toHaveProperty("VERCEL_TOKEN");
+  expect(callerEnvironment).not.toHaveProperty("SUPABASE_ACCESS_TOKEN");
+  expect(output.join("\n")).not.toContain("entered-token-");
+  expect(output.join("\n")).toContain("NETLIFY_AUTH_TOKEN=set");
+});
+
+test("JSON and noninteractive remote status never prompt for provider credentials", async () => {
+  for (const options of [
+    { args: ["status", "--remote", "--json"], interactive: true },
+    { args: ["status", "--remote"], interactive: false },
+  ] as const) {
+    const prompts: string[] = [];
+    const code = await runDeploymentManager(options.args, {
+      environment: { NETLIFY_SITE_ID: "site-123" },
+      write: () => {},
+      interactive: options.interactive,
+      promptSecret: async (label) => { prompts.push(label); return "unused"; },
+      inspectDeployment: async () => deploymentInventory(),
+      discoverProviders: async () => [],
+    });
+    expect(code).toBe(0);
+    expect(prompts).toEqual([]);
+  }
+});
+
+test("remote status rejects malformed entered credentials without echoing them", async () => {
+  const output: string[] = [];
+  const code = await runDeploymentManager(["status", "--remote"], {
+    environment: { NETLIFY_SITE_ID: "site-123" },
+    write: (line) => output.push(line),
+    interactive: true,
+    promptSecret: async () => "sensitive\ntoken",
+    inspectDeployment: async () => deploymentInventory(),
+    discoverProviders: async () => [],
+  });
+  expect(code).toBe(1);
+  expect(output.join("\n")).toContain("DEPLOYMENT_REMOTE_CREDENTIAL_INVALID:NETLIFY_AUTH_TOKEN");
+  expect(output.join("\n")).not.toContain("sensitive");
+});
+
+test("remote status treats whitespace-only credentials as missing and reports masked-prompt cancellation", async () => {
+  const output: string[] = [];
+  const prompts: string[] = [];
+  const code = await runDeploymentManager(["status", "--remote"], {
+    environment: { NETLIFY_SITE_ID: "site-123", NETLIFY_AUTH_TOKEN: "   " },
+    write: (line) => output.push(line),
+    interactive: true,
+    promptSecret: async (label) => {
+      prompts.push(label);
+      throw new Error("UPDATE_CANCELLED");
+    },
+    inspectDeployment: async () => deploymentInventory(),
+    discoverProviders: async () => [],
+  });
+  expect(code).toBe(1);
+  expect(prompts).toEqual(["Netlify site site-123 management token (press Enter to skip)"]);
+  expect(output).toEqual(["DEPLOYMENT_REMOTE_CREDENTIAL_CANCELLED"]);
 });
 
 test("human-readable local Compose status explains unknown scope and includes safe exit codes", () => {

@@ -172,6 +172,19 @@ The operator does not paste every value into every product. Use this split:
 | Supabase Cron/pg_net alternative | Keep API runtime values on the selected API host and set `NOVA_BACKGROUND_SCHEDULER=supabase` there | Run `bun run supabase:scheduler` from the trusted operator checkout. It reads the project ref and tick secret from private `.env` and requires the exact project ref typed before any write. It prompts for the deployed HTTPS origin if not configured and requests the management token with hidden input if absent. To switch away, run `bun run supabase:scheduler:disable`; it requires the same project confirmation and removes only NOVA's named Cron job and two Vault secrets. The token is not saved. |
 | Direct VPS/Docker | `.env` on the VPS; set `NOVA_BACKGROUND_SCHEDULER=vps`; Compose passes values to the API/maintenance containers and identifies the API runtime as `vps` / `docker-compose`. Set `NOVA_RELEASE_SHA` to the full commit built into the API image for exact runtime identity checks. | Compose starts the maintenance service. A non-Compose install must supervise exactly one maintenance worker; no systemd unit is shipped. Do not also enable a cloud scheduler for this database. |
 
+### Read-only deployment inventory
+
+`bun run nova:deployment status --remote --env-file <path>` reads only provider
+resources named by IDs in that selected environment file. In an interactive
+terminal it requests missing management tokens through masked input, and only
+for configured Netlify sites, Cloudflare Workers, Vercel projects, or the
+identified Supabase project. Tokens are held in memory for that command and
+are never written to the environment file or included in status output. Press
+Enter to skip a provider. JSON mode and non-interactive runs never prompt; set
+the needed token in the command's private process environment if remote
+inspection is required there. This command is read-only and does not deploy,
+change scheduler state, or modify database resources.
+
 The repository-root manifest mirrors the API workspace runtime dependencies so Netlify and Vercel can discover them from the project base; a test keeps both manifests synchronized. Netlify additionally lists `pg` and `nodemailer` as external function dependencies so both packages ship with its API function. Cloudflare Wrangler bundles npm dependencies from the root manifest.
 
 These are server-side values. `NOVA_BACKGROUND_SCHEDULER` is not a secret.
