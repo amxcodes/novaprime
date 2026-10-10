@@ -288,9 +288,12 @@ test("preserves stale-cycle recovery and protected-command guards", async () => 
 });
 
 test("keeps review planning in app.js and command behavior in the host adapter", () => {
+  const appImports = appSource.split("async function renderWork(")[0];
+  assert.match(appImports, /import\s*\{[^}]*\bcanRenderRequestReviewActions\b[^}]*\}\s*from ["']\.\/review-actions\.js["']/s,
+    "the Work host imports the row-level review permission projector before mounting reviews");
   assert.match(appSource, /if \(readPlan\.reviews && !hasFocusedCollaborationRoute\) \{[\s\S]{0,300}projectWorkReviews\(/);
   assert.match(readsSource, /read\(readPlan\.reviews && !focusRequest,[\s\S]*?pendingReviewsReadUrl\(reviewTarget \|\| \{\}\)/);
-  assert.match(appSource, /await readWorkRouteData\(\{[\s\S]*?hasReviewRoute,[\s\S]*?focusRequest,[\s\S]*?pageApi,/);
+  assert.match(appSource, /readWorkRouteData\(\{[\s\S]*?hasReviewRoute,[\s\S]*?focusRequest,[\s\S]*?pageApi,/);
   assert.match(appSource, /selectedReview && readPlan\.reviews[\s\S]{0,180}\/review/);
   assert.match(appSource, /createWorkReviewActions\(\{/);
   assert.match(appSource, /openReviewContext: \(assignmentId\) => openReviewAssignment\(assignmentId\)/);

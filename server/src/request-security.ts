@@ -26,13 +26,16 @@ function rejection(): Response {
  * clients; a request carrying a session cookie must prove its same-origin
  * source instead of relying on SameSite behaviour alone.
  */
-export function stateChangingRequestError(request: Request): Response | undefined {
+export function stateChangingRequestError(
+  request: Request,
+  environment = process.env,
+): Response | undefined {
   if (!stateChangingMethods.has(request.method.toUpperCase())) return undefined;
 
   const requestOrigin = new URL(request.url).origin;
   const allowedOrigins = new Set([requestOrigin]);
   try {
-    const configured = configuredPublicOrigins();
+    const configured = configuredPublicOrigins(environment);
     if (!configured.includes(requestOrigin)) return rejection();
     configured.forEach((origin) => allowedOrigins.add(origin));
   } catch {

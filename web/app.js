@@ -52,7 +52,7 @@ import {
   deploymentProgressStorageKey,
   normalizeDeploymentProgress,
 } from "./app/deployment-route.js";
-import { canRenderLeaveConflictAction } from "./review-actions.js";
+import { canRenderLeaveConflictAction, canRenderRequestReviewActions } from "./review-actions.js";
 import { projectWorkTaskDetail } from "./src/features/work/task-detail/projection.ts";
 import { createWorkTaskDetailRoute } from "./app/work-task-detail-route.js";
 import { createWorkReviewActions, mountWorkReviewsRoute, projectWorkReviews } from "./app/work-reviews-route.js";

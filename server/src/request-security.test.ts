@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { stateChangingRequestError } from "./request-security";
 
 test("allows same-origin browser mutation requests with a session cookie", () => {
@@ -9,6 +10,28 @@ test("allows same-origin browser mutation requests with a session cookie", () =>
       origin: "https://nova.test",
     },
   }));
+
+  expect(error).toBeUndefined();
+});
+
+test("preserves non-default loopback ports through the trusted Nginx origin guard", () => {
+  const nginxConfiguration = readFileSync(
+    new URL("../../docker/nginx/default.conf", import.meta.url),
+    "utf8",
+  );
+  expect(nginxConfiguration).toContain("proxy_set_header X-Forwarded-Host $http_host;");
+
+  const publicOrigin = "http://127.0.0.1:43181";
+  const environment = {
+    BETTER_AUTH_SECRET: "test-auth-secret-that-is-long-enough",
+    BETTER_AUTH_URL: publicOrigin,
+    DATABASE_URL: "postgresql://nova_app:test@db/nova",
+    NOVA_ALLOWED_ORIGINS: publicOrigin,
+  };
+  const error = stateChangingRequestError(new Request(`${publicOrigin}/api/setup/register`, {
+    method: "POST",
+    headers: { origin: publicOrigin },
+  }), environment);
 
   expect(error).toBeUndefined();
 });
