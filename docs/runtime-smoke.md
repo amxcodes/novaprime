@@ -45,12 +45,21 @@ returned 200, and the database ledger contained 79 migrations. The exact
 disposable Compose project, database volume and containers were removed after
 the run.
 
+The pinned Netlify CLI 27.12.0 production-context offline smoke now passes in
+GitHub Actions for both scheduler selections: Supabase Cron packages only the
+API function, while the legacy Netlify Cron selection includes the scheduled
+tick. The workflow is also configured to dry-run the exact Cloudflare +
+Supabase Wrangler configuration without uploading it; its first CI result is
+pending. These checks prove build/configuration
+selection only; they do not verify a hosted deploy or live provider resources.
+
 The QA Supabase management token available to this workspace returned 403 for
 the target project's migration-ledger endpoint, so a live read-only ledger
 check was not possible in this pass. No cloud migration, scheduler change,
-provider deployment, or customer database write was attempted. Netlify and
-Cloudflare production builds, real Hyperdrive concurrency, provider Cron, and
-the three-profile migration rehearsal remain release gates.
+provider deployment, or customer database write was attempted. The Netlify
+and Cloudflare build checks are not live deployments; real Hyperdrive
+concurrency, provider Cron, hosted runtime readiness, and the three-profile
+migration rehearsal remain release gates.
 
 ## Cloudflare Worker runtime — 2026-09-26
 

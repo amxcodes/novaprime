@@ -56,6 +56,8 @@ jobs:
       - run: bun run typecheck:operator
       - run: bun run update:manifest --check
       - run: bun run typecheck:cloudflare
+      - name: Build Cloudflare + Supabase profile without uploading
+        run: npx --yes wrangler@4.141.0 deploy --dry-run --config cloudflare/wrangler.supabase-cron.toml
       - name: Smoke Cloudflare Worker Gmail delivery in workerd
         shell: bash
         run: |
