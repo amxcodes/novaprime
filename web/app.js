@@ -2482,8 +2482,8 @@ async function renderWork(date, lifetime) {
         : null;
     };
     if (!hasReviewRoute && !hasFocusedCollaborationRoute && (readPlan.timeline || readPlan.attendance)) {
-      stage = "compose-timeline";
       if (!timelineUi || typeof timelineRoute?.projectWorkTimelineProps !== "function") {
+        stage = "compose-timeline-unavailable";
         pageSectionContent.timeline = createElement(workPageUi.WorkFeatureMessage, {
           title: "Timeline and attendance are unavailable",
           message: timelineUiLoadError
@@ -2496,6 +2496,7 @@ async function renderWork(date, lifetime) {
           Array.isArray(state.actorGrants?.grants) && state.actorGrants.grants.some((grant) =>
             grant.permissionKey === "work.timeline_adjust_own" &&
             timelineCorrectionScopes.includes(grant.scope) && grant.selfApplicable === true);
+        stage = "compose-timeline";
         const timelineProps = timelineRoute.projectWorkTimelineProps({
           readPlan,
           timelineResult: timeline,

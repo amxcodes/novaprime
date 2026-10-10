@@ -279,7 +279,7 @@ test("the route host keeps API and capability orchestration while React owns tim
     "the app starts only permitted Work reads through its authenticated page reader and route lifetime");
   assert.match(route, /const \[workReadData\] = await Promise\.all\(\[\s*workReadDataPromise,\s*savedTaskViewsRead,/,
     "Work route data and saved views load concurrently before their shared render path");
-  assert.match(route, /if \(readPlan\.workContextView && !hasReviewRoute && !hasFocusedCollaborationRoute\) \{\s*const workContextHost = workSlot\("context"\);\s*mountWorkContextRoute\(\{\s*target: workContextHost,\s*result: workContext,\s*ui: workContextUi,\s*uiLoadError: workContextUiLoadError,\s*actorGrants: state\.actorGrants,[\s\S]*?runCommand: createWorkContextDepartmentCommandAction\(\{/,
+  assert.match(route, /if \(readPlan\.workContextView && !hasReviewRoute && !hasFocusedCollaborationRoute\) \{\s*(?:stage = "mount-work-context";\s*)?const workContextHost = workSlot\("context"\);\s*mountWorkContextRoute\(\{\s*target: workContextHost,\s*result: workContext,\s*ui: workContextUi,\s*uiLoadError: workContextUiLoadError,\s*actorGrants: state\.actorGrants,[\s\S]*?runCommand: createWorkContextDepartmentCommandAction\(\{/,
     "the visible feature receives the host read and current-grant action boundary");
   assert.match(route, /getPermissionData: \(\) => \(\{ actorGrants: state\.actorGrants, workContext \}\)/,
     "Work Context commands read the latest host grants and current projected context");
