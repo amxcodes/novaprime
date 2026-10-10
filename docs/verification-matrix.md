@@ -37,6 +37,13 @@ cloud write was attempted. No hosted Netlify/Cloudflare rollout or real
 Hyperdrive pooling load test is claimed. Detailed commands and evidence are recorded in
 [`runtime-smoke.md`](runtime-smoke.md).
 
+After the main push, three credential-free Netlify GET samples per route all
+returned HTTP 200: `/api/health` took 1,085/954/910 ms (median 954 ms), and
+`/api/ready` took 2,138/808/1,079 ms (median 1,079 ms). These few sequential
+samples include caller/network and cold/warm effects; they are not protected
+business-route measurements or an API latency SLO, and they cannot attribute
+time to Netlify versus PostgreSQL.
+
 The latest isolated PostgreSQL QA also exercised the updater's direct database
 adapter end to end: after establishing a synthetic trusted 72-migration
 baseline, it planned and applied the seven canonical migrations through 0079,
