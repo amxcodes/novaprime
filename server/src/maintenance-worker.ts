@@ -1,4 +1,5 @@
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import { database } from "./db.js";
 import { processNotificationOutbox } from "./notification-worker.js";
 
@@ -11,6 +12,9 @@ export type BackgroundScheduler = typeof backgroundSchedulers[number];
 // serial chain of provider timeouts.
 export const backgroundNotificationBatchSize = 4;
 export const defaultMaintenanceIntervalSeconds = 300;
+export const backgroundTickLeaseSeconds = 180;
+export const backgroundTickLeaseHeartbeatMilliseconds = 30_000;
+export const backgroundTickLeaseCheckpointRenewalFraction = 2 / 3;
 
 export function maintenanceIntervalMilliseconds(value: string | undefined): number {
   if (value === undefined) return defaultMaintenanceIntervalSeconds * 1_000;
@@ -41,8 +45,95 @@ export type BackgroundTickResult = Readonly<{
   purgedIdempotencyKeys: number;
   notifications: number;
   dueNotifications: number;
+  skipped?: boolean;
   notificationError?: string;
 }>;
+
+export interface BackgroundTickLeaseStore {
+  acquire(ownerToken: string, leaseSeconds: number): Promise<boolean>;
+  renew(ownerToken: string, leaseSeconds: number): Promise<boolean>;
+  release(ownerToken: string): Promise<void>;
+}
+
+/**
+ * Run one maintenance tick under a database-backed, expiring lease. The lease
+ * is acquired and renewed in individual SQL statements, so it remains safe on
+ * direct PostgreSQL, Supabase transaction pooling, and Cloudflare Hyperdrive.
+ * The caller must checkpoint before each independently committing operation.
+ */
+export async function withBackgroundTickLease<T>(
+  store: BackgroundTickLeaseStore,
+  operation: (checkpoint: () => Promise<void>) => Promise<T>,
+  options: Readonly<{
+    heartbeatMilliseconds?: number;
+    leaseSeconds?: number;
+    nowMilliseconds?: () => number;
+  }> = {},
+): Promise<Readonly<{ acquired: false } | { acquired: true; value: T }>> {
+  const leaseSeconds = options.leaseSeconds ?? backgroundTickLeaseSeconds;
+  const heartbeatMilliseconds = options.heartbeatMilliseconds ?? backgroundTickLeaseHeartbeatMilliseconds;
+  if (!Number.isSafeInteger(leaseSeconds) || leaseSeconds < 60 || leaseSeconds > 900 ||
+      !Number.isSafeInteger(heartbeatMilliseconds) || heartbeatMilliseconds < 1 ||
+      heartbeatMilliseconds >= leaseSeconds * 1_000) {
+    throw new Error("BACKGROUND_TICK_LEASE_CONFIGURATION_INVALID");
+  }
+
+  const ownerToken = randomUUID();
+  if (!await store.acquire(ownerToken, leaseSeconds)) return { acquired: false };
+
+  let leaseFailure: Error | undefined;
+  let renewal: Promise<void> | undefined;
+  const nowMilliseconds = options.nowMilliseconds ?? (() => performance.now());
+  const checkpointRenewalInterval = leaseSeconds * 1_000 * backgroundTickLeaseCheckpointRenewalFraction;
+  // Keep at least one third of the database TTL in reserve. For the normal
+  // 180-second lease, checkpoints renew at 120 seconds; the 30-second
+  // heartbeat refreshes a tick that remains busy between checkpoints.
+  let renewAtMilliseconds = nowMilliseconds() + checkpointRenewalInterval;
+  const renew = (): Promise<void> => {
+    if (leaseFailure) return Promise.reject(leaseFailure);
+    if (!renewal) {
+      renewal = (async () => {
+        try {
+          if (!await store.renew(ownerToken, leaseSeconds)) {
+            throw new Error("BACKGROUND_TICK_LEASE_LOST");
+          }
+          renewAtMilliseconds = nowMilliseconds() + checkpointRenewalInterval;
+        } catch {
+          leaseFailure = new Error("BACKGROUND_TICK_LEASE_LOST");
+          throw leaseFailure;
+        }
+      })().finally(() => { renewal = undefined; });
+    }
+    return renewal;
+  };
+  const checkpoint = async (): Promise<void> => {
+    if (leaseFailure) throw leaseFailure;
+    if (nowMilliseconds() >= renewAtMilliseconds) await renew();
+    if (leaseFailure) throw leaseFailure;
+  };
+
+  const heartbeat = setInterval(() => { void renew().catch(() => undefined); }, heartbeatMilliseconds);
+  heartbeat.unref?.();
+  try {
+    const value = await operation(checkpoint);
+    // If a heartbeat was already in flight as the final operation returned,
+    // observe it before reporting success. Otherwise a lost lease at the end
+    // of the tick could be silently reported as a completed tick.
+    await renewal?.catch(() => undefined);
+    if (leaseFailure) throw leaseFailure;
+    return { acquired: true, value };
+  } finally {
+    clearInterval(heartbeat);
+    await renewal?.catch(() => undefined);
+    try {
+      await store.release(ownerToken);
+    } catch (error) {
+      // The lease will expire if the release write fails. Never hide the tick
+      // result (or original failure) behind a best-effort cleanup error.
+      console.error(`[NOVA background] lease release deferred: ${error instanceof Error ? error.message.slice(0, 160) : "DATABASE_ERROR"}`);
+    }
+  }
+}
 
 export function backgroundJobSecretMatches(supplied: string | null): boolean {
   const expected = process.env.NOVA_BACKGROUND_JOB_SECRET;
@@ -52,35 +143,43 @@ export function backgroundJobSecretMatches(supplied: string | null): boolean {
   return received.length === target.length && timingSafeEqual(received, target);
 }
 
-export async function runBackgroundTick(): Promise<BackgroundTickResult> {
+async function runBackgroundTickOperations(checkpoint: () => Promise<void>): Promise<BackgroundTickResult> {
+  await checkpoint();
   const attendance = await database().query<{ count: number }>(
     "SELECT nova.close_attendance_at_business_boundary($1) AS count",
     [1000],
   );
+  await checkpoint();
   const sessions = await database().query<{ count: number }>(
     "SELECT nova.close_work_sessions_at_business_boundary($1) AS count",
     [1000],
   );
+  await checkpoint();
   const provisionalWfh = await database().query<{ count: number }>(
     "SELECT nova.close_wfh_provisional_attendance_at_business_boundary($1) AS count",
     [1000],
   );
+  await checkpoint();
   const expiredRequests = await database().query<{ count: number }>(
     "SELECT nova.expire_task_requests($1) AS count",
     [1000],
   );
+  await checkpoint();
   const reconciledReviewers = await database().query<{ count: number }>(
     "SELECT nova.reconcile_unavailable_reviewers($1) AS count",
     [1000],
   );
+  await checkpoint();
   const purgedIdempotencyKeys = await database().query<{ count: number }>(
     "SELECT nova.purge_expired_api_idempotency_keys($1) AS count",
     [5000],
   );
+  await checkpoint();
   const purged = await database().query<{ count: number }>(
     "SELECT nova.purge_expired_attendance_location_evidence($1) AS count",
     [1000],
   );
+  await checkpoint();
   const due = await database().query<{ count: number }>(
     "SELECT nova.enqueue_due_task_notifications($1, $2) AS count",
     [1, 500],
@@ -88,6 +187,7 @@ export async function runBackgroundTick(): Promise<BackgroundTickResult> {
   let notifications = 0;
   let notificationError: string | undefined;
   try {
+    await checkpoint();
     notifications = await processNotificationOutbox(
       backgroundNotificationBatchSize,
       backgroundNotificationBatchSize,
@@ -98,6 +198,9 @@ export async function runBackgroundTick(): Promise<BackgroundTickResult> {
     notificationError = "NOTIFICATION_WORKER_FAILED";
     console.error(`[NOVA background] notification delivery deferred: ${error instanceof Error ? error.message.slice(0, 160) : notificationError}`);
   }
+  // A lost lease must stop the tick even if the outbox itself failed; keep
+  // this outside the provider-error catch above.
+  await checkpoint();
   return Object.freeze({
     closedAttendance: Number(attendance.rows[0]?.count ?? 0),
     closedWorkSessions: Number(sessions.rows[0]?.count ?? 0),
@@ -109,6 +212,50 @@ export async function runBackgroundTick(): Promise<BackgroundTickResult> {
     dueNotifications: Number(due.rows[0]?.count ?? 0),
     notifications,
     ...(notificationError ? { notificationError } : {}),
+  });
+}
+
+const databaseBackgroundTickLeaseStore: BackgroundTickLeaseStore = {
+  async acquire(ownerToken, leaseSeconds) {
+    const result = await database().query<{ acquired: boolean }>(
+      "SELECT nova.try_acquire_background_tick_lease($1::uuid, $2::integer) AS acquired",
+      [ownerToken, leaseSeconds],
+    );
+    return result.rows[0]?.acquired === true;
+  },
+  async renew(ownerToken, leaseSeconds) {
+    const result = await database().query<{ renewed: boolean }>(
+      "SELECT nova.renew_background_tick_lease($1::uuid, $2::integer) AS renewed",
+      [ownerToken, leaseSeconds],
+    );
+    return result.rows[0]?.renewed === true;
+  },
+  async release(ownerToken) {
+    await database().query(
+      "SELECT nova.release_background_tick_lease($1::uuid)",
+      [ownerToken],
+    );
+  },
+};
+
+export async function runBackgroundTick(): Promise<BackgroundTickResult> {
+  const result = await withBackgroundTickLease(
+    databaseBackgroundTickLeaseStore,
+    runBackgroundTickOperations,
+  );
+  if (result.acquired) return result.value;
+  console.info("[NOVA background] tick skipped; another tick holds the database lease.");
+  return Object.freeze({
+    closedAttendance: 0,
+    closedProvisionalWfhAttendance: 0,
+    closedWorkSessions: 0,
+    purgedEvidence: 0,
+    expiredRequests: 0,
+    reconciledReviewers: 0,
+    purgedIdempotencyKeys: 0,
+    notifications: 0,
+    dueNotifications: 0,
+    skipped: true,
   });
 }
 

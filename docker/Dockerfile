@@ -21,6 +21,12 @@ FROM build AS migrate
 
 CMD ["bun", "run", "--cwd", "server", "migrate"]
 
+# QA-only tools for a real, encrypted dump/restore rehearsal. Keep these out of
+# the migration and runtime images shipped to customers.
+FROM build AS qa
+
+RUN apk add --no-cache postgresql17-client
+
 FROM node:22-alpine AS api
 
 WORKDIR /app

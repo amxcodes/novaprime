@@ -3,7 +3,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { confirmSupabaseProject } from "./supabase-project-confirmation.js";
 import { migrationSha256 } from "./migration-checksum.js";
-import { applicationRoleProvisioningSql } from "./application-role-provisioning.js";
+import {
+  applicationRoleProvisioningSql,
+  applicationRoleTableGrantsSql,
+} from "./application-role-provisioning.js";
 import { assertSupabaseDatabaseUrlBinding, supabaseManagementFailureCode } from "./supabase-pooler.js";
 
 const projectRef = requiredEnvironment("NOVA_SUPABASE_PROJECT_REF");
@@ -193,10 +196,7 @@ if (
 
 await postSql("/database/query", {
   query: `
-    GRANT USAGE ON SCHEMA nova TO nova_app;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA nova TO nova_app;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA nova
-      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO nova_app;
+    ${applicationRoleTableGrantsSql("nova_app")}
     GRANT USAGE ON SCHEMA nova_auth TO nova_app;
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA nova_auth TO nova_app;
     ALTER DEFAULT PRIVILEGES IN SCHEMA nova_auth

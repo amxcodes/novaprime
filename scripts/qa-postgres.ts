@@ -11,6 +11,14 @@ const loadEmployeeCount = process.env.NOVA_QA_LOAD_EMPLOYEES;
 if (loadEmployeeCount !== undefined && !/^(?:0|[1-9]\d?|1\d\d|200)$/.test(loadEmployeeCount)) {
   throw new Error("NOVA_QA_LOAD_EMPLOYEES_MUST_BE_BETWEEN_0_AND_200");
 }
+const restoreOnlyValue = process.env.NOVA_QA_RESTORE_ONLY;
+if (restoreOnlyValue !== undefined && restoreOnlyValue !== "true" && restoreOnlyValue !== "false") {
+  throw new Error("NOVA_QA_RESTORE_ONLY_MUST_BE_BOOLEAN");
+}
+const restoreOnly = restoreOnlyValue === "true";
+if (restoreOnly && loadEmployeeCount !== undefined && loadEmployeeCount !== "0") {
+  throw new Error("NOVA_QA_RESTORE_ONLY_CANNOT_RUN_WORKLOAD");
+}
 function optionalBoundedInteger(name: string, fallback: number, minimum: number, maximum: number): number {
   const value = process.env[name];
   if (value === undefined) return fallback;
@@ -44,6 +52,119 @@ if (qaDbPoolMax || qaAuthPoolMax) {
 if (qaRequestScoped) {
   console.info("QA profile: request-scoped direct PostgreSQL clients; this local test does not include Hyperdrive pooling");
 }
+if (restoreOnly) console.info("QA profile: restore-only; applies all migrations, checks app-role preflight, then runs the isolated dump/restore rehearsal.");
+
+// Keep the QA network run-scoped and isolated. Docker's default address pool
+// can be exhausted by retained diagnostic projects; choose a private /24 only
+// after checking Docker, Windows, and (when used) WSL route tables.
+const composeEnvironment: NodeJS.ProcessEnv = { ...process.env };
+for (const key of Object.keys(composeEnvironment)) {
+  if (key.startsWith("NOVA_") || key.startsWith("BETTER_AUTH_") ||
+      key === "DATABASE_URL" || key === "MIGRATOR_DATABASE_URL" || key === "SUPABASE_ACCESS_TOKEN") {
+    delete composeEnvironment[key];
+  }
+}
+const dockerProbe = process.platform === "win32"
+  ? spawnSync("docker", ["version", "--format", "{{.Server.Version}}"], {
+    encoding: "utf8", cwd: repositoryRoot, env: composeEnvironment,
+  })
+  : undefined;
+const useWslDocker = process.platform === "win32" &&
+  (dockerProbe?.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
+const qaNetworkName = `${projectName}_isolated`;
+
+function docker(args: string[], useWsl: boolean) {
+  return useWsl
+    ? spawnSync("wsl.exe", ["-e", "docker", ...args], { cwd: repositoryRoot, encoding: "utf8", env: composeEnvironment })
+    : spawnSync("docker", args, { cwd: repositoryRoot, encoding: "utf8", env: composeEnvironment });
+}
+
+function parseIpv4Range(value: string): { first: bigint; last: bigint } | undefined {
+  if (value === "default" || value.includes(":")) return undefined;
+  const [address, prefixText] = value.split("/");
+  const octets = address?.split(".");
+  if (!octets || octets.length !== 4 || octets.some((octet) => !/^\d{1,3}$/.test(octet) || Number(octet) > 255)) {
+    return undefined;
+  }
+  const prefix = prefixText === undefined ? 32 : Number(prefixText);
+  if (!Number.isInteger(prefix) || prefix < 0 || prefix > 32 || prefix === 0) return undefined;
+  const addressValue = octets.reduce((valueSoFar, octet) => (valueSoFar << 8n) | BigInt(Number(octet)), 0n);
+  const size = 1n << BigInt(32 - prefix);
+  const first = (addressValue / size) * size;
+  return { first, last: first + size - 1n };
+}
+
+function routeValues(json: string): string[] {
+  let parsed: unknown;
+  try { parsed = JSON.parse(json); } catch { throw new Error("LOCAL_POSTGRES_QA_ROUTE_INVENTORY_INVALID"); }
+  const values = Array.isArray(parsed) ? parsed : [parsed];
+  return values.flatMap((value) => {
+    if (typeof value === "string") return [value];
+    if (value && typeof value === "object") {
+      const destination = (value as { dst?: unknown }).dst;
+      return typeof destination === "string" ? [destination] : [];
+    }
+    return [];
+  });
+}
+
+function successfulOutput(result: ReturnType<typeof spawnSync>, code: string): string {
+  if (result.error || result.status !== 0) throw new Error(code);
+  return (typeof result.stdout === "string" ? result.stdout : result.stdout?.toString("utf8") ?? "").trim();
+}
+
+async function chooseQaSubnet(): Promise<string> {
+  const networkList = docker(["network", "ls", "--quiet"], useWslDocker);
+  const networkIds = successfulOutput(networkList, "LOCAL_POSTGRES_QA_DOCKER_NETWORK_INVENTORY_FAILED")
+    .split(/\s+/).filter(Boolean);
+  const dockerRanges: string[] = [];
+  if (networkIds.length > 0) {
+    const inspection = docker(["network", "inspect", ...networkIds], useWslDocker);
+    const networks = JSON.parse(successfulOutput(inspection, "LOCAL_POSTGRES_QA_DOCKER_NETWORK_INSPECTION_FAILED")) as Array<{
+      IPAM?: { Config?: Array<{ Subnet?: string }> };
+    }>;
+    for (const network of networks) {
+      for (const configuration of network.IPAM?.Config ?? []) {
+        if (configuration.Subnet) dockerRanges.push(configuration.Subnet);
+      }
+    }
+  }
+
+  const hostRoutes: string[] = [];
+  if (process.platform === "win32") {
+    const windowsRoutes = spawnSync("powershell.exe", [
+      "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+      "$ErrorActionPreference = 'Stop'; Get-NetRoute -AddressFamily IPv4 -ErrorAction Stop | Select-Object -ExpandProperty DestinationPrefix -Unique | ConvertTo-Json -Compress",
+    ], { encoding: "utf8", cwd: repositoryRoot, env: composeEnvironment });
+    hostRoutes.push(...routeValues(successfulOutput(windowsRoutes, "LOCAL_POSTGRES_QA_WINDOWS_ROUTE_INVENTORY_FAILED")));
+    if (useWslDocker) {
+      const wslRoutes = spawnSync("wsl.exe", ["-e", "ip", "-j", "route", "show", "table", "all"], {
+        encoding: "utf8", cwd: repositoryRoot, env: composeEnvironment,
+      });
+      hostRoutes.push(...routeValues(successfulOutput(wslRoutes, "LOCAL_POSTGRES_QA_WSL_ROUTE_INVENTORY_FAILED")));
+    }
+  } else {
+    const localRoutes = spawnSync("ip", ["-j", "route", "show", "table", "all"], {
+      encoding: "utf8", cwd: repositoryRoot, env: composeEnvironment,
+    });
+    hostRoutes.push(...routeValues(successfulOutput(localRoutes, "LOCAL_POSTGRES_QA_HOST_ROUTE_INVENTORY_FAILED")));
+  }
+
+  const occupied = [...dockerRanges, ...hostRoutes].flatMap((prefix) => {
+    const range = parseIpv4Range(prefix);
+    return range ? [range] : [];
+  });
+  const startingOffset = randomBytes(1)[0]!;
+  for (let offset = 0; offset < 256; offset += 1) {
+    const subnet = `10.240.${(startingOffset + offset) % 256}.0/24`;
+    const candidate = parseIpv4Range(subnet)!;
+    if (!occupied.some((range) => candidate.first <= range.last && range.first <= candidate.last)) return subnet;
+  }
+  throw new Error("LOCAL_POSTGRES_QA_NO_SAFE_PRIVATE_SUBNET_FOUND");
+}
+
+const qaSubnet = await chooseQaSubnet();
+console.info(`Run-scoped Docker QA network selected at ${qaSubnet}; verified outside current Docker and host routes.`);
 
 const privateQaDirectory = await mkdtemp(join(tmpdir(), "nova-qa-config-"));
 const envFile = join(privateQaDirectory, ".env");
@@ -68,6 +189,8 @@ const qaEnvironment = {
   NOVA_QA_LOAD_CONCURRENCY: String(loadConcurrency),
   NOVA_QA_LOAD_TASKS_PER_EMPLOYEE: String(tasksPerEmployee),
   NOVA_QA_REQUEST_SCOPED: qaRequestScoped ? "true" : "false",
+  NOVA_QA_RESTORE_ONLY: restoreOnly ? "true" : "false",
+  NOVA_QA_NETWORK: qaNetworkName,
 };
 try {
   await writeFile(envFile, Object.entries(qaEnvironment).map(([key, value]) => `${key}=${value}`).join("\n") + "\n", {
@@ -79,15 +202,6 @@ try {
   throw new Error("LOCAL_POSTGRES_QA_PRIVATE_CONFIG_FAILED");
 }
 
-// Do not let a caller's ordinary NOVA/.env settings override the disposable
-// credentials in the explicit Compose env file.
-const composeEnvironment: NodeJS.ProcessEnv = { ...process.env };
-for (const key of Object.keys(composeEnvironment)) {
-  if (key.startsWith("NOVA_") || key.startsWith("BETTER_AUTH_") ||
-      key === "DATABASE_URL" || key === "MIGRATOR_DATABASE_URL" || key === "SUPABASE_ACCESS_TOKEN") {
-    delete composeEnvironment[key];
-  }
-}
 const composePrefix = (forWsl = false) => [
   "compose",
   "--project-name",
@@ -118,14 +232,17 @@ function wslPath(windowsPath: string): string {
 console.info(`Isolated QA Compose project: ${projectName}`);
 try {
   console.info("Using random, run-scoped credentials from a private temporary env file; repository .env values are excluded.");
-  const native = spawnSync("docker", [...composePrefix(), "--profile", "qa", "run", "--build", "--rm", "qa"], {
-    cwd: repositoryRoot,
-    stdio: "inherit",
-    env: composeEnvironment,
-  });
-  const dockerCliMissing = native.error !== undefined && (native.error as NodeJS.ErrnoException).code === "ENOENT";
+  const isolatedNetwork = docker([
+    "network", "create", "--driver", "bridge", "--subnet", qaSubnet,
+    "--label", `nova.qa.project=${projectName}`,
+    "--label", "nova.qa.purpose=isolated-postgres-test",
+    qaNetworkName,
+  ], useWslDocker);
+  if (isolatedNetwork.error || isolatedNetwork.status !== 0) {
+    throw new Error("LOCAL_POSTGRES_QA_ISOLATED_NETWORK_CREATE_FAILED");
+  }
 
-  if (process.platform === "win32" && dockerCliMissing) {
+  if (useWslDocker) {
     console.info("Docker CLI not found on Windows; using the configured WSL Docker engine.");
     const result = spawnSync("wsl.exe", ["-e", "docker", ...composePrefix(true),
       "--profile", "qa", "run", "--build", "--rm", "qa"], {
@@ -137,6 +254,11 @@ try {
     if (result.status === 0) cleanIsolatedProject(true);
     else stopFailedProject(true);
   } else {
+    const native = spawnSync("docker", [...composePrefix(), "--profile", "qa", "run", "--build", "--rm", "qa"], {
+      cwd: repositoryRoot,
+      stdio: "inherit",
+      env: composeEnvironment,
+    });
     reportResult(native);
     if (native.status === 0) cleanIsolatedProject(false);
     else stopFailedProject(false);
@@ -148,12 +270,6 @@ try {
   } else {
     console.error(`QA_PRIVATE_CONFIG_PRESERVED_FOR_DIAGNOSIS ${envFile}; it contains random test credentials, not repository secrets.`);
   }
-}
-
-function docker(args: string[], useWsl: boolean) {
-  return useWsl
-    ? spawnSync("wsl.exe", ["-e", "docker", ...args], { cwd: repositoryRoot, encoding: "utf8", env: composeEnvironment })
-    : spawnSync("docker", args, { cwd: repositoryRoot, encoding: "utf8", env: composeEnvironment });
 }
 
 function stopFailedProject(useWsl: boolean): void {
@@ -221,5 +337,32 @@ function cleanIsolatedProject(useWsl: boolean): void {
       return;
     }
   }
-  console.info("Isolated QA containers and verified run-scoped PostgreSQL data and TLS volumes removed.");
+  const inspectedNetwork = docker(["network", "inspect", qaNetworkName], useWsl);
+  if (inspectedNetwork.error || inspectedNetwork.status !== 0) {
+    console.error(`QA_NETWORK_INSPECT_FAILED_${projectName}; isolated network was retained.`);
+    process.exitCode = 1;
+    return;
+  }
+  const network = (JSON.parse(inspectedNetwork.stdout) as Array<{
+    Name?: string;
+    Labels?: Record<string, string>;
+    IPAM?: { Config?: Array<{ Subnet?: string }> };
+    Containers?: Record<string, unknown>;
+  }>)[0];
+  if (network?.Name !== qaNetworkName ||
+      network.Labels?.["nova.qa.project"] !== projectName ||
+      network.Labels?.["nova.qa.purpose"] !== "isolated-postgres-test" ||
+      !network.IPAM?.Config?.some(({ Subnet }) => Subnet === qaSubnet) ||
+      Object.keys(network.Containers ?? {}).length > 0) {
+    console.error(`QA_NETWORK_IDENTITY_MISMATCH_${projectName}; isolated network was retained.`);
+    process.exitCode = 1;
+    return;
+  }
+  const removedNetwork = docker(["network", "rm", qaNetworkName], useWsl);
+  if (removedNetwork.error || removedNetwork.status !== 0) {
+    console.error(`QA_NETWORK_REMOVAL_FAILED_${projectName}; isolated network was retained.`);
+    process.exitCode = 1;
+    return;
+  }
+  console.info("Isolated QA containers, verified run-scoped network, PostgreSQL data, and TLS volumes removed.");
 }

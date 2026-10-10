@@ -1,6 +1,6 @@
 {
   "name": "nova",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "engines": {
     "node": ">=22"
@@ -40,7 +40,7 @@
     "test": "bun --no-env-file run --cwd server test",
     "test:updater": "bun --no-env-file test scripts/update.test.ts scripts/update",
     "typecheck": "bun run --cwd server typecheck",
-    "typecheck:operator": "node server/node_modules/typescript/bin/tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --jsx react-jsx --typeRoots server/node_modules/@types --types node,bun --skipLibCheck --allowImportingTsExtensions scripts/setup.ts scripts/update.ts scripts/update/manifest.ts scripts/qa-postgres.ts scripts/local-postgres-qa.ts scripts/supabase-scheduler.ts scripts/deployment-preflight.ts scripts/deployment-doctor.ts scripts/deployment-manager.ts scripts/deployment/config.ts scripts/deployment/inventory.ts scripts/deployment/plan.ts scripts/deployment/state.ts scripts/deployment/journal.ts scripts/deployment/providers.ts scripts/deployment/supabase-scheduler-inventory.ts scripts/deployment-ui-smoke.ts vercel.ts web/vercel-config.ts web/src/design-system/assets.d.ts",
+    "typecheck:operator": "node server/node_modules/typescript/bin/tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --jsx react-jsx --typeRoots server/node_modules/@types --types node,bun --skipLibCheck --allowImportingTsExtensions scripts/setup.ts scripts/update.ts scripts/update/manifest.ts scripts/qa-postgres.ts scripts/local-postgres-qa.ts scripts/postgres-restore-smoke.ts scripts/supabase-scheduler.ts scripts/deployment-preflight.ts scripts/deployment-doctor.ts scripts/deployment-manager.ts scripts/deployment/config.ts scripts/deployment/inventory.ts scripts/deployment/plan.ts scripts/deployment/state.ts scripts/deployment/journal.ts scripts/deployment/providers.ts scripts/deployment/supabase-scheduler-inventory.ts scripts/deployment-ui-smoke.ts vercel.ts web/vercel-config.ts web/src/design-system/assets.d.ts",
     "typecheck:cloudflare": "node server/node_modules/typescript/bin/tsc --noEmit -p cloudflare/tsconfig.json"
   },
   "devDependencies": {

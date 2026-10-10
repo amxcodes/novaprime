@@ -1,6 +1,48 @@
 # NOVA runtime smoke runbook
 
-## Latest deployment verification — 2026-10-10
+## Latest PostgreSQL 17 fresh-install and restore rehearsal — 2026-10-10
+
+The final `0.1.3` candidate passed a clean PostgreSQL 17 setup with migrations
+`0001–0080`, all 59 SQL/RLS fixture files, deployment preflight, the protected
+application-role checks, the authenticated lifecycle and specialized
+attendance/workflow checks. The `0080` fixture verifies the lease table has
+RLS enabled, denies `nova_app` direct table access, and allows only its three
+lease RPCs. Its concurrency cases cover first acquisition, duplicate-owner
+exclusion, renewal, correct release, expiration/takeover, stale-owner fencing,
+and invalid lease duration.
+
+The archive rehearsal backed up synthetic tenant, people, auth user/session,
+sequence, and encrypted provider-secret data from one run-scoped database and
+restored it into a second. It verified 80 manifest checksums, 65 table row
+counts, 59 RLS policies, one sequence's next value, two extensions, auth and
+session identity, cross-tenant isolation, and secret decryption with the same
+ephemeral key (and rejection with the wrong key). It then checked the
+restricted runtime-role boundary. QA used a private, run-scoped Docker network,
+no public database port, and removed only its own containers, network,
+volume, temporary archive and generated credentials. This proves the local
+PostgreSQL path; it does not certify public VPS/TLS or a hosted backup product.
+
+The matching disposable Supabase project `owfgvojdaxafayutbcuf` was then
+migrated transactionally to `0080_background_tick_single_flight.sql`, SHA-256
+`dd072742f4c8abc5d6352b3f7e750c5a1f5ab39c0b8a93927305e698d52930eb`. A
+read-only SQL Editor check confirmed the ledger entry and checksum, RLS
+enabled, all four direct `nova_app` table privileges false, and the acquire,
+renew and release function execute privileges true. The old `0.1.2` runtime
+was still deployed during this check, so the new lease-backed tick must be
+verified after `0.1.3` deploys. The selected project's named Supabase Cron
+job had previously been confirmed active with six successful runs and HTTP
+200 callbacks; this does not prove there are no duplicate triggers elsewhere.
+
+The latest local 200-employee × 10-task workload ran with at most 25 concurrent
+requests against PostgreSQL 17. Synchronized wave p50/p95/p99 were: work
+context 298/418/455 ms; create/self-assign 171/241/299 ms; timer start
+95/138/187 ms; timer stop 54/77/99 ms; assignment read 365/537/588 ms. This
+is an in-process local database burst, not a browser, network, sustained soak,
+serverless scale-out or hosted capacity guarantee.
+
+## Earlier pre-0080 local runs — historical
+
+## Earlier 0.1.2 deployment verification — 2026-10-10 (before migration 0080)
 
 `bun run qa:postgres` passed against isolated PostgreSQL 17 with 79 migrations,
 rollback/RLS fixtures, specialized attendance/WFH/leave/geofence checks,

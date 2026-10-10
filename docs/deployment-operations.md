@@ -406,16 +406,47 @@ Remove-Item -LiteralPath $plain, "$plain.verify"
 ```
 
 `pg_restore --list` only shows that the decrypted archive can be read; it does
-not prove a database can be restored. The repository has no verified,
-deterministic full-database restore runbook yet. Do not treat this example as a
-restore drill or as permission to update a production database. Before a
-customer update or database move, rehearse a full restore into an empty,
-disposable PostgreSQL 17 target, recreate required roles/extensions and
-ownership, run the database and application-role preflights, verify schema and
-representative row/sequence/RLS/auth state, and record restore time. The
-restore process must preserve the same `NOVA_SECRETS_ENCRYPTION_KEY` to read
-encrypted email-provider credentials. Never restore over a live database as
-an experiment.
+not prove a database can be restored. `bun run qa:postgres` now includes a
+repeatable full local restore rehearsal: it makes a run-scoped PostgreSQL 17
+source, adds only synthetic people/auth/session/provider-secret fixtures,
+creates a custom-format dump in a private temporary directory inside the
+disposable QA container, and restores it into a newly named empty database.
+The rehearsal compares every user-table row count, migration ordering and
+checksum state (including the intentionally unhashed pre-0076 legacy prefix),
+extension inventory, and NOVA RLS policy definition; it also checks sequence
+position, one authenticated session, cross-organisation row isolation through
+the non-owner `nova_app` role, encrypted provider credential decryption with
+the same disposable `NOVA_SECRETS_ENCRYPTION_KEY`, and deployment preflight
+against the restored database. The runner assigns a separate private bridge
+subnet only after checking current Docker, Windows, and WSL routes; no
+PostgreSQL port is published. QA data, dump files, credentials, database,
+run-scoped network, and labeled volumes are discarded after a successful run.
+A failed run is stopped and kept under its unique QA project label for
+diagnosis.
+
+To rerun only fresh migrations, app-role preflight, and backup/restore checks
+without the longer lifecycle/workload suites, set `NOVA_QA_RESTORE_ONLY=true`
+for `bun run qa:postgres`.
+
+This proves a database-level dump and restore on one disposable PostgreSQL 17
+cluster. It does not prove an encrypted off-host backup pipeline, a managed
+Supabase PITR/project restore, cross-server role recreation, a production
+recovery point, or a recovery-time objective. The rehearsal's custom archive
+is unencrypted and contains only random QA identity/session data; it remains
+inside the private ephemeral container and is removed at the end. Use an
+operator-managed backup encryption key or the provider's verified encrypted
+backup mechanism before storing customer archives. Keep
+`NOVA_SECRETS_ENCRYPTION_KEY` unchanged across restore so NOVA can decrypt
+stored email-provider credentials. Never restore over a live database as an
+experiment.
+
+Before a customer update or database move, confirm an actual recent backup or
+PITR restore point is available, then rehearse it into a separate empty target,
+recreate required roles/extensions and ownership, run database and
+application-role preflights, verify schema and representative row/sequence/
+RLS/auth state, test encryption-key continuity, and record restore time. Do
+not represent the local QA rehearsal as proof of that customer-specific
+restore.
 
 For Supabase Cloud, verify which managed backup/PITR options are enabled for
 the specific project, then test a restore into a disposable project. The NOVA

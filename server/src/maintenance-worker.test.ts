@@ -1,12 +1,17 @@
 import { afterEach, expect, test } from "bun:test";
 import {
   backgroundNotificationBatchSize,
+  backgroundTickLeaseHeartbeatMilliseconds,
+  backgroundTickLeaseCheckpointRenewalFraction,
+  backgroundTickLeaseSeconds,
   backgroundJobSecretMatches,
   backgroundSchedulerMatches,
   configuredBackgroundScheduler,
   defaultMaintenanceIntervalSeconds,
   maintenanceIntervalMilliseconds,
   runEndpointTickWithRetry,
+  withBackgroundTickLease,
+  type BackgroundTickLeaseStore,
 } from "./maintenance-worker.js";
 
 const previous = process.env.NOVA_BACKGROUND_JOB_SECRET;
@@ -63,6 +68,178 @@ test("background tick accepts only the exact deployment secret", () => {
   expect(backgroundJobSecretMatches("tick-secret")).toBe(true);
   expect(backgroundJobSecretMatches("tick-secret-extra")).toBe(false);
   expect(backgroundJobSecretMatches(null)).toBe(false);
+});
+
+function fakeLeaseStore(options: { acquire?: () => Promise<boolean>; renew?: () => Promise<boolean> } = {}) {
+  let owner: string | undefined;
+  let released = 0;
+  let renewed = 0;
+  const store: BackgroundTickLeaseStore = {
+    async acquire(token) {
+      if (options.acquire) return options.acquire();
+      if (owner) return false;
+      owner = token;
+      return true;
+    },
+    async renew(token) {
+      renewed += 1;
+      if (options.renew) return options.renew();
+      return owner === token;
+    },
+    async release(token) {
+      if (owner === token) owner = undefined;
+      released += 1;
+    },
+  };
+  return { store, get owner() { return owner; }, get released() { return released; }, get renewed() { return renewed; } };
+}
+
+test("background single-flight defaults to a bounded renewable database lease", () => {
+  expect(backgroundTickLeaseSeconds).toBe(180);
+  expect(backgroundTickLeaseHeartbeatMilliseconds).toBe(30_000);
+  expect(backgroundTickLeaseCheckpointRenewalFraction).toBe(2 / 3);
+});
+
+test("only one overlapping tick enters maintenance operations", async () => {
+  const lease = fakeLeaseStore();
+  let finishFirst!: () => void;
+  let firstStarted = false;
+  const first = withBackgroundTickLease(lease.store, async () => {
+    firstStarted = true;
+    await new Promise<void>((resolve) => { finishFirst = resolve; });
+    return "first";
+  }, { heartbeatMilliseconds: 60_000 });
+  await Promise.resolve();
+  expect(firstStarted).toBe(true);
+
+  let secondEnteredOperations = false;
+  await expect(withBackgroundTickLease(lease.store, async () => {
+    secondEnteredOperations = true;
+  })).resolves.toEqual({ acquired: false });
+  expect(secondEnteredOperations).toBe(false);
+
+  finishFirst();
+  await expect(first).resolves.toEqual({ acquired: true, value: "first" });
+  expect(lease.owner).toBeUndefined();
+  expect(lease.released).toBe(1);
+});
+
+test("a tick renews while a maintenance operation is still running", async () => {
+  const lease = fakeLeaseStore();
+  const result = await withBackgroundTickLease(lease.store, async (checkpoint) => {
+    await checkpoint();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await checkpoint();
+    return "finished";
+  }, { heartbeatMilliseconds: 5, leaseSeconds: 60 });
+
+  expect(result).toEqual({ acquired: true, value: "finished" });
+  expect(lease.renewed).toBeGreaterThanOrEqual(2);
+  expect(lease.released).toBe(1);
+});
+
+test("fast tick checkpoints avoid extra database round trips before the renewal threshold", async () => {
+  const lease = fakeLeaseStore();
+  const result = await withBackgroundTickLease(lease.store, async (checkpoint) => {
+    await checkpoint();
+    await checkpoint();
+    return "fast";
+  }, { heartbeatMilliseconds: 60_000 });
+
+  expect(result).toEqual({ acquired: true, value: "fast" });
+  expect(lease.renewed).toBe(0);
+  expect(lease.released).toBe(1);
+});
+
+test("checkpoint renews after two thirds of the lease TTL and resets its threshold", async () => {
+  const lease = fakeLeaseStore();
+  let nowMilliseconds = 0;
+  const result = await withBackgroundTickLease(lease.store, async (checkpoint) => {
+    await checkpoint();
+    nowMilliseconds = 119_999;
+    await checkpoint();
+    expect(lease.renewed).toBe(0);
+    nowMilliseconds = 120_000;
+    await checkpoint();
+    expect(lease.renewed).toBe(1);
+    nowMilliseconds = 239_999;
+    await checkpoint();
+    expect(lease.renewed).toBe(1);
+    nowMilliseconds = 240_000;
+    await checkpoint();
+    expect(lease.renewed).toBe(2);
+    return "renewed";
+  }, {
+    heartbeatMilliseconds: 60_000,
+    leaseSeconds: 180,
+    nowMilliseconds: () => nowMilliseconds,
+  });
+
+  expect(result).toEqual({ acquired: true, value: "renewed" });
+});
+
+test("a failed lease renewal fences later maintenance steps and still releases", async () => {
+  const lease = fakeLeaseStore({ renew: async () => false });
+  let nowMilliseconds = 0;
+  let laterStepRan = false;
+  await expect(withBackgroundTickLease(lease.store, async (checkpoint) => {
+    nowMilliseconds = 120_000;
+    await checkpoint();
+    laterStepRan = true;
+  }, {
+    heartbeatMilliseconds: 60_000,
+    nowMilliseconds: () => nowMilliseconds,
+  })).rejects.toThrow("BACKGROUND_TICK_LEASE_LOST");
+  expect(laterStepRan).toBe(false);
+  expect(lease.released).toBe(1);
+});
+
+test("a heartbeat that loses its lease prevents the next tick step", async () => {
+  const lease = fakeLeaseStore({ renew: async () => false });
+  let laterStepRan = false;
+  await expect(withBackgroundTickLease(lease.store, async (checkpoint) => {
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await checkpoint();
+    laterStepRan = true;
+  }, { heartbeatMilliseconds: 2, leaseSeconds: 60 })).rejects.toThrow("BACKGROUND_TICK_LEASE_LOST");
+
+  expect(lease.renewed).toBeGreaterThanOrEqual(1);
+  expect(laterStepRan).toBe(false);
+  expect(lease.released).toBe(1);
+});
+
+test("a final in-flight renewal failure is not reported as a completed tick", async () => {
+  let finishRenewal!: (renewed: boolean) => void;
+  const lease = fakeLeaseStore({
+    renew: () => new Promise<boolean>((resolve) => { finishRenewal = resolve; }),
+  });
+  const tick = withBackgroundTickLease(lease.store, async () => {
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    return "finished";
+  }, { heartbeatMilliseconds: 2, leaseSeconds: 60 });
+
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  expect(finishRenewal).toBeFunction();
+  finishRenewal(false);
+  await expect(tick).rejects.toThrow("BACKGROUND_TICK_LEASE_LOST");
+  expect(lease.released).toBe(1);
+});
+
+test("a failed lease acquisition fails closed without entering the tick", async () => {
+  const lease = fakeLeaseStore({ acquire: async () => { throw new Error("database unavailable"); } });
+  let entered = false;
+  await expect(withBackgroundTickLease(lease.store, async () => { entered = true; })).rejects.toThrow("database unavailable");
+  expect(entered).toBe(false);
+  expect(lease.released).toBe(0);
+});
+
+test("tick failures release their lease before propagating", async () => {
+  const lease = fakeLeaseStore();
+  await expect(withBackgroundTickLease(lease.store, async () => {
+    throw new Error("maintenance failed");
+  })).rejects.toThrow("maintenance failed");
+  expect(lease.owner).toBeUndefined();
+  expect(lease.released).toBe(1);
 });
 
 test("self-hosted endpoint retries transient connection failures with bounded backoff", async () => {

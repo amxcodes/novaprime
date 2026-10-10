@@ -114,7 +114,7 @@ test("development workbench is excluded from production Rollup inputs and emitte
       "--config",
       configPath,
       "--configLoader",
-      "runner",
+      "bundle",
       "--outDir",
       outputDirectory,
       "--emptyOutDir",

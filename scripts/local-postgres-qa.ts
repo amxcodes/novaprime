@@ -7,6 +7,7 @@ import { loadVerifiedReleaseTreeFromRoot } from "./update/release.ts";
 const adminUrl = process.env.MIGRATOR_DATABASE_URL;
 const appPassword = process.env.NOVA_APP_PASSWORD;
 if (!adminUrl || !appPassword) throw new Error("LOCAL_POSTGRES_QA_CONFIGURATION_REQUIRED");
+const restoreOnly = process.env.NOVA_QA_RESTORE_ONLY === "true";
 
 function requiredPoolSize(name: string, fallback: number, maximum: number): number {
   const raw = process.env[name];
@@ -323,11 +324,18 @@ try {
   console.info(`Creating isolated PostgreSQL database ${databaseName}`);
   await admin.query(`CREATE DATABASE ${identifier} OWNER nova_migrator`);
   run("migrations", "server/src/migrate.ts");
-  run("rollback-and-rls-fixtures", "server/src/database-test.ts");
-  run("authenticated-lifecycle", "scripts/runtime-lifecycle-smoke.ts");
-  run("attendance-wfh-leave-geofence", "scripts/runtime-specialized-smoke.ts");
-  run("application-role-preflight", "scripts/deployment-preflight.ts");
-  await runBillingPolicyUpgradeRehearsal();
+  if (restoreOnly) {
+    run("rollback-and-rls-fixtures", "server/src/database-test.ts");
+    run("application-role-preflight", "scripts/deployment-preflight.ts");
+    run("full-database-backup-and-restore", "scripts/postgres-restore-smoke.ts");
+  } else {
+    run("rollback-and-rls-fixtures", "server/src/database-test.ts");
+    run("authenticated-lifecycle", "scripts/runtime-lifecycle-smoke.ts");
+    run("attendance-wfh-leave-geofence", "scripts/runtime-specialized-smoke.ts");
+    run("application-role-preflight", "scripts/deployment-preflight.ts");
+    run("full-database-backup-and-restore", "scripts/postgres-restore-smoke.ts");
+    await runBillingPolicyUpgradeRehearsal();
+  }
   completed = true;
 } finally {
   if (completed) {

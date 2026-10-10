@@ -34,6 +34,8 @@ services:
     depends_on:
       qa-postgres-tls:
         condition: service_completed_successfully
+    networks:
+      - nova_qa
 
   qa-postgres-tls:
     image: alpine:3.24.2
@@ -41,6 +43,8 @@ services:
     restart: "no"
     volumes:
       - nova_qa_postgres_tls:/run/nova-qa-tls
+    networks:
+      - nova_qa
     command:
       - /bin/sh
       - -ec
@@ -145,7 +149,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-      target: migrate
+      target: qa
     environment:
       MIGRATOR_DATABASE_URL: "postgresql://nova_migrator:${NOVA_MIGRATOR_PASSWORD:?Set NOVA_MIGRATOR_PASSWORD in .env}@postgres-qa:5432/postgres?sslmode=verify-full&sslrootcert=/run/nova-qa-tls/server.crt"
       NOVA_APP_PASSWORD: ${NOVA_APP_PASSWORD:?Set NOVA_APP_PASSWORD in .env}
@@ -162,6 +166,7 @@ services:
       NOVA_QA_LOAD_CONCURRENCY: ${NOVA_QA_LOAD_CONCURRENCY:-25}
       NOVA_QA_LOAD_TASKS_PER_EMPLOYEE: ${NOVA_QA_LOAD_TASKS_PER_EMPLOYEE:-1}
       NOVA_QA_REQUEST_SCOPED: ${NOVA_QA_REQUEST_SCOPED:-false}
+      NOVA_QA_RESTORE_ONLY: ${NOVA_QA_RESTORE_ONLY:-false}
     volumes:
       - ../scripts:/app/scripts:ro
       - ../release-manifest.json:/app/release-manifest.json:ro
@@ -169,7 +174,14 @@ services:
     depends_on:
       postgres-qa:
         condition: service_healthy
+    networks:
+      - nova_qa
     command: bun scripts/local-postgres-qa.ts
+
+networks:
+  nova_qa:
+    external: true
+    name: ${NOVA_QA_NETWORK:-nova-qa-isolated}
 
 volumes:
   nova_postgres_data:

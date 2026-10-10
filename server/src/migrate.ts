@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool, type PoolClient } from "pg";
 import { migrationSha256 } from "./migration-checksum.js";
+import { applicationRoleTableGrantsSql } from "./application-role-provisioning.js";
 
 const migrationDirectory = fileURLToPath(
   new URL("../../database/migrations/", import.meta.url),
@@ -29,22 +30,12 @@ function applicationRoleName(): string | undefined {
   return role;
 }
 
-function quotedIdentifier(identifier: string): string {
-  return `"${identifier}"`;
-}
-
 async function grantApplicationDatabaseAccess(
   database: PoolClient,
   applicationRole: string,
 ): Promise<void> {
-  const role = quotedIdentifier(applicationRole);
-
-  await database.query(`
-    GRANT USAGE ON SCHEMA nova TO ${role};
-    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA nova TO ${role};
-    ALTER DEFAULT PRIVILEGES IN SCHEMA nova
-      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${role};
-  `);
+  const role = `"${applicationRole}"`;
+  await database.query(applicationRoleTableGrantsSql(applicationRole));
 
   const [authenticationSchema] = (
     await database.query<{ exists: boolean }>(

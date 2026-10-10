@@ -1,11 +1,71 @@
 # NOVA API and page performance investigation
 
-Date: 2026-10-07
+Date: 2026-10-10
 
 This checklist separates browser time, Netlify execution, database connection
 wait, PostgreSQL round trips, and query execution. It records evidence before
 changing runtime or database architecture. The production database is in Seoul
 (`ap-northeast-2`); the Netlify function currently runs in Ohio (`cmh`).
+
+## Latest live snapshot — 10 October 2026
+
+The Netlify Function Metrics dashboard showed **346 invocations and no
+errors** in its latest 24-hour window. The `nova` function accounted for 343
+invocations: average 2,651 ms, p50 1,864 ms, p95 4,677 ms, and p99 4,804 ms.
+These are mixed-route function invocation durations, not a per-API or page-load
+percentile. The successful responses therefore do not mean the experience is
+fast. Five public samples each of `/api/health` and `/api/ready` returned 200;
+the observed medians were 864 ms and 1,026 ms, with maxima of 1,403 ms and
+2,019 ms. These endpoints include platform and network time but do little
+application work.
+
+The Supabase Query Performance view showed a 99.99% cache-hit rate and 32
+statements in its “slow queries” list. In the inspected NOVA statements,
+`net.http_post` had a 51 ms maximum, the attendance business-boundary function
+189 ms, and the work-boundary function 105 ms. The query counters are
+`pg_stat_statements` aggregates, not a matching 24-hour sample, and do not
+identify the database execution time for a particular slow API request. They
+do not show one multi-second SQL statement explaining the Netlify p95. The
+known Netlify Ohio to Supabase Seoul distance plus request fan-out/pool
+acquisition remains a plausible cause, but current measurements do not prove
+that moving the runtime alone will meet a target.
+
+## Latest local capacity run — 10 October 2026
+
+The final isolated PostgreSQL 17 QA ran 200 synthetic employees with 10 tasks
+each and at most 25 concurrent requests. Per-wave local in-process p50/p95/p99
+were: work context 298/418/455 ms; task create/self-assign 171/241/299 ms;
+timer start 95/138/187 ms; timer stop 54/77/99 ms; assignment reads
+365/537/588 ms. This is a useful write-burst and data-integrity check, not an
+HTTP/network test, a sustained month-long workload, or a Netlify/Cloudflare
+capacity guarantee. Production remains slow by Netlify's mixed-route function
+percentiles; keep the hosted speed gate open.
+
+The Netlify function's privacy-safe request diagnostics provide a clearer
+example of the path cost. In the first roughly two hours of the visible
+24-hour log window, a sequence of five-minute background-tick calls took
+2.47–2.72 seconds inside NOVA, each using nine
+sequential database queries. Those calls summed 1.48–1.66 seconds of query
+round trips and 0.98–1.11 seconds of pool acquisition time, with individual
+query maxima mostly 166–207 ms. Two `auth.get-session` samples measured 3.38
+seconds on the first request and 1.17 seconds on the next; the first included
+about 2.53 seconds across six auth queries and roughly 3.06 seconds summed
+pool acquisition across both pools, while the repeat used one NOVA query
+(165 ms) and about one second of acquisition. These are only a couple of auth
+requests, not a p95. One cold function invocation lasted about two seconds
+longer than its handler; a later warm invocation was within tens of
+milliseconds. That separates a cold-start penalty from the recurring
+cross-region round-trip and connection cost. Pool/query subtotals overlap and
+are not elapsed times to add together.
+
+**Decision:** treat speed as an open production issue. Before changing
+providers, capture route-level warm and cold distributions plus browser
+waterfalls from an authenticated session, correlate route-group timings with
+pool wait and database execution, reduce safe serial fan-out where operation
+semantics allow it, then repeat the same workload from a candidate
+Asia-region runtime. Keep the same database and scheduler during that
+comparison. Do not claim a fix from health probes, a successful build, or an
+aggregate function metric.
 
 ## What the evidence says so far
 
@@ -245,10 +305,11 @@ permanent hosting change.
 
 ### 5. Test region and runtime choices before migration
 
-- [ ] Confirm the currently selected Netlify Function region in the project
+- [x] Confirm the currently selected Netlify Function region in the project
   settings, rather than relying only on the site's age or default. Netlify's
-  current documented default is `cmh` (Ohio); `nrt` (Tokyo) is available on
-  Pro and Enterprise plans.
+  selected function ran in `cmh` (Ohio); the project's current settings locked
+  region configuration behind a plan upgrade. Netlify documents `nrt` (Tokyo)
+  as available on Pro and Enterprise plans.
 - [ ] If the plan allows it, compare an `nrt` deploy against the same
   authenticated workload and database. Netlify runs each function in one
   region, so this is a controlled regional comparison, not geo-routing. Keep
