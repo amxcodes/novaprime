@@ -58,6 +58,7 @@ export async function waitForHostedCommit(options: {
   origin: string;
   secret: string;
   expectedCommit: string;
+  expectedDatabaseFingerprint: string;
   fetcher?: ProviderFetcher;
   wait?: (milliseconds: number) => Promise<void>;
   intervalMs?: number;
@@ -66,6 +67,9 @@ export async function waitForHostedCommit(options: {
   const origin = normalizeHostedDeploymentOrigin(options.origin);
   if (!origin) throw new Error("UPDATE_HOST_ORIGIN_INVALID");
   if (!fullCommitPattern.test(options.expectedCommit)) throw new Error("UPDATE_HOST_COMMIT_INVALID");
+  if (!/^[a-f0-9]{64}$/i.test(options.expectedDatabaseFingerprint)) {
+    throw new Error("UPDATE_HOST_DATABASE_FINGERPRINT_INVALID");
+  }
   if (!options.secret) throw new Error("UPDATE_HOST_IDENTITY_SECRET_REQUIRED");
 
   const maxChecks = options.maxChecks ?? 21;
@@ -87,6 +91,14 @@ export async function waitForHostedCommit(options: {
     const identity = await inspectNovaIdentity(environment, fetcher);
     if (identity.state === "identified") {
       lastDetail = undefined;
+      if (identity.databaseFingerprint !== options.expectedDatabaseFingerprint.toLowerCase()) {
+        return { status: "unverifiable", checks, detail: "RUNTIME_DATABASE_TARGET_MISMATCH", origin };
+      }
+      if (identity.schemaReady !== true || identity.migrationLedgerPresent !== true) {
+        lastDetail = "RUNTIME_DATABASE_SCHEMA_NOT_READY";
+        if (checks < maxChecks) await wait(intervalMs);
+        continue;
+      }
       const value = identity.release;
       if (!value || !fullCommitPattern.test(value)) {
         return { status: "unverifiable", checks, detail: "RUNTIME_RELEASE_COMMIT_NOT_FULL_SHA", origin };

@@ -4,13 +4,19 @@ import { normalizeHostedDeploymentOrigin, waitForHostedCommit } from "./host-ver
 
 const expectedCommit = "a".repeat(40);
 const oldCommit = "b".repeat(40);
+const expectedDatabaseFingerprint = "c".repeat(64);
 
-function identityResponse(releaseSha: string | undefined): Response {
+function identityResponse(
+  releaseSha: string | undefined,
+  databaseFingerprint = expectedDatabaseFingerprint,
+  schemaReady = true,
+  migrationLedgerPresent = true,
+): Response {
   return Response.json({
     service: "nova-api",
     status: "identified",
     runtime: { adapter: "netlify", id: "deploy-123", ...(releaseSha ? { releaseSha } : {}) },
-    database: { fingerprint: "c".repeat(64), schemaReady: true, migrationLedgerPresent: true },
+    database: { fingerprint: databaseFingerprint, schemaReady, migrationLedgerPresent },
     scheduler: "supabase",
   });
 }
@@ -52,6 +58,7 @@ test("polls the protected deployment identity until the exact pushed commit is l
     origin: "https://nova.example",
     secret: "background-secret",
     expectedCommit,
+    expectedDatabaseFingerprint,
     fetcher,
     wait: async (milliseconds) => { waits.push(milliseconds); },
     intervalMs: 100,
@@ -70,6 +77,7 @@ test("does not claim verification from an abbreviated runtime SHA", async () => 
     origin: "https://nova.example",
     secret: "background-secret",
     expectedCommit,
+    expectedDatabaseFingerprint,
     fetcher: async () => identityResponse(expectedCommit.slice(0, 12)),
     maxChecks: 3,
   });
@@ -82,6 +90,7 @@ test("leaves a deployment pending when the host still serves an older full commi
     origin: "https://nova.example",
     secret: "background-secret",
     expectedCommit,
+    expectedDatabaseFingerprint,
     fetcher: async (input) => {
       expect(new URL(String(input)).pathname).toBe("/api/internal/deployment/identity");
       calls += 1;
@@ -102,6 +111,7 @@ test("requires the public API to become ready after the exact commit is deployed
     origin: "https://nova.example",
     secret: "background-secret",
     expectedCommit,
+    expectedDatabaseFingerprint,
     fetcher: async (input, init) => {
       if (new URL(String(input)).pathname === "/api/ready") {
         readinessCalls += 1;
@@ -127,6 +137,7 @@ test("does not mark an exact deployment ready when the public readiness response
     origin: "https://nova.example",
     secret: "background-secret",
     expectedCommit,
+    expectedDatabaseFingerprint,
     fetcher: async (input) => new URL(String(input)).pathname === "/api/ready"
       ? Response.json({ service: "another-app", status: "ready" })
       : identityResponse(expectedCommit),
@@ -141,6 +152,7 @@ test("reports readiness as pending when the exact deployed commit never becomes 
     origin: "https://nova.example",
     secret: "background-secret",
     expectedCommit,
+    expectedDatabaseFingerprint,
     fetcher: async (input) => new URL(String(input)).pathname === "/api/ready"
       ? readinessResponse(503)
       : identityResponse(expectedCommit),
@@ -158,11 +170,57 @@ test("stops on an invalid identity credential without repeated requests", async 
     origin: "https://nova.example",
     secret: "bad-secret",
     expectedCommit,
+    expectedDatabaseFingerprint,
     fetcher: async () => { calls += 1; return Response.json({ error: "unauthorized" }, { status: 401 }); },
     maxChecks: 5,
   });
   expect(result).toMatchObject({ status: "unverifiable", checks: 1, detail: "CREDENTIAL_REJECTED" });
   expect(calls).toBe(1);
+});
+
+test("refuses to verify a commit when the hosted runtime serves a different database", async () => {
+  let readinessCalls = 0;
+  const result = await waitForHostedCommit({
+    origin: "https://nova.example",
+    secret: "background-secret",
+    expectedCommit,
+    expectedDatabaseFingerprint,
+    fetcher: async (input) => {
+      if (new URL(String(input)).pathname === "/api/ready") {
+        readinessCalls += 1;
+        return readinessResponse();
+      }
+      return identityResponse(expectedCommit, "d".repeat(64));
+    },
+  });
+  expect(result).toMatchObject({
+    status: "unverifiable", checks: 1, detail: "RUNTIME_DATABASE_TARGET_MISMATCH", origin: "https://nova.example",
+  });
+  expect(readinessCalls).toBe(0);
+});
+
+test("waits for database schema and migration-ledger readiness before verifying", async () => {
+  let identityCalls = 0;
+  let readinessCalls = 0;
+  const result = await waitForHostedCommit({
+    origin: "https://nova.example",
+    secret: "background-secret",
+    expectedCommit,
+    expectedDatabaseFingerprint,
+    fetcher: async (input) => {
+      if (new URL(String(input)).pathname === "/api/ready") {
+        readinessCalls += 1;
+        return readinessResponse();
+      }
+      identityCalls += 1;
+      return identityResponse(expectedCommit, expectedDatabaseFingerprint, identityCalls > 1, true);
+    },
+    wait: async () => {},
+    maxChecks: 2,
+  });
+  expect(result).toMatchObject({ status: "verified", checks: 2 });
+  expect(identityCalls).toBe(2);
+  expect(readinessCalls).toBe(1);
 });
 
 test("rejects an invalid origin or abbreviated expected commit before making a request", async () => {
@@ -172,13 +230,22 @@ test("rejects an invalid origin or abbreviated expected commit before making a r
     origin: "http://nova.example",
     secret: "background-secret",
     expectedCommit,
+    expectedDatabaseFingerprint,
     fetcher,
   })).rejects.toThrow("UPDATE_HOST_ORIGIN_INVALID");
   await expect(waitForHostedCommit({
     origin: "https://nova.example",
     secret: "background-secret",
     expectedCommit: expectedCommit.slice(0, 12),
+    expectedDatabaseFingerprint,
     fetcher,
   })).rejects.toThrow("UPDATE_HOST_COMMIT_INVALID");
+  await expect(waitForHostedCommit({
+    origin: "https://nova.example",
+    secret: "background-secret",
+    expectedCommit,
+    expectedDatabaseFingerprint: "invalid",
+    fetcher,
+  })).rejects.toThrow("UPDATE_HOST_DATABASE_FINGERPRINT_INVALID");
   expect(calls).toBe(0);
 });

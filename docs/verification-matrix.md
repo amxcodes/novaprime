@@ -18,10 +18,23 @@ with bounded backoff; configuration and auth failures remain immediate. A
 fresh clean-start run produced only successful first ticks. Only the uniquely
 named QA database volume and Compose resources were deleted after that run.
 
-The available project-scoped Supabase management token returned 403 for the
-target project's migration ledger; no live migration or other cloud write was
-attempted. No hosted Netlify/Cloudflare rollout or real Hyperdrive pooling
-load test is claimed. Detailed commands and evidence are recorded in
+The 2026-10-10 repeat used a new isolated PostgreSQL 17 database, rebuilt the
+application image, applied migrations 0001–0079, passed all 53 rollback/RLS
+fixtures, the specialized attendance/WFH/leave/geofence smoke, app-role
+preflight, and the updater rehearsal. The 200-employee authenticated lifecycle
+burst passed 4,233 assertions and left 200 tasks, assignments, and closed
+timers with zero open timers. Its in-process local PostgreSQL p95s were
+2,613.9 ms for work-context, 1,742.4 ms for task create/self-assign,
+2,024.6 ms for timer start, 781.6 ms for timer stop, and 819.5 ms for
+assignment reads. This is a synchronized, one-task-per-employee burst; it is
+not HTTP, hosted-provider, sustained-soak, or ten-tasks-per-day evidence.
+
+The available project-scoped Supabase Management API token returned 403 for
+the target project's migration ledger. The QA `nova_app` URL connected, but
+the migration-ledger query was denied with `42501`; neither path can establish
+the current remote schema head or Cron inventory. No live migration or other
+cloud write was attempted. No hosted Netlify/Cloudflare rollout or real
+Hyperdrive pooling load test is claimed. Detailed commands and evidence are recorded in
 [`runtime-smoke.md`](runtime-smoke.md).
 
 The latest isolated PostgreSQL QA also exercised the updater's direct database
@@ -261,6 +274,22 @@ browser gate remains partial.
   classification, an admin assignment with a distinct reviewer, and due-date
   editing. Employee-originated task creation, timer/submission/review, correction
   creation, handover and broad Work/HR browser journeys remain unverified.
+
+## Current readiness status — 2026-10-10
+
+This table is the current summary. Older date-stamped results below are kept as
+history; use newer evidence above when results differ.
+
+| Gate | Current result | What's still needed |
+| --- | --- | --- |
+| Actual deployed baseline | **Partly verified.** Public Netlify `/api/health` and `/api/ready` both returned HTTP 200 today. The deploy SHA and active scheduler remain unknown. The Supabase app connection cannot read the migration ledger (`42501`) and the available Management API token is missing read permission (`403`). | Read-only access to the current Netlify deploy and a migration-owner/management-role view of the exact disposable Supabase project, including Cron/Vault inventory. Do not migrate until the ledger and a recoverable backup are verified. |
+| Customer releases and updates | **Incomplete.** The direct PostgreSQL updater path passed the isolated 0072→0079 rehearsal. Hosted verification now compares the live database fingerprint with the migration target and checks schema/ledger and public readiness. The updater still has no published stable baseline release/tag. | Prepare and verify the stable baseline plus a later release; rehearse Supabase migration API, clean-clone adoption, fork conflicts, wrong-target refusal, failure/retry, a real restore, and post-migration host-build failure. |
+| Advertised first installs | **Partial.** A clean local Docker/PostgreSQL 17 install applied 79 migrations and passed the authenticated lifecycle, protected tick, policy checks, and 200-employee × 10-task burst. Public Netlify health/readiness return 200; Netlify package smoke and Cloudflare local Worker build/smoke pass. No live provider installation was run. | Fresh Netlify+Supabase and Cloudflare+Supabase installs with sign-in, representative read/write, actual Hyperdrive, one real tick, and restore. For Docker, rehearse public TLS/firewall and backup/restore. |
+| Same-database runtime move | **Planning hardened; execution unproven.** The Netlify→Cloudflare plan preserves database, scheduler, secrets, and origin and selects a Worker build without Cron during candidate validation. Focused planner tests pass. | Implement and rehearse journaled candidate upload, exact provider readback, traffic promotion, and rollback/recovery in a disposable provider account. Keep execution disabled meanwhile. |
+| Scheduler ownership | **Local contract and handoff guidance pass; hosted ownership unknown.** The planner now requires the exact single active `nova-background-tick` Supabase job when that scheduler is selected. The manager could not inspect the target project's Cron inventory; no remote trigger was changed. Duplicate invocations can overlap because the tick has no portable distributed single-flight lock. | Verify exactly one active trigger and exercise duplicate/missed/overlap/failure/retry/rotation behavior using provider access and live run history. Decide on a lock after validating its behavior on both Supabase transaction pooling and direct PostgreSQL. |
+| Database moves | **Separately gated; no transfer implemented or attempted.** Runtime plans must preserve database identity. | Treat copy/cutover as a future project with write freeze/drain, verified backup/restore, object/data/sequence/RLS/auth comparison, and rehearsed recovery. Payroll remains future work with schema/permission foundation only. |
+| User-facing quality | **Automated coverage is broad; live/manual verification remains.** The full suite passed 571 repository/server tests plus rendered-component checks, covering grant-driven navigation, direct-route denial, keyboard and focus states, touch sizing, and narrow layouts. | Complete real restricted-role and employee workflow browser journeys, screen-reader review, and manual phone/tablet browser runs. Payroll execution remains deferred; its permission/schema groundwork is retained. |
+| Speed and capacity | **Representative local burst passes; hosted/sustained work remains.** At 200 employees × 10 tasks, concurrency 25, work-context p95 was 357 ms; create/self-assign 225 ms; timer start 254 ms; timer stop 58 ms; assignment read 445 ms. The assignment DB query p95 was 186 ms and pool-acquire p95 298 ms. Before the query change, same-profile assignment-read p95 was 19.9 s. This runs handlers in-process over local PostgreSQL. | Run a sustained daily workload and measure HTTP/runtime/DB timings, pool headroom, scheduled work, and real Netlify/Hyperdrive behavior. Do not present this local burst as a hosted SLA or provider capacity guarantee. |
 
 ## Not verified / release gates
 

@@ -45,6 +45,7 @@ import {
   type UpdateJournal,
 } from "./update/state.js";
 import { normalizeHostedDeploymentOrigin, waitForHostedCommit } from "./update/host-verification.ts";
+import { databaseIdentityFingerprint } from "../server/src/deployment-identity.ts";
 import { confirm, promptLine, promptSecret, requireInteractiveTerminal } from "./update/terminal.js";
 
 const repoRoot = resolve(import.meta.dir, "..");
@@ -67,7 +68,7 @@ interface OfferPushAdapters {
   verifyPinnedReleaseStillCurrent: typeof verifyPinnedReleaseStillCurrent;
   pushUpdateBranch: typeof pushUpdateBranch;
   saveUpdateJournal: typeof saveUpdateJournal;
-  verifyHostedDeployment: (commit: string) => Promise<void>;
+  verifyHostedDeployment: (commit: string, databaseFingerprint: string) => Promise<void>;
 }
 
 interface MigrationApplyAdapters {
@@ -708,8 +709,21 @@ function isSupportedCustomerPushRemote(remote: GitRemoteInfo): boolean {
   }
 }
 
+function updateTargetDatabaseFingerprint(target: DatabaseTarget): string {
+  const connectionString = target.kind === "postgres"
+    ? target.url
+    : `postgresql://nova_app@db.${target.projectRef}.supabase.co:5432/postgres`;
+  const fingerprint = databaseIdentityFingerprint(
+    connectionString,
+    target.kind === "supabase" ? target.projectRef : undefined,
+  );
+  if (!fingerprint) throw new Error("UPDATE_DATABASE_FINGERPRINT_UNAVAILABLE");
+  return fingerprint;
+}
+
 async function verifyHostedDeploymentAfterPush(
   commit: string,
+  expectedDatabaseFingerprint: string,
   askConfirm: typeof confirm,
 ): Promise<void> {
   const configuredOrigin = process.env.NOVA_PUBLIC_ORIGIN ?? process.env.BETTER_AUTH_URL;
@@ -724,16 +738,21 @@ async function verifyHostedDeploymentAfterPush(
     return;
   }
   if (!await askConfirm(
-    `Check whether ${origin} serves commit ${commit.slice(0, 12)} and is ready? This sends the configured background secret only to this origin's protected read-only identity endpoint, then checks public /api/ready without credentials. It checks up to 21 times at 30-second intervals and can take about 17 minutes with request timeouts.`,
+    `Check whether ${origin} serves commit ${commit.slice(0, 12)} on the same database updated by this run and is ready? This sends the configured background secret only to this origin's protected read-only identity endpoint, then checks public /api/ready without credentials. It checks up to 21 times at 30-second intervals and can take about 17 minutes with request timeouts.`,
   )) {
     console.info("Hosted deployment check skipped; no identity request was sent.");
     return;
   }
 
   console.info(`Waiting for ${origin} to report the pushed commit through NOVA's protected read-only identity endpoint…`);
-  const result = await waitForHostedCommit({ origin, secret, expectedCommit: commit });
+  const result = await waitForHostedCommit({
+    origin,
+    secret,
+    expectedCommit: commit,
+    expectedDatabaseFingerprint,
+  });
   if (result.status === "verified") {
-    console.info(`HOST_DEPLOYMENT_VERIFIED: ${result.runtime ?? "runtime"} serves exact commit ${result.release.slice(0, 12)} and public /api/ready is healthy at ${origin}.`);
+    console.info(`HOST_DEPLOYMENT_VERIFIED: ${result.runtime ?? "runtime"} serves exact commit ${result.release.slice(0, 12)} on the database updated by this run, and public /api/ready is healthy at ${origin}.`);
   } else if (result.status === "pending") {
     const observed = result.observedRelease
       ? ` It still reports ${result.observedRelease.slice(0, 12)}.`
@@ -754,6 +773,7 @@ async function offerPush(
   target: DatabaseTarget,
   overrides: Partial<OfferPushAdapters> = {},
 ): Promise<void> {
+  const expectedDatabaseFingerprint = updateTargetDatabaseFingerprint(target);
   const services: OfferPushAdapters = {
     repoRoot,
     inspectGitCheckout,
@@ -763,7 +783,8 @@ async function offerPush(
     verifyPinnedReleaseStillCurrent,
     pushUpdateBranch,
     saveUpdateJournal,
-    verifyHostedDeployment: (commit) => verifyHostedDeploymentAfterPush(commit, overrides.confirm ?? confirm),
+    verifyHostedDeployment: (commit, databaseFingerprint) =>
+      verifyHostedDeploymentAfterPush(commit, databaseFingerprint, overrides.confirm ?? confirm),
     ...overrides,
   };
   const sourceBeforePush = await services.inspectGitCheckout(services.repoRoot);
@@ -823,7 +844,7 @@ async function offerPush(
   journal.phase = "complete";
   await services.saveUpdateJournal(journal);
   console.info(`Push accepted: ${pushed.commit.slice(0, 12)} → ${pushed.destination.remoteName}/${pushed.destination.branch}. Hosted activation has not yet been confirmed.`);
-  await services.verifyHostedDeployment(pushed.commit);
+  await services.verifyHostedDeployment(pushed.commit, expectedDatabaseFingerprint);
 }
 
 export async function runGuided(options: Options, overrides: UpdateRuntimeOverrides = {}): Promise<void> {

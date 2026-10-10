@@ -135,6 +135,11 @@ function schedulerScopeBlockers(
 
     const activeCount = scheduler.triggers.filter(({ active }) => active === true).length;
     if (activeCount > 1) blockers.push(`DUPLICATE_${providerName.toUpperCase()}_SCHEDULER_TRIGGERS`);
+    if (providerName === "supabase" && currentScheduler === "supabase" &&
+        (scheduler.triggers.length !== 1 || scheduler.triggers[0]?.name !== "nova-background-tick" ||
+          scheduler.triggers[0]?.schedule !== "*/5 * * * *" || scheduler.triggers[0]?.active !== true)) {
+      blockers.push("SUPABASE_CRON_NOT_EXACTLY_ONE_EXPECTED_ACTIVE_TICK");
+    }
     if (changingScheduler && selectedScheduler === providerName && currentScheduler !== providerName && activeCount > 0) {
       blockers.push(`TARGET_SCHEDULER_ALREADY_ACTIVE:${providerName}`);
     }
@@ -423,17 +428,33 @@ export function buildDeploymentPreview(
     actions.push({ id: "handover-scheduler", resource: "scheduler", operation: "hand over to " + request.scheduler, execution: "not-implemented" });
   } else if (runtimeChanges && currentScheduler === "supabase" && request.database === "keep") {
     actions.push({
-      id: "repoint-supabase-cron",
+      id: "verify-supabase-cron-before-cutover",
       resource: "scheduler",
-      operation: "preserve the Supabase Cron callback when the public origin stays the same; otherwise update it to the verified candidate HTTPS origin",
+      operation: "verify the existing Supabase Cron tick and successful pg_net response; keep its Vault callback on the current production origin and keep Cloudflare Cron disabled through origin promotion",
       execution: "not-implemented",
-      reason: "The current job stores its callback origin in Supabase Vault. A stable origin follows the new route automatically; a changed origin requires updating the existing job, then verifying one active job and its pg_net response before retiring the old runtime.",
+      reason: "The first runtime move keeps the public origin, database, and scheduler owner fixed, so no scheduler write is needed. Current inventory does not read the Vault callback or pg_net response; verify both before promotion. If the public origin must change, retarget the existing job only after promotion, then verify delivery before retiring the old runtime. Never point production Cron at a candidate URL.",
     });
   } else {
     actions.push({ id: "verify-scheduler", resource: "scheduler", operation: "verify and retain the currently selected scheduler", execution: "provider-inventory-required" });
   }
   if (runtimeChanges) {
     actions.push({ id: "promote-origin", resource: "domain", operation: "promote the reviewed hostname after candidate and scheduler verification", execution: "not-implemented" });
+    actions.push({
+      id: "verify-promoted-runtime",
+      resource: "runtime",
+      operation: "verify public readiness, deployed runtime/release identity, preserved database identity, and selected scheduler delivery after origin promotion",
+      execution: "not-implemented",
+      reason: request.runtime === "cloudflare" && currentScheduler === "supabase" && request.database === "keep"
+        ? "After the stable hostname reaches Cloudflare, recheck the live identity and same Supabase database, then verify the next pg_net response and that only the existing Supabase Cron remains active. Keep the source runtime available as the rollback target until these checks pass. The manager cannot yet verify the pg_net response or execute this recovery-aware step."
+        : "The manager cannot yet verify the promoted runtime or execute the recovery-aware post-cutover check. Keep the source runtime available until the target's live identity, readiness, database, and scheduler are verified.",
+    });
+    actions.push({
+      id: "retire-source-runtime",
+      resource: "runtime",
+      operation: "retire the previous runtime only after the promoted runtime and scheduler have passed verification",
+      execution: "not-implemented",
+      reason: "No source-runtime teardown is implemented. Preserve the old runtime as the rollback target until explicit acceptance and rollback-window checks are complete.",
+    });
   }
 
   const identity = JSON.stringify({ request, schedulerScopeConfirmed, source: inventory.source, localHints: {

@@ -8,9 +8,21 @@ const repositoryRoot = resolve(import.meta.dir, "..");
 const composeFile = resolve(repositoryRoot, "docker", "compose.yaml");
 const projectName = `nova-qa-${randomUUID()}`;
 const loadEmployeeCount = process.env.NOVA_QA_LOAD_EMPLOYEES;
-if (loadEmployeeCount !== undefined && !/^(?:0|[1-9]\d?|100)$/.test(loadEmployeeCount)) {
-  throw new Error("NOVA_QA_LOAD_EMPLOYEES_MUST_BE_BETWEEN_0_AND_100");
+if (loadEmployeeCount !== undefined && !/^(?:0|[1-9]\d?|1\d\d|200)$/.test(loadEmployeeCount)) {
+  throw new Error("NOVA_QA_LOAD_EMPLOYEES_MUST_BE_BETWEEN_0_AND_200");
 }
+function optionalBoundedInteger(name: string, fallback: number, minimum: number, maximum: number): number {
+  const value = process.env[name];
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`${name}_MUST_BE_BETWEEN_${minimum}_AND_${maximum}`);
+  }
+  return parsed;
+}
+const employeeCount = Number(loadEmployeeCount ?? "0");
+const loadConcurrency = optionalBoundedInteger("NOVA_QA_LOAD_CONCURRENCY", Math.max(1, Math.min(25, employeeCount)), 1, 200);
+const tasksPerEmployee = optionalBoundedInteger("NOVA_QA_LOAD_TASKS_PER_EMPLOYEE", 1, 1, 10);
 function optionalPoolOverride(name: string, maximum: number): string | undefined {
   const value = process.env[name];
   if (value === undefined) return undefined;
@@ -24,7 +36,7 @@ const qaDbPoolMax = optionalPoolOverride("NOVA_QA_DB_POOL_MAX", 50);
 const qaAuthPoolMax = optionalPoolOverride("NOVA_QA_AUTH_POOL_MAX", 25);
 const qaRequestScoped = process.env.NOVA_QA_REQUEST_SCOPED === "true";
 if (loadEmployeeCount && loadEmployeeCount !== "0") {
-  console.info(`Optional synthetic employee load profile: ${loadEmployeeCount} employees`);
+  console.info(`Optional in-process DB-backed workload: ${loadEmployeeCount} employees, ${tasksPerEmployee} task(s) each, at most ${loadConcurrency} concurrent requests; not a hosted SLA.`);
 }
 if (qaDbPoolMax || qaAuthPoolMax) {
   console.info(`QA pool profile: database=${qaDbPoolMax ?? "configured default"}, auth=${qaAuthPoolMax ?? "configured default"}`);
@@ -53,6 +65,8 @@ const qaEnvironment = {
   NOVA_QA_DB_POOL_MAX: qaDbPoolMax ?? "",
   NOVA_QA_AUTH_POOL_MAX: qaAuthPoolMax ?? "",
   NOVA_QA_LOAD_EMPLOYEES: loadEmployeeCount ?? "0",
+  NOVA_QA_LOAD_CONCURRENCY: String(loadConcurrency),
+  NOVA_QA_LOAD_TASKS_PER_EMPLOYEE: String(tasksPerEmployee),
   NOVA_QA_REQUEST_SCOPED: qaRequestScoped ? "true" : "false",
 };
 try {

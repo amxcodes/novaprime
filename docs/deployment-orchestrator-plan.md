@@ -112,8 +112,12 @@ backup recovery, and row-level verification have been rehearsed.
    Supabase Cron trigger for the first Netlify-to-Cloudflare move. If the
    installation currently uses Netlify Cron, move it to Supabase Cron first;
    deploy Cloudflare with `cloudflare/wrangler.supabase-cron.toml` so no
-   Cloudflare Cron is registered. The same Supabase job then continues calling
-   the stable public origin as DNS moves from Netlify to Cloudflare.
+   Cloudflare Cron is registered. Keep the Supabase job and Vault callback
+   unchanged while testing the candidate and promoting the same public origin;
+   the existing job then follows DNS to Cloudflare. Verify its recent
+   `pg_net` response before and after promotion. Never point production Cron
+   at a candidate URL. If the public origin must change, update the existing
+   job only after promotion and verify delivery before retiring the old host.
 6. **Do not push source as an implicit deploy step.** A plan may deploy a
    verified, clean commit directly or explain that the configured Git deploy
    needs a commit. Any repository edit/push is a separate, reviewable action.

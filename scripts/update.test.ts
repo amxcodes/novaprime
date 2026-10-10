@@ -270,6 +270,7 @@ describe("update coordinator integration", () => {
         : prompt.replace(/^Type exactly: /, ""),
     });
     let verifiedCommit: string | undefined;
+    let verifiedDatabaseFingerprint: string | undefined;
     let pushCount = 0;
     let pushedBranch: string | undefined;
     harness.runtime.offerPushAdapters = {
@@ -287,7 +288,10 @@ describe("update coordinator integration", () => {
           },
         };
       },
-      verifyHostedDeployment: async (commit) => { verifiedCommit = commit; },
+      verifyHostedDeployment: async (commit, databaseFingerprint) => {
+        verifiedCommit = commit;
+        verifiedDatabaseFingerprint = databaseFingerprint;
+      },
     };
 
     await runGuided({ mode: "apply", resume: false, help: false }, harness.runtime);
@@ -295,6 +299,7 @@ describe("update coordinator integration", () => {
     expect(pushCount).toBe(1);
     expect(pushedBranch).toBe("production");
     expect(verifiedCommit).toBe(fixture.releaseCommit);
+    expect(verifiedDatabaseFingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(harness.getJournal()?.phase).toBe("complete");
     expect(harness.counts()).toMatchObject({ databaseWriteCalls: 1, preflightCalls: 1 });
   }, 60_000);

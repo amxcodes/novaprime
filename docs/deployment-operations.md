@@ -166,7 +166,7 @@ The operator does not paste every value into every product. Use this split:
 
 | Deployment | Runtime/API secrets | Scheduler connection |
 | --- | --- | --- |
-| Netlify + Supabase Cloud | Netlify **Project configuration → Environment variables**. Mark `DATABASE_URL`, `BETTER_AUTH_SECRET`, `NOVA_BOOTSTRAP_TOKEN`, `NOVA_SECRETS_ENCRYPTION_KEY`, and `NOVA_BACKGROUND_JOB_SECRET` as secret values, scoped to Functions. Keep `BETTER_AUTH_URL`, `NOVA_ALLOWED_ORIGINS`, and optional `NOVA_PUBLIC_ORIGIN` as regular Functions variables. `NOVA_BACKGROUND_SCHEDULER=netlify` or `supabase` is a regular, non-secret setting required in both Builds and Functions. | The committed build plugin selects the function directory during the production build. `netlify` bundles the API and five-minute scheduled adapter; `supabase` bundles only the API. Preview and branch builds never bundle a production schedule. After choosing `supabase`, run `bun run supabase:scheduler` only after API readiness. If the selector was already marked secret, delete it and recreate it as a regular variable; keep Netlify secret scanning enabled. Do not put setup-only values (`SUPABASE_ACCESS_TOKEN`, `MIGRATOR_DATABASE_URL`, `NOVA_APP_PASSWORD`, `NOVA_SUPABASE_POOLER_HOST`, `NOVA_SUPABASE_PROJECT_REF`, or `NOVA_APPLICATION_DATABASE_ROLE`) on the hosted API. No source edit is needed. |
+| Netlify + Supabase Cloud | Netlify **Project configuration → Environment variables**. Mark `DATABASE_URL`, `BETTER_AUTH_SECRET`, `NOVA_BOOTSTRAP_TOKEN`, `NOVA_SECRETS_ENCRYPTION_KEY`, and `NOVA_BACKGROUND_JOB_SECRET` as secret values, scoped to Functions. Keep `BETTER_AUTH_URL`, `NOVA_ALLOWED_ORIGINS`, and optional `NOVA_PUBLIC_ORIGIN` as regular Functions variables. `NOVA_BACKGROUND_SCHEDULER=netlify` or `supabase` is a regular, non-secret setting required in both Builds and Functions. | The committed build plugin selects the function directory during the production build. `netlify` bundles the API and five-minute scheduled adapter; `supabase` bundles only the API. Preview and branch builds never bundle a production schedule. When first selecting `supabase`, run `bun run supabase:scheduler` only after API readiness. During a runtime move with an existing verified Supabase job, leave it unchanged. If the selector was already marked secret, delete it and recreate it as a regular variable; keep Netlify secret scanning enabled. Do not put setup-only values (`SUPABASE_ACCESS_TOKEN`, `MIGRATOR_DATABASE_URL`, `NOVA_APP_PASSWORD`, `NOVA_SUPABASE_POOLER_HOST`, `NOVA_SUPABASE_PROJECT_REF`, or `NOVA_APPLICATION_DATABASE_ROLE`) on the hosted API. No source edit is needed. |
 | Existing Vercel installations (legacy adapter) | Vercel **Project Settings → Environment Variables → Production**: private runtime credentials plus regular configuration values. Use `NOVA_BACKGROUND_SCHEDULER=vercel` (or `supabase` for Supabase Cron); add `CRON_SECRET` only for Vercel Cron. Do not include database bootstrap/operator-only variables. | `vercel.ts` reads the selector during deployment. Production registers the five-minute Vercel Cron only for `vercel`; for `supabase`, it deploys an empty Cron list and Supabase Cron is created separately after readiness. This remains for existing installations; it is not a new-customer profile. |
 | Cloudflare Worker + Supabase Cloud | Worker **Variables & Secrets**: credentials in Worker secrets; public origins as ordinary variables. The scheduler selector is supplied by the selected Wrangler config. Hyperdrive uses Supabase's Direct endpoint with restricted `nova_app` credentials (not the generated transaction-pooler URL); choose a deploy command under **Worker → Settings → Build**. | Cloudflare Cron uses `npx wrangler@4.141.0 deploy --config cloudflare/wrangler.toml`. Supabase Cron uses `npx wrangler@4.141.0 deploy --config cloudflare/wrangler.supabase-cron.toml`; that file sets `crons=[]` and selector `supabase`. Save the command and trigger a connected GitHub build/deploy. Both configs set `keep_vars=true` so dashboard-managed origin values persist. |
 | Supabase Cron/pg_net alternative | Keep API runtime values on the selected API host and set `NOVA_BACKGROUND_SCHEDULER=supabase` there | Run `bun run supabase:scheduler` from the trusted operator checkout. It reads the project ref and tick secret from private `.env` and requires the exact project ref typed before any write. It prompts for the deployed HTTPS origin if not configured and requests the management token with hidden input if absent. To switch away, run `bun run supabase:scheduler:disable`; it requires the same project confirmation and removes only NOVA's named Cron job and two Vault secrets. The token is not saved. |
@@ -196,11 +196,52 @@ selector on every runtime sharing the database, disable the previous provider
 trigger, run one manual tick, and check provider logs plus `/api/ready`.
 Supabase Cron stores the API callback origin in Vault: when a runtime move keeps
 the same public origin, the job follows the new route after domain cutover; if
-the origin changes, rerun `bun run supabase:scheduler` against the same project
-with the verified new HTTPS origin, then confirm one active job and its
-`pg_net` HTTP response before retiring the previous runtime.
+the origin changes, promote the new HTTPS origin first, then rerun
+`bun run supabase:scheduler` against the same project and confirm one active
+job plus its `pg_net` HTTP response before retiring the previous runtime.
 Preview/staging runtimes must use separate databases or have no production
 scheduler enabled.
+
+For the first **Netlify → Cloudflare** runtime move with Supabase Cron already
+selected, keep the scheduler owner, database, secrets, and public origin fixed
+through the candidate and route-promotion steps. Deploy the candidate using
+`cloudflare/wrangler.supabase-cron.toml`; its `crons = []` ensures the Worker
+has no Cloudflare Cron trigger. Test only readiness, static assets, and the
+protected read-only deployment identity through the Access-protected version
+URL. Do not send the scheduled tick to that candidate: the Worker is bound to
+the production database, and an Access challenge is not a scheduler
+credential. Before origin promotion, verify the existing Supabase job and its
+recent `net._http_response` succeeded. Compare the Vault value named
+`nova_background_url` with the stable public origin without copying it into a
+ticket or log; a SQL boolean comparison is sufficient. For example, replace
+the sample origin with the current public origin and run this read-only check
+in the selected Supabase project:
+
+```sql
+select coalesce((
+  select decrypted_secret = 'https://nova.example.com'
+  from vault.decrypted_secrets
+  where name = 'nova_background_url'
+  limit 1
+), false) as callback_matches_stable_origin;
+```
+
+Leave that callback untouched. After the stable hostname routes to
+Cloudflare, verify the public readiness endpoint and a subsequent successful
+Supabase HTTP tick, then confirm there is still exactly one active
+`nova-background-tick` and no Cloudflare Cron. The deployment manager currently
+inventories Cron rows but does not inspect the Vault callback or prove a
+successful `pg_net` response, so that verification remains an explicit
+operator check and blocks automated cutover until it can be read back safely.
+
+If the installation still uses Netlify Cron, move the scheduler to Supabase
+as a separate, verified change before moving the runtime: deploy Netlify's
+API-only function set, confirm its production Cron is gone, create and verify
+the single Supabase job, then begin the Cloudflare runtime move. If the public
+origin truly must change, update the existing Supabase callback only after the
+new origin is promoted and reachable; verify the next HTTP delivery before
+retiring the old runtime. Do not repoint production Cron to a Worker version
+URL or create a second Cron during candidate testing.
 
 Vercel's Hobby plan only supports once-daily Cron jobs, so NOVA's
 five-minute Vercel schedule is not compatible with Hobby. Use Supabase
@@ -349,23 +390,38 @@ PostgreSQL, Cloudflare, Netlify, Vercel, and a VPS.
 
 ## Backups and restore
 
-For direct PostgreSQL, take an encrypted custom-format backup before every
-upgrade and retain a tested restore copy:
+The PostgreSQL custom-format dump is **not encrypted by `pg_dump`**. Keep it in
+a private operator-only directory, encrypt it before off-host storage, and keep
+the encryption key separate from the archive. For example, with `age` already
+installed and an operator-controlled recipient configured:
 
 ```powershell
-pg_dump --format=custom --no-owner --file=nova-YYYYMMDD.dump $env:MIGRATOR_DATABASE_URL
-pg_restore --list nova-YYYYMMDD.dump
+$plain = Join-Path $env:TEMP "nova-backup-YYYYMMDD.dump"
+$encrypted = "nova-YYYYMMDD.dump.age"
+pg_dump --format=custom --no-owner --file=$plain $env:MIGRATOR_DATABASE_URL
+age --encrypt --recipient $env:NOVA_BACKUP_AGE_RECIPIENT --output $encrypted $plain
+age --decrypt --output "$plain.verify" $encrypted
+pg_restore --list "$plain.verify"
+Remove-Item -LiteralPath $plain, "$plain.verify"
 ```
 
-Restore into a fresh database first, apply the canonical migrations, restore
-application schemas/data as appropriate, run `bun run test:database`, and only
-then switch the API connection. Do not restore a production dump over a live
-customer database as an in-place experiment.
+`pg_restore --list` only shows that the decrypted archive can be read; it does
+not prove a database can be restored. The repository has no verified,
+deterministic full-database restore runbook yet. Do not treat this example as a
+restore drill or as permission to update a production database. Before a
+customer update or database move, rehearse a full restore into an empty,
+disposable PostgreSQL 17 target, recreate required roles/extensions and
+ownership, run the database and application-role preflights, verify schema and
+representative row/sequence/RLS/auth state, and record restore time. The
+restore process must preserve the same `NOVA_SECRETS_ENCRYPTION_KEY` to read
+encrypted email-provider credentials. Never restore over a live database as
+an experiment.
 
-For Supabase Cloud, use the project's managed backup/PITR controls and test a
-restore into a disposable project. The NOVA migration ledger and rollback-only
-PostgreSQL tests are the portability check; the Supabase management token is
-never a runtime secret.
+For Supabase Cloud, verify which managed backup/PITR options are enabled for
+the specific project, then test a restore into a disposable project. The NOVA
+migration ledger and rollback-only PostgreSQL tests are portability checks,
+not backup/restore evidence. The Supabase management token is never a runtime
+secret.
 
 ## Secret rotation
 

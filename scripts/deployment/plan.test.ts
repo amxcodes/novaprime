@@ -80,19 +80,29 @@ test("an unchanged topology does not propose a runtime deploy, scheduler handove
   expect(actionIds).not.toContain("promote-origin");
 });
 
-test("a hosted runtime move keeps Supabase Cron and reconciles its stored callback before origin promotion", () => {
+test("a hosted runtime move verifies and preserves Supabase Cron before promoting the stable origin", () => {
   const preview = buildDeploymentPreview(inventory, {
     runtime: "cloudflare",
     database: "keep",
     scheduler: "keep",
   });
   const actionIds = preview.actions.map(({ id }) => id);
-  expect(actionIds.indexOf("deploy-candidate")).toBeLessThan(actionIds.indexOf("repoint-supabase-cron"));
-  expect(actionIds.indexOf("repoint-supabase-cron")).toBeLessThan(actionIds.indexOf("promote-origin"));
-  expect(preview.actions.find(({ id }) => id === "repoint-supabase-cron")).toMatchObject({
+  expect(actionIds.indexOf("deploy-candidate")).toBeLessThan(actionIds.indexOf("verify-supabase-cron-before-cutover"));
+  expect(actionIds.indexOf("verify-supabase-cron-before-cutover")).toBeLessThan(actionIds.indexOf("promote-origin"));
+  expect(preview.actions.find(({ id }) => id === "verify-supabase-cron-before-cutover")).toMatchObject({
     execution: "not-implemented",
     resource: "scheduler",
   });
+  expect(preview.actions.find(({ id }) => id === "verify-supabase-cron-before-cutover")?.operation)
+    .toContain("keep Cloudflare Cron disabled");
+  expect(preview.actions.find(({ id }) => id === "verify-supabase-cron-before-cutover")?.reason)
+    .toContain("Never point production Cron at a candidate URL");
+  const promoted = preview.actions.find(({ id }) => id === "verify-promoted-runtime");
+  expect(promoted).toMatchObject({ execution: "not-implemented", resource: "runtime" });
+  expect(promoted?.reason).toContain("next pg_net response");
+  expect(actionIds.indexOf("promote-origin")).toBeLessThan(actionIds.indexOf("verify-promoted-runtime"));
+  expect(actionIds.indexOf("verify-promoted-runtime")).toBeLessThan(actionIds.indexOf("retire-source-runtime"));
+  expect(preview.actions.find(({ id }) => id === "retire-source-runtime")?.execution).toBe("not-implemented");
 });
 
 test("unknown global scheduler inventory blocks a proposed move", () => {
@@ -550,6 +560,54 @@ test("remote plan detects duplicate and missing triggers on the configured sched
     ? { ...provider, schedulerInventory: { ...provider.schedulerInventory, triggers: [] } }
     : provider));
   expect(missing.blockers).toContain("CONFIGURED_SCHEDULER_TRIGGER_COUNT_INVALID:supabase");
+});
+
+test("a retained Supabase scheduler requires one canonical active job and rejects stale NOVA rows", () => {
+  const supabase = {
+    provider: "supabase" as const,
+    state: "identified" as const,
+    target: "abcdefghijklmnopqrst",
+    schedulerInventory: {
+      scope: "database-project" as const,
+      state: "verified" as const,
+      completeness: "project-scoped" as const,
+      triggers: [{ id: "12", name: "nova-background-tick", schedule: "*/5 * * * *", active: true }],
+    },
+  };
+  const providers = [
+    { provider: "netlify" as const, state: "identified" as const, schedulerInventory: {
+      scope: "target-runtime" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [],
+    } },
+    { provider: "cloudflare" as const, state: "identified" as const, schedulerInventory: {
+      scope: "target-runtime" as const, state: "not-installed" as const, completeness: "resource-only" as const, triggers: [],
+    } },
+    supabase,
+    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", origin: "https://nova.example.test", configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64) },
+  ];
+  const request = { runtime: "cloudflare" as const, database: "keep" as const, scheduler: "keep" as const };
+  const valid = buildDeploymentPreview(inventory, request, providers, true);
+  expect(valid.blockers).not.toContain("SUPABASE_CRON_NOT_EXACTLY_ONE_EXPECTED_ACTIVE_TICK");
+
+  const invalidInventories = [
+    { ...supabase.schedulerInventory, triggers: [
+      ...supabase.schedulerInventory.triggers,
+      { id: "13", name: "nova-background-tick-old", schedule: "*/5 * * * *", active: false },
+    ] },
+    { ...supabase.schedulerInventory, triggers: [
+      { id: "12", name: "nova-background-tick", schedule: "*/10 * * * *", active: true },
+    ] },
+    { ...supabase.schedulerInventory, triggers: [
+      { id: "12", name: "custom-nova-tick", schedule: "*/5 * * * *", active: true },
+    ] },
+    { ...supabase.schedulerInventory, triggers: [
+      { id: "12", name: "nova-background-tick", schedule: "*/5 * * * *", active: false },
+    ] },
+  ];
+  for (const schedulerInventory of invalidInventories) {
+    const preview = buildDeploymentPreview(inventory, request, providers.map((provider) =>
+      provider.provider === "supabase" ? { ...provider, schedulerInventory } : provider), true);
+    expect(preview.blockers).toContain("SUPABASE_CRON_NOT_EXACTLY_ONE_EXPECTED_ACTIVE_TICK");
+  }
 });
 
 test("selected scheduler scope requires confirmation and rejects an active unselected trigger", () => {

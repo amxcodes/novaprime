@@ -2404,38 +2404,15 @@ export function projectMyAssignmentSummary(row: MyAssignmentReadRow) {
 }
 
 export function myAssignmentsReadSql(): string {
-  const actionPermissions = ownAssignmentActionPermissionSql();
-  const candidatePermission = (permissionKey: string) => permissionExistsSql({
+  const correctionSourceVisible = permissionExistsSql({
     actorId: "$2",
     organisationId: "$1",
-    permissionKey: `'${permissionKey}'`,
-    clientId: "workstreams.client_id",
-    clientWorkstreamId: "tasks.client_workstream_id",
-    groupId: "tasks.work_group_id",
-    taskId: "tasks.id",
+    permissionKey: "'tasks.view'",
+    clientId: "candidate_assignments.correction_client_id",
+    clientWorkstreamId: "candidate_assignments.correction_client_workstream_id",
+    groupId: "candidate_assignments.correction_group_id",
+    taskId: "candidate_assignments.correction_of_task_id",
   });
-  const canViewTask = candidatePermission("tasks.view");
-  const canEditTask = candidatePermission("tasks.edit");
-  const canStartTask = candidatePermission("tasks.start");
-  const canSubmitTask = candidatePermission("tasks.submit");
-  const canRequestReviewer = candidatePermission("tasks.reviewer_request");
-  const canRequestHandover = candidatePermission("tasks.handover_request");
-  const actionableAssignment = `(
-    ((${canEditTask}) AND tasks.status::text NOT IN ('approved', 'done', 'cancelled'))
-    OR ((${canStartTask}) AND assignments.status::text IN ('assigned', 'in_progress', 'changes_requested')
-        AND tasks.status::text IN ('backlog', 'ready', 'in_progress', 'returned', 'blocked'))
-    OR ((${canSubmitTask}) AND assignments.status::text IN ('in_progress', 'changes_requested'))
-    OR ((${canRequestReviewer}) AND assignments.status::text NOT IN ('cancelled', 'approved')
-        AND tasks.status::text <> 'cancelled'
-        AND NOT EXISTS (SELECT 1 FROM nova.task_reviewer_requests pending
-          WHERE pending.assignment_id = assignments.id AND pending.status = 'pending'
-            AND pending.expires_at > clock_timestamp()))
-    OR ((${canRequestHandover}) AND assignments.status::text NOT IN ('cancelled', 'approved')
-        AND tasks.status::text <> 'cancelled'
-        AND NOT EXISTS (SELECT 1 FROM nova.task_assignment_handover_requests pending
-          WHERE pending.assignment_id = assignments.id AND pending.status = 'pending'
-            AND pending.expires_at > clock_timestamp()))
-  )`;
   return `WITH actor_business_date AS MATERIALIZED (
     SELECT nova.person_business_date($2) AS business_date
   ), active_grants AS MATERIALIZED (
@@ -2450,8 +2427,8 @@ export function myAssignmentsReadSql(): string {
       AND role_assignments.effective_on <= actor_date.business_date
       AND (role_assignments.effective_until IS NULL OR role_assignments.effective_until >= actor_date.business_date)
       AND roles.archived_at IS NULL
-  ), candidate_assignments AS MATERIALIZED (
-    SELECT assignments.id, assignments.task_id, tasks.title, tasks.description,
+   ), candidate_assignments AS MATERIALIZED (
+     SELECT assignments.id, assignments.task_id, tasks.title, tasks.description,
            assignments.status, tasks.status AS task_status, assignments.review_required,
            assignments.reviewer_person_id, assignments.review_blocked_reason,
            assignments.review_blocked_at, assignments.resolution_source,
@@ -2465,7 +2442,15 @@ export function myAssignmentsReadSql(): string {
            correction_source.client_workstream_id AS correction_client_workstream_id,
            correction_source.work_group_id AS correction_group_id,
            workstreams.client_id AS client_id,
-           tasks.client_workstream_id, tasks.work_group_id
+           tasks.client_workstream_id, tasks.work_group_id,
+           capabilities.can_view,
+           capabilities.can_edit_due_date,
+           capabilities.can_start,
+           capabilities.can_submit,
+           capabilities.can_request_reviewer,
+           capabilities.can_request_handover,
+           request_state.has_pending_reviewer_request,
+           request_state.has_pending_handover_request
     FROM nova.task_assignments assignments
     JOIN nova.tasks tasks ON tasks.id = assignments.task_id
     LEFT JOIN nova.client_workstreams workstreams
@@ -2474,6 +2459,61 @@ export function myAssignmentsReadSql(): string {
       ON correction_source.id = tasks.correction_of_task_id
     LEFT JOIN nova.client_workstreams correction_workstreams
       ON correction_workstreams.id = correction_source.client_workstream_id
+     CROSS JOIN LATERAL (
+       SELECT
+         COALESCE(bool_or(grants.permission_key = 'tasks.view'), false) AS can_view,
+         COALESCE(bool_or(grants.permission_key = 'tasks.edit'), false)
+           AND tasks.status::text NOT IN ('approved', 'done', 'cancelled') AS can_edit_due_date,
+         COALESCE(bool_or(grants.permission_key = 'tasks.start'), false) AS can_start,
+         COALESCE(bool_or(grants.permission_key = 'tasks.submit'), false) AS can_submit,
+         COALESCE(bool_or(grants.permission_key = 'tasks.reviewer_request'), false) AS can_request_reviewer,
+         COALESCE(bool_or(grants.permission_key = 'tasks.handover_request'), false) AS can_request_handover
+       FROM active_grants grants
+       WHERE grants.permission_key = ANY(ARRAY[
+         'tasks.view', 'tasks.edit', 'tasks.start', 'tasks.submit',
+         'tasks.reviewer_request', 'tasks.handover_request'
+       ]::text[])
+         AND (
+           grants.scope = 'organisation'
+           OR (grants.scope = 'client' AND grants.client_id = workstreams.client_id)
+           OR (grants.scope = 'client_workstream' AND grants.client_workstream_id = tasks.client_workstream_id)
+           OR (grants.scope = 'group' AND grants.group_id = tasks.work_group_id)
+           OR (grants.scope = 'office' AND EXISTS (
+             SELECT 1 FROM nova.person_office_assignments actor_offices
+             WHERE actor_offices.person_id = $2
+               AND actor_offices.office_id = grants.office_id
+               AND actor_offices.effective_on <= grants.business_date
+               AND (actor_offices.effective_until IS NULL OR actor_offices.effective_until >= grants.business_date)
+           ))
+           OR (grants.scope = 'organisation_department' AND EXISTS (
+             SELECT 1 FROM nova.person_department_assignments actor_departments
+             WHERE actor_departments.person_id = $2
+               AND actor_departments.organisation_department_id = grants.organisation_department_id
+               AND actor_departments.effective_on <= grants.business_date
+               AND (actor_departments.effective_until IS NULL OR actor_departments.effective_until >= grants.business_date)
+           ))
+           -- This query has already constrained assignments.person_id = $2 and
+           -- assignments.organisation_id = $1, so the current row proves the
+           -- actor's assigned_work target for these six own-assignment keys.
+           OR grants.scope = 'assigned_work'
+         )
+     ) capabilities
+     CROSS JOIN LATERAL (
+       SELECT
+         EXISTS (
+           SELECT 1 FROM nova.task_reviewer_requests reviewer_requests
+           WHERE reviewer_requests.assignment_id = assignments.id
+             AND reviewer_requests.status = 'pending'
+             AND reviewer_requests.expires_at > clock_timestamp()
+         ) AS has_pending_reviewer_request,
+         EXISTS (
+           SELECT 1 FROM nova.task_assignment_handover_requests handover_requests
+           WHERE handover_requests.assignment_id = assignments.id
+             AND handover_requests.status = 'pending'
+             AND handover_requests.expires_at > clock_timestamp()
+         ) AS has_pending_handover_request
+       OFFSET 0
+     ) request_state
     WHERE assignments.organisation_id = $1
       AND assignments.person_id = $2
       AND assignments.status <> 'cancelled'
@@ -2489,54 +2529,21 @@ export function myAssignmentsReadSql(): string {
         ELSE TRUE
       END
       AND ($7::text IS NULL OR tasks.title ILIKE $7 ESCAPE '^')
-      AND ((${canViewTask}) OR ${actionableAssignment})
-    ORDER BY assignments.assigned_at DESC, assignments.id DESC
+       AND (capabilities.can_view
+        OR capabilities.can_edit_due_date
+        OR (capabilities.can_start
+            AND assignments.status::text IN ('assigned', 'in_progress', 'changes_requested')
+            AND tasks.status::text IN ('backlog', 'ready', 'in_progress', 'returned', 'blocked'))
+        OR (capabilities.can_submit AND assignments.status::text IN ('in_progress', 'changes_requested'))
+        OR (capabilities.can_request_reviewer AND assignments.status::text NOT IN ('cancelled', 'approved')
+            AND tasks.status::text <> 'cancelled' AND NOT request_state.has_pending_reviewer_request)
+        OR (capabilities.can_request_handover AND assignments.status::text NOT IN ('cancelled', 'approved')
+            AND tasks.status::text <> 'cancelled' AND NOT request_state.has_pending_handover_request))
+     ORDER BY assignments.assigned_at DESC, assignments.id DESC
     LIMIT $8
   )
-  SELECT candidate_assignments.*,
-         ${permissionExistsSql({
-           actorId: "$2",
-           organisationId: "$1",
-           permissionKey: "'tasks.view'",
-           clientId: "candidate_assignments.client_id",
-           clientWorkstreamId: "candidate_assignments.client_workstream_id",
-           groupId: "candidate_assignments.work_group_id",
-           taskId: "candidate_assignments.task_id",
-         })} AS can_view,
-         (${permissionExistsSql({
-           actorId: "$2",
-           organisationId: "$1",
-           permissionKey: "'tasks.edit'",
-           clientId: "candidate_assignments.client_id",
-           clientWorkstreamId: "candidate_assignments.client_workstream_id",
-           groupId: "candidate_assignments.work_group_id",
-           taskId: "candidate_assignments.task_id",
-         })} AND candidate_assignments.task_status::text NOT IN ('approved', 'done', 'cancelled')) AS can_edit_due_date,
-         ${actionPermissions.canStart} AS can_start,
-         ${actionPermissions.canSubmit} AS can_submit,
-         ${actionPermissions.canRequestReviewer} AS can_request_reviewer,
-         ${actionPermissions.canRequestHandover} AS can_request_handover,
-         EXISTS (
-           SELECT 1 FROM nova.task_reviewer_requests reviewer_requests
-           WHERE reviewer_requests.assignment_id = candidate_assignments.id
-             AND reviewer_requests.status = 'pending'
-             AND reviewer_requests.expires_at > clock_timestamp()
-         ) AS has_pending_reviewer_request,
-         EXISTS (
-           SELECT 1 FROM nova.task_assignment_handover_requests handover_requests
-           WHERE handover_requests.assignment_id = candidate_assignments.id
-             AND handover_requests.status = 'pending'
-             AND handover_requests.expires_at > clock_timestamp()
-         ) AS has_pending_handover_request,
-         ${permissionExistsSql({
-           actorId: "$2",
-           organisationId: "$1",
-           permissionKey: "'tasks.view'",
-           clientId: "candidate_assignments.correction_client_id",
-           clientWorkstreamId: "candidate_assignments.correction_client_workstream_id",
-           groupId: "candidate_assignments.correction_group_id",
-           taskId: "candidate_assignments.correction_of_task_id",
-         })} AS correction_source_visible
+   SELECT candidate_assignments.*,
+          ${correctionSourceVisible} AS correction_source_visible
   FROM candidate_assignments
   ORDER BY candidate_assignments.assigned_at DESC, candidate_assignments.id DESC`;
 }

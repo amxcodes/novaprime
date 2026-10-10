@@ -23,6 +23,42 @@ checks; its 100-employee burst exceeded PostgreSQL's default connection limit
 for managed Hyperdrive pooling or as a reason to increase production pool
 defaults.
 
+The optional `NOVA_QA_LOAD_EMPLOYEES` profile now supports 1–200 synthetic
+employees. Its five synchronized API waves report per-request p50/p95/p99/max,
+whole-batch elapsed time, and completed requests per second. The handlers run
+in-process against the disposable local PostgreSQL database, so these metrics
+exclude HTTP/network and hosted-runtime overhead. Each employee submits one
+task in the burst; this is not the planned ten-task daily workload, a sustained
+soak, or a hosted SLA measurement.
+
+On 2026-10-10, the expanded profile ran **200 employees × 10 tasks each** with
+at most 25 concurrent requests, the default 10-connection app pool and
+5-connection auth pool. It passed fresh PostgreSQL 17 setup, migrations
+0001–0079, all rollback/RLS and specialized workflow checks, role preflight,
+the 0072→0079 updater rehearsal and final data-integrity checks: 2,000 tasks,
+2,000 assignments, 2,000 closed timers and no open timers. Its synchronized
+wave p95s were 357 ms for work-context, 225 ms for task creation/self-assign,
+254 ms for timer start, 58 ms for timer stop and 445 ms for assignment reads.
+The assignment query's app-role database-query p95 was 186 ms; pool-acquire
+p95 during that wave was 298 ms. In a prior run of the same 200×10/concurrency
+profile, assignment-read p95 reached 19.9 seconds; the role-scoped query now
+computes its permission and pending-request capabilities once per row and
+reuses them before pagination. This is a substantial local improvement, not a
+Netlify, Supabase, Hyperdrive, or customer capacity guarantee. The complete
+run's containers, volumes, database and random credentials were removed.
+
+On 2026-10-10, `NOVA_QA_LOAD_EMPLOYEES=200 bun run qa:postgres` passed 4,233
+authenticated lifecycle assertions after a fresh 79-migration build. The five
+wave p95s were: work-context 2,613.9 ms, task create/self-assign 1,742.4 ms,
+timer start 2,024.6 ms, timer stop 781.6 ms, and assignment reads 819.5 ms.
+Batch throughput was 73.61, 110.46, 95.49, 245.11, and 234.66 requests/second
+respectively. Final integrity: 200 tasks, 200 assignments, 200 closed timers,
+and zero open timers. Attendance/WFH/leave/geofence smoke, least-privilege
+preflight, the 0072→0079 updater rehearsal, and removal of only this run's
+database, containers, volumes, and credentials also passed. This remains a
+local burst: timings include handler and local database work but no HTTP
+transport or hosted-provider overhead.
+
 A full isolated Docker profile build exposed that the production API image
 did not build or include the Vite application: `.dockerignore` excludes
 `dist`, and the image had copied source files instead. The Dockerfile now has a
@@ -53,7 +89,7 @@ configuration without uploading it. The Cloudflare Worker unit suite also
 passed, covering health forwarding, missing-Hyperdrive rejection, and
 scheduler selection. The follow-up workflow run passed both jobs on the pinned
 Ubuntu 24.04 / Node 24 runners in [GitHub Actions
-run 38039109884](https://github.com/amxcodes/novaprime/actions/runs/38039109884).
+run 38048289555](https://github.com/amxcodes/novaprime/actions/runs/38048289555).
 Dry-runs verify build/configuration selection only; the Worker tests verify
 local adapter behavior. None of these checks prove a hosted deploy or live
 provider resources.

@@ -81,7 +81,21 @@ npx wrangler@4.141.0 deploy --config cloudflare/wrangler.supabase-cron.toml
 ```
 
 That config sets `crons = []` so a prior Cloudflare trigger is removed, and
-sets `NOVA_BACKGROUND_SCHEDULER=supabase`. Then run
-`bun run supabase:scheduler` from a trusted operator machine. If later
+sets `NOVA_BACKGROUND_SCHEDULER=supabase`. For a new scheduler setup, run
+`bun run supabase:scheduler` from a trusted operator machine after the API is
+ready. During a runtime move with an already active Supabase job, leave that
+job and its Vault values unchanged; do not rerun the scheduler setup command.
+If later
 switching back to Cloudflare Cron, deploy with `cloudflare/wrangler.toml` and
 first run `bun run supabase:scheduler:disable` so only one trigger remains.
+
+For a Netlify → Cloudflare runtime move where Supabase Cron is already active,
+use this no-Cron config and keep the existing Supabase job and Vault callback
+unchanged while testing the Access-protected Worker version URL and promoting
+the same public hostname. Do not point the production job at the candidate
+version URL or create another schedule. Verify the existing job's recent
+`pg_net` response before promotion and again after the hostname reaches
+Cloudflare. If Netlify Cron still owns scheduling, complete and verify the
+Netlify-to-Supabase scheduler handover separately before starting the runtime
+move. Changing the Supabase callback origin is a post-promotion operation and
+requires verifying the next `pg_net` response.

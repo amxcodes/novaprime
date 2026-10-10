@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { rolePresetDraft, rolePresets } from "../web/role-grants.js";
+import { myAssignmentsReadSql } from "../server/src/commands/work-context.ts";
+import type { DatabaseDiagnostics, RequestDatabaseDiagnostics } from "../server/src/database-diagnostics.ts";
 
 const migrationUrl = process.env.MIGRATOR_DATABASE_URL;
 const applicationPassword = process.env.NOVA_APP_PASSWORD;
@@ -36,10 +38,13 @@ const { createDatabaseAuthRateLimitStorage } = await import("../server/src/auth-
 const { database, withDatabaseRequest, withRequestScopedDatabase } = await import("../server/src/db.ts");
 const { requestActor } = await import("../server/src/request-actor.ts");
 
-async function handleSmokeRequest(request: Request): Promise<Response> {
+async function handleSmokeRequest(
+  request: Request,
+  diagnosticSink?: RequestDatabaseDiagnostics,
+): Promise<Response> {
   return requestScopedDatabase
-    ? withRequestScopedDatabase(process.env.DATABASE_URL!, () => handleRequest(request))
-    : handleRequest(request);
+    ? withRequestScopedDatabase(process.env.DATABASE_URL!, () => handleRequest(request, diagnosticSink))
+    : handleRequest(request, diagnosticSink);
 }
 
 type ApiResult = Readonly<{ status: number; body: any; cookie?: string; location?: string }>;
@@ -47,9 +52,33 @@ type ApiResult = Readonly<{ status: number; body: any; cookie?: string; location
 let checks = 0;
 let suppressStatusLogs = false;
 const loadEmployeeCount = Number(process.env.NOVA_QA_LOAD_EMPLOYEES ?? "0");
+const loadConcurrency = Number(process.env.NOVA_QA_LOAD_CONCURRENCY ?? Math.max(1, Math.min(25, loadEmployeeCount)));
+const tasksPerEmployee = Number(process.env.NOVA_QA_LOAD_TASKS_PER_EMPLOYEE ?? "1");
 
-if (!Number.isSafeInteger(loadEmployeeCount) || loadEmployeeCount < 0 || loadEmployeeCount > 100) {
-  throw new Error("NOVA_QA_LOAD_EMPLOYEES_MUST_BE_BETWEEN_0_AND_100");
+if (!Number.isSafeInteger(loadEmployeeCount) || loadEmployeeCount < 0 || loadEmployeeCount > 200) {
+  throw new Error("NOVA_QA_LOAD_EMPLOYEES_MUST_BE_BETWEEN_0_AND_200");
+}
+if (!Number.isSafeInteger(loadConcurrency) || loadConcurrency < 1 || loadConcurrency > 200) {
+  throw new Error("NOVA_QA_LOAD_CONCURRENCY_MUST_BE_BETWEEN_1_AND_200");
+}
+if (!Number.isSafeInteger(tasksPerEmployee) || tasksPerEmployee < 1 || tasksPerEmployee > 10) {
+  throw new Error("NOVA_QA_LOAD_TASKS_PER_EMPLOYEE_MUST_BE_BETWEEN_1_AND_10");
+}
+if (loadEmployeeCount > 0) {
+  console.info(`Load profile: in-process DB-backed workload; employees=${loadEmployeeCount} tasks_per_employee=${tasksPerEmployee} max_concurrent_requests=${loadConcurrency}. This is not a hosted SLA.`);
+}
+
+async function mapConcurrent<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  operation: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let offset = 0; offset < items.length; offset += concurrency) {
+    const batch = items.slice(offset, offset + concurrency);
+    results.push(...await Promise.all(batch.map((item, index) => operation(item, offset + index))));
+  }
+  return results;
 }
 
 function assert(condition: unknown, label: string): asserts condition {
@@ -93,6 +122,7 @@ async function request(
   cookie?: string,
   useBootstrapToken = false,
   extraHeaders?: Readonly<Record<string, string>>,
+  diagnosticSink?: RequestDatabaseDiagnostics,
 ): Promise<ApiResult> {
   const headers = new Headers({ origin: smokeOrigin });
   const email = typeof body === "object" && body !== null && "email" in body && typeof body.email === "string"
@@ -107,7 +137,7 @@ async function request(
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
-  }));
+  }), diagnosticSink);
   const raw = await response.text();
   let parsed: any = {};
   try { parsed = raw ? JSON.parse(raw) : {}; } catch { parsed = { raw: "non-json response" }; }
@@ -376,6 +406,7 @@ async function completeInviteAndOnboard(input: Readonly<{
 async function runEmployeeLoadSmoke(input: Readonly<{
   founderCookie: string;
   founderId: string;
+  organisationId: string;
   officeId: string;
   departmentId: string;
   employmentDate: string;
@@ -445,49 +476,121 @@ async function runEmployeeLoadSmoke(input: Readonly<{
     suppressStatusLogs = false;
   }
 
-  const timed = async (operation: () => Promise<ApiResult>) => {
+  const timed = async (operation: (diagnostics: RequestDatabaseDiagnostics) => Promise<ApiResult>) => {
+    const diagnostics: RequestDatabaseDiagnostics = {};
     const startedAt = performance.now();
-    const result = await operation();
-    return { result, elapsedMs: performance.now() - startedAt };
+    const result = await operation(diagnostics);
+    return { result, elapsedMs: performance.now() - startedAt, database: diagnostics.database };
   };
-  const reportBatch = (name: string, results: Awaited<ReturnType<typeof timed>>[], expectedStatus: number) => {
+  const reportBatch = (
+    name: string,
+    results: Awaited<ReturnType<typeof timed>>[],
+    expectedStatus: number,
+    batchElapsedMs: number,
+    expectedCount = loadEmployeeCount,
+  ) => {
     const failed = results.filter(({ result }) => result.status !== expectedStatus);
-    if (results.length !== loadEmployeeCount || failed.length) {
+    if (results.length !== expectedCount || failed.length) {
       throw new Error(`LOAD_BATCH_FAILED_${name}_${failed.slice(0, 5).map(({ result }) => result.status).join(",")}`);
     }
     checks += 1;
     const values = results.map(({ elapsedMs }) => elapsedMs).sort((left, right) => left - right);
     const percentile = (fraction: number) => values[Math.min(values.length - 1, Math.ceil(values.length * fraction) - 1)] ?? 0;
-    console.info(`load_${name}: employees=${results.length} p50_ms=${percentile(0.50).toFixed(1)} p95_ms=${percentile(0.95).toFixed(1)} max_ms=${(values.at(-1) ?? 0).toFixed(1)}`);
+    const requestsPerSecond = batchElapsedMs > 0 ? results.length * 1_000 / batchElapsedMs : 0;
+    console.info(`load_${name}: employees=${results.length} p50_ms=${percentile(0.50).toFixed(1)} p95_ms=${percentile(0.95).toFixed(1)} p99_ms=${percentile(0.99).toFixed(1)} max_ms=${(values.at(-1) ?? 0).toFixed(1)} batch_ms=${batchElapsedMs.toFixed(1)} requests_per_second=${requestsPerSecond.toFixed(2)}`);
+
+    const metricPercentiles = (
+      select: (diagnostics: DatabaseDiagnostics) => number,
+    ) => {
+      const samples = results.map(({ database }) => database ? select(database) : 0).sort((left, right) => left - right);
+      const at = (fraction: number) => samples[Math.min(samples.length - 1, Math.ceil(samples.length * fraction) - 1)] ?? 0;
+      return { p50: at(0.50), p95: at(0.95), p99: at(0.99), max: samples.at(-1) ?? 0 };
+    };
+    const authAcquire = metricPercentiles(({ auth }) => auth.poolAcquireMs);
+    const authQueryTime = metricPercentiles(({ auth }) => auth.queryRoundTripMs);
+    const authQueryCount = metricPercentiles(({ auth }) => auth.queries);
+    const novaAcquire = metricPercentiles(({ nova }) => nova.poolAcquireMs);
+    const novaQueryTime = metricPercentiles(({ nova }) => nova.queryRoundTripMs);
+    const novaQueryCount = metricPercentiles(({ nova }) => nova.queries);
+    const novaSlowestQuery = metricPercentiles(({ nova }) => nova.maxQueryRoundTripMs);
+    const diagnosticFailures = results.reduce((count, { database }) => count + (database
+      ? database.auth.poolAcquireFailures + database.auth.queryFailures
+        + database.nova.poolAcquireFailures + database.nova.queryFailures
+      : 0), 0);
+    console.info(`load_${name}_database: auth_acquire_p50_p95_p99_ms=${authAcquire.p50.toFixed(1)}/${authAcquire.p95.toFixed(1)}/${authAcquire.p99.toFixed(1)} auth_query_total_p50_p95_p99_ms=${authQueryTime.p50.toFixed(1)}/${authQueryTime.p95.toFixed(1)}/${authQueryTime.p99.toFixed(1)} auth_query_count_p50_p95_p99=${authQueryCount.p50}/${authQueryCount.p95}/${authQueryCount.p99} nova_acquire_p50_p95_p99_ms=${novaAcquire.p50.toFixed(1)}/${novaAcquire.p95.toFixed(1)}/${novaAcquire.p99.toFixed(1)} nova_query_total_p50_p95_p99_ms=${novaQueryTime.p50.toFixed(1)}/${novaQueryTime.p95.toFixed(1)}/${novaQueryTime.p99.toFixed(1)} nova_slowest_query_p50_p95_p99_ms=${novaSlowestQuery.p50.toFixed(1)}/${novaSlowestQuery.p95.toFixed(1)}/${novaSlowestQuery.p99.toFixed(1)} nova_query_count_p50_p95_p99=${novaQueryCount.p50}/${novaQueryCount.p95}/${novaQueryCount.p99} diagnostic_failures=${diagnosticFailures}`);
   };
 
-  const contexts = await Promise.all(employees.map((employee) => timed(() =>
-    request("GET", "/work-context", undefined, employee.cookie))));
-  reportBatch("work_context", contexts, 200);
+  const contextsStartedAt = performance.now();
+  const contexts = await mapConcurrent(employees, loadConcurrency, (employee) => timed((diagnostics) =>
+    request("GET", "/work-context", undefined, employee.cookie, false, undefined, diagnostics)));
+  reportBatch("work_context", contexts, 200, performance.now() - contextsStartedAt, employees.length);
 
-  const createdTasks = await Promise.all(employees.map((employee, index) => timed(() =>
+  const taskInputs = employees.flatMap((employee, employeeIndex) =>
+    Array.from({ length: tasksPerEmployee }, (_, taskIndex) => ({ employee, employeeIndex, taskIndex })));
+  const expectedTasks = employees.length * tasksPerEmployee;
+  const taskCreationStartedAt = performance.now();
+  const createdTasks = await mapConcurrent(taskInputs, loadConcurrency, ({ employee, employeeIndex, taskIndex }) => timed((diagnostics) =>
     request("POST", "/tasks", {
       clientWorkstreamId: workstreamId,
-      title: `NOVA load task ${index + 1}`,
+      title: `NOVA load task ${employeeIndex + 1}-${taskIndex + 1}`,
       assignToSelf: true,
-    }, employee.cookie))));
-  reportBatch("task_create_and_self_assign", createdTasks, 201);
-  const assignmentIds = createdTasks.map(({ result }, index) =>
-    field(`load_task_${index + 1}`, result, "assignmentId"));
+    }, employee.cookie, false, undefined, diagnostics)));
+  reportBatch("task_create_and_self_assign", createdTasks, 201, performance.now() - taskCreationStartedAt, expectedTasks);
+  const assignmentIds = createdTasks.map(({ result }, index) => field(`load_task_${index + 1}`, result, "assignmentId"));
 
-  const sessions = await Promise.all(employees.map((employee, index) => timed(() =>
-    request("POST", "/work-sessions/start", { assignmentId: assignmentIds[index] }, employee.cookie))));
-  reportBatch("timer_start", sessions, 201);
-  const sessionIds = sessions.map(({ result }, index) =>
-    field(`load_session_${index + 1}`, result, "sessionId"));
+  const timerStarts: Awaited<ReturnType<typeof timed>>[] = [];
+  const timerStops: Awaited<ReturnType<typeof timed>>[] = [];
+  let timerStartDurationMs = 0;
+  let timerStopDurationMs = 0;
+  // Reuse each account sequentially so the profile models repeated daily work
+  // without creating overlapping timers for one employee.
+  for (let taskIndex = 0; taskIndex < tasksPerEmployee; taskIndex += 1) {
+    const timerStartStartedAt = performance.now();
+    const sessions = await mapConcurrent(employees, loadConcurrency, (employee, employeeIndex) => timed((diagnostics) =>
+      request("POST", "/work-sessions/start", {
+        assignmentId: assignmentIds[employeeIndex * tasksPerEmployee + taskIndex],
+      }, employee.cookie, false, undefined, diagnostics)));
+    timerStartDurationMs += performance.now() - timerStartStartedAt;
+    timerStarts.push(...sessions);
+    const sessionIds = sessions.map(({ result }, employeeIndex) =>
+      field(`load_session_${employeeIndex + 1}-${taskIndex + 1}`, result, "sessionId"));
+    const timerStopStartedAt = performance.now();
+    const stopped = await mapConcurrent(employees, loadConcurrency, (employee, employeeIndex) => timed((diagnostics) =>
+      request("POST", `/work-sessions/${sessionIds[employeeIndex]}/stop`, {}, employee.cookie, false, undefined, diagnostics)));
+    timerStopDurationMs += performance.now() - timerStopStartedAt;
+    timerStops.push(...stopped);
+  }
+  reportBatch("timer_start", timerStarts, 201, timerStartDurationMs, expectedTasks);
+  reportBatch("timer_stop", timerStops, 200, timerStopDurationMs, expectedTasks);
 
-  const stopped = await Promise.all(employees.map((employee, index) => timed(() =>
-    request("POST", `/work-sessions/${sessionIds[index]}/stop`, {}, employee.cookie))));
-  reportBatch("timer_stop", stopped, 200);
-
-  const assignmentReads = await Promise.all(employees.map((employee) => timed(() =>
-    request("GET", "/work/assignments/mine", undefined, employee.cookie))));
-  reportBatch("assignments_read", assignmentReads, 200);
+  const assignmentReadStartedAt = performance.now();
+  const assignmentReads = await mapConcurrent(employees, loadConcurrency, (employee) => timed((diagnostics) =>
+    request("GET", "/work/assignments/mine", undefined, employee.cookie, false, undefined, diagnostics)));
+  reportBatch("assignments_read", assignmentReads, 200, performance.now() - assignmentReadStartedAt, employees.length);
+  const planEmployee = employees[0]!;
+  const planQuery = `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${myAssignmentsReadSql()}`;
+  const explainOperation = () => withDatabaseRequest({
+    userId: planEmployee.personId,
+    organisationId: input.organisationId,
+  }, (transaction) => transaction.query<{ "QUERY PLAN": Array<{ "Planning Time": number; "Execution Time": number; Plan: Record<string, unknown> }> }>(
+    planQuery,
+    [input.organisationId, planEmployee.personId, null, null, null, "any", null, 31],
+  ));
+  const explain = requestScopedDatabase
+    ? await withRequestScopedDatabase(process.env.DATABASE_URL!, explainOperation)
+    : await explainOperation();
+  const explainRoot = explain.rows[0]?.["QUERY PLAN"]?.[0] as (typeof explain.rows[number]["QUERY PLAN"][number] & { JIT?: unknown }) | undefined;
+  const planNodes: Array<Record<string, unknown>> = [];
+  const visitPlan = (node: Record<string, unknown>) => {
+    planNodes.push(Object.fromEntries(Object.entries(node).filter(([key]) => [
+      "Node Type", "Relation Name", "Index Name", "Actual Total Time", "Actual Rows", "Actual Loops",
+      "Rows Removed by Filter", "Shared Read Blocks", "Temp Read Blocks", "Temp Written Blocks",
+    ].includes(key))));
+    for (const child of Array.isArray(node.Plans) ? node.Plans : []) visitPlan(child as Record<string, unknown>);
+  };
+  if (explainRoot?.Plan) visitPlan(explainRoot.Plan);
+  planNodes.sort((left, right) => Number(right["Actual Total Time"] ?? 0) - Number(left["Actual Total Time"] ?? 0));
+  console.info(`load_assignments_read_explain: planning_ms=${explainRoot?.["Planning Time"]?.toFixed(1)} execution_ms=${explainRoot?.["Execution Time"]?.toFixed(1)} jit=${JSON.stringify(explainRoot?.JIT ?? null)} slowest_nodes=${JSON.stringify(planNodes.slice(0, 18))}`);
 
   const integrity = (await sql<{
     task_count: number; assignment_count: number; session_count: number; open_session_count: number;
@@ -507,14 +610,14 @@ async function runEmployeeLoadSmoke(input: Readonly<{
        AND tasks.created_by_person_id = ANY($2::uuid[])`,
     [workstreamId, employees.map((employee) => employee.personId)],
   ))[0];
-  assert(integrity?.task_count === loadEmployeeCount
-    && integrity.assignment_count === loadEmployeeCount
-    && integrity.session_count === loadEmployeeCount
+  assert(integrity?.task_count === expectedTasks
+    && integrity.assignment_count === expectedTasks
+    && integrity.session_count === expectedTasks
     && integrity.open_session_count === 0
-    && integrity.billable_task_count === loadEmployeeCount
-    && integrity.policy_revision_count === loadEmployeeCount,
-  "load_burst_persists_one_policy_classified_billable_task_assignment_and_closed_timer_per_employee");
-  console.info(`load_integrity: employees=${loadEmployeeCount} tasks=${integrity?.task_count} billable_tasks=${integrity?.billable_task_count} policy_revision_1_tasks=${integrity?.policy_revision_count} assignments=${integrity?.assignment_count} closed_timers=${integrity?.session_count} open_timers=${integrity?.open_session_count}`);
+    && integrity.billable_task_count === expectedTasks
+    && integrity.policy_revision_count === expectedTasks,
+  "load_profile_persists_policy_classified_tasks_assignments_and_closed_timers_without_overlapping_sessions");
+  console.info(`load_integrity: employees=${loadEmployeeCount} tasks_per_employee=${tasksPerEmployee} tasks=${integrity?.task_count} billable_tasks=${integrity?.billable_task_count} policy_revision_1_tasks=${integrity?.policy_revision_count} assignments=${integrity?.assignment_count} closed_timers=${integrity?.session_count} open_timers=${integrity?.open_session_count}`);
 }
 
 async function main(): Promise<void> {
@@ -3288,6 +3391,7 @@ async function main(): Promise<void> {
   await runEmployeeLoadSmoke({
     founderCookie,
     founderId: founder.id,
+    organisationId,
     officeId,
     departmentId,
     employmentDate: today!,

@@ -202,7 +202,7 @@ Before any write:
 5. If the ledger is absent on a non-empty database, stop. Do not mark migrations as applied based on a guess. Initial installation has a distinct bootstrap path.
 6. If the database is newer than the selected app release, refuse downgrade/update. Explain that source selection must be at least as new as the recorded migration set.
 7. If the database uses a custom/unknown schema or has failed migration residue, stop and route to a recovery procedure.
-8. Confirm a restorable backup before a production migration. For direct PostgreSQL, use the documented encrypted custom-format `pg_dump` and verify it is readable. For Supabase Cloud, the operator confirms a managed backup/PITR point and recovery path; restore rehearsal happens in a disposable project. NOVA has no backup API. Never put backup output inside the checkout or upload it automatically.
+8. Confirm a restorable backup before a production migration. The current `pg_dump` example creates an unencrypted archive, and `pg_restore --list` only checks its structure; neither proves encryption or recovery. Encrypt archives with an operator-controlled tool and rehearse a full restore into a disposable PostgreSQL target. For Supabase Cloud, confirm the project's actual backup/PITR restore path and rehearse into a disposable project. NOVA has no backup API or completed restore harness. Never put backup output inside the checkout or upload it automatically.
 
 ### Migration execution and recovery
 
@@ -230,7 +230,7 @@ Migration 0076 adds a nullable SHA-256 field to the existing filename ledger. Th
 | Provider deploy hook/CLI | Defer to a later adapter. Provider credentials must be narrowly scoped and separately configured; never assume a Git remote alone authenticates deployment. |
 | Manual deployment | Update local source and DB; print the selected release SHA and exact remaining host action from the deployment runbook. Never claim the public site changed. |
 
-`/api/health` is liveness and `/api/ready` is database/runtime readiness; neither currently identifies which release commit the public host serves. Before claiming a hosted deployment is verified, add a small public-safe version endpoint or include a version/commit in readiness. Return only release version and immutable short commit SHA—never environment values, repo paths, branch names, or secrets. Until that exists, say “push accepted; provider deployment not verified.”
+`/api/health` is liveness and `/api/ready` is database/runtime readiness. The protected read-only `/api/internal/deployment/identity` endpoint now reports the running release SHA, a password-free database fingerprint, schema and migration-ledger readiness, runtime identity, and scheduler selector. After a customer push, the updater can compare the deployed commit and database fingerprint against the release and database it just updated, then require public readiness. This verifies the selected application/database pairing; it does not read provider build logs, prove every scheduler in an account is unique, or move traffic itself. Until the exact identity and readiness checks pass, say “push accepted; provider deployment not verified.”
 
 The provider's production Git auto-deploy can race a separate migration job if both start from one push. The guided updater avoids that race by applying migrations before the optional production push. If an organization instead uses automatic release automation, it must either gate the host's production deployment behind migration success or use expand/contract migrations that keep both app versions compatible. Preview environments must use a separate database or no production migration credentials.
 
@@ -384,7 +384,7 @@ For an update-branch push, the provider may create only a preview build; product
 
 ## V1 scope and explicit non-goals
 
-V1 should update a normal clean Git clone/fork, preserve committed customizations with a merge-based update branch, stop on dirty/unhandled Git state, apply Supabase or direct PostgreSQL migrations from the local operator environment, and offer an explicit optional push after migration verification.
+V1 should update a normal clean Git clone/fork, preserve committed application and configuration customizations with a merge-based update branch when the merge is conflict-free, stop on dirty/unhandled Git state, apply canonical Supabase or direct PostgreSQL migrations from the local operator environment, and offer an explicit optional push after migration verification. Customer-authored SQL migrations are not part of the supported update contract yet: the updater deliberately requires the release migration directory and manifest to match exactly. Customers must not add or edit canonical migration files; supporting namespaced customer migrations needs its own ordered/checksummed design and upgrade tests.
 
 Defer automatic conflict resolution, browser-triggered updates, GitHub Actions production migration credentials for every customer, server-side call-home/update checks, customer-account provisioning, hosted-provider secret management, binary package self-updates, automatic database restore, reverse migrations, and managed fleet orchestration. These add risk or require a centrally managed service that NOVA does not currently provide.
 
