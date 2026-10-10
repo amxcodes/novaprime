@@ -2374,6 +2374,7 @@ async function renderWork(date, lifetime) {
     restorePendingRouteScroll();
     return;
   }
+  let stage = "read-work-data";
   try {
     const [workReadData] = await Promise.all([
       workReadDataPromise,
@@ -2395,6 +2396,7 @@ async function renderWork(date, lifetime) {
       reviewerManagementResult,
     } = workReadData;
     if (!isCurrentPageRequest(lifetime)) return;
+    stage = "load-review-detail";
     const selectedReview = hasReviewRoute
       ? reviewTarget?.assignmentId
         ? (reviewsResult.reviews || []).find((item) => item.assignmentId === reviewTarget.assignmentId)
@@ -2460,6 +2462,7 @@ async function renderWork(date, lifetime) {
     if (workContextReadFailure && !readPlan.workContextView) {
       workPageNotices.push({ id: "work-context-read", kind: "warning", message: workContextReadFailure.textContent || "Workstream options could not be read." });
     }
+    stage = "compose-work-sections";
     const pageSections = workPageUi.createWorkPageSections(readPlan, {
       canCreateTasks,
       hasReviewRoute,
@@ -2479,6 +2482,7 @@ async function renderWork(date, lifetime) {
         : null;
     };
     if (!hasReviewRoute && !hasFocusedCollaborationRoute && (readPlan.timeline || readPlan.attendance)) {
+      stage = "compose-timeline";
       if (!timelineUi || typeof timelineRoute?.projectWorkTimelineProps !== "function") {
         pageSectionContent.timeline = createElement(workPageUi.WorkFeatureMessage, {
           title: "Timeline and attendance are unavailable",
@@ -2526,6 +2530,7 @@ async function renderWork(date, lifetime) {
       }
     }
     if (readPlan.sessions && pageSections.some((section) => section.id === "sessions")) {
+      stage = "compose-sessions";
       if (!sessionsUi?.WorkSessions || !sessionsRoute?.projectWorkSessions || !sessionsRoute?.createWorkSessionActions) {
         pageSectionContent.sessions = createElement(workPageUi.WorkFeatureMessage, {
           title: "Work sessions are unavailable",
@@ -2564,6 +2569,7 @@ async function renderWork(date, lifetime) {
       }
     }
     if (readPlan.taskCollection && pageSections.some((section) => section.id === "tasks")) {
+      stage = "compose-task-collection";
       const filters = readVisibleTaskFilters(new URLSearchParams(window.location.search));
       const visibleTasksRead = visibleTasksRoute?.projectVisibleTasksRead?.(
         visibleTasksResult,
@@ -2617,6 +2623,7 @@ async function renderWork(date, lifetime) {
         });
       }
     }
+    stage = "mount-work-page";
     mountWorkPage(pageSections, "ready", undefined, {
       notices: workPageNotices,
       sectionContent: pageSectionContent,
@@ -2627,6 +2634,7 @@ async function renderWork(date, lifetime) {
     });
     showFeedback();
     if (readPlan.workContextView && !hasReviewRoute && !hasFocusedCollaborationRoute) {
+      stage = "mount-work-context";
       const workContextHost = workSlot("context");
       mountWorkContextRoute({
         target: workContextHost,
@@ -2664,6 +2672,7 @@ async function renderWork(date, lifetime) {
     }
 
     if (canCreateTasks && !hasReviewRoute && !hasFocusedCollaborationRoute) {
+      stage = "mount-task-composer";
       const composerRoot = workSlot("create");
       mountWorkTaskComposerRoute(composerRoot, {
         feature: taskComposerUi,
@@ -2694,6 +2703,7 @@ async function renderWork(date, lifetime) {
     }
     let reviewReadFailed = false;
     if (readPlan.reviews && !hasFocusedCollaborationRoute) {
+      stage = "mount-reviews";
       const reviewHost = workSlot("reviews");
       const reviewProjection = projectWorkReviews({
         reviewsResult,
@@ -2733,6 +2743,7 @@ async function renderWork(date, lifetime) {
     }
 
     if ((readPlan.reviewerRequests || readPlan.handoverRequests) && !taskDetailRoute && !hasReviewRoute) {
+      stage = "mount-collaboration";
       const collaborationRoot = workSlot("collaboration");
       if (workCollaborationUi?.WorkCollaborationRequests) {
         const retry = () => renderWork(timelineDate);
@@ -2774,6 +2785,7 @@ async function renderWork(date, lifetime) {
     }
 
     if (readPlan.reviewerManagement && !taskDetailRoute && !hasReviewRoute && !hasFocusedCollaborationRoute) {
+      stage = "mount-reviewer-management";
       const reviewerManagementRoot = workSlot("reviewer-management");
       const reviewerManagementScopes = ["organisation", "client_workstream", "group", "assigned_work"];
       const onSaveReviewer = createWorkReviewerManagementSaveAction({
@@ -2801,6 +2813,7 @@ async function renderWork(date, lifetime) {
     }
 
     if (readPlan.assignments && pageSections.some((section) => section.id === "assignments")) {
+      stage = "mount-assignments";
       const assignmentTarget = workSlot("assignments");
       if (!myAssignmentsUi?.MyAssignments) {
         if (assignmentTarget) {
@@ -2855,6 +2868,15 @@ async function renderWork(date, lifetime) {
     restorePendingRouteScroll();
   } catch (error) {
     if (!isCurrentPageRequest(lifetime)) return;
+    const diagnostic = {
+      stage,
+      name: typeof error?.name === "string" && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(error.name) ? error.name : "Error",
+      ...(typeof error?.code === "string" && /^[A-Z0-9_]{1,80}$/.test(error.code) ? { code: error.code } : {}),
+      ...(Number.isInteger(error?.httpStatus) && error.httpStatus >= 100 && error.httpStatus <= 599
+        ? { httpStatus: error.httpStatus }
+        : {}),
+    };
+    console.error("[NOVA Work] page load failed " + JSON.stringify(diagnostic));
     mountWorkPage([], "error", errorText(error));
     showFeedback();
     restorePendingRouteScroll();
