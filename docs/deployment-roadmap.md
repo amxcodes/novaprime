@@ -1,7 +1,7 @@
 # NOVA customer deployment and update roadmap
 
 - **Status:** decision record and implementation roadmap
-- **Review basis:** `main` at `9dc6847700c22abc0a03bbd2e2c019c5ae22404f` (10 October 2026), plus the verified-TLS updater rehearsal and [hosted profile CI run 38039109884](https://github.com/amxcodes/novaprime/actions/runs/38039109884)
+- **Review basis:** `main` at `a8adf2abfd3d2608902bb8bcabce456d96704d1b` (10 October 2026), including Cloudflare Hyperdrive identity checks, plus the verified-TLS updater rehearsal and [hosted profile CI run 38040032842](https://github.com/amxcodes/novaprime/actions/runs/38040032842)
 - **Repository delivery rule:** work on `main`; push only to `origin/main`.
 
 This is the single customer-facing deployment decision and sequencing document.
