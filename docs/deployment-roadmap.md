@@ -1,7 +1,7 @@
 # NOVA customer deployment and update roadmap
 
 - **Status:** decision record and implementation roadmap
-- **Review basis:** `main` at `3cecf68b07910354a067e89d3cee574ab4992667` (10 October 2026), plus the verified-TLS updater rehearsal and hosted production-config build checks recorded in this update
+- **Review basis:** `main` at `109c3db59857a6a1b3583c9a52ddac27744dd6d5` (10 October 2026), plus the verified-TLS updater rehearsal and hosted three-profile CI checks recorded in this update
 - **Repository delivery rule:** work on `main`; push only to `origin/main`.
 
 This is the single customer-facing deployment decision and sequencing document.
@@ -51,7 +51,7 @@ or database update.
 | Profile | API and web hosting | Database | Background schedule | Current boundary |
 | --- | --- | --- | --- | --- |
 | Netlify + Supabase | Netlify Functions | Supabase PostgreSQL | Supabase Cron | New installs use Supabase Cron; the legacy Netlify schedule remains selectable. Pinned offline production packaging checks cover both function bundles. Confirm the customer's plan supports the required Build and Functions variable scopes; Netlify's API documentation currently describes granular scopes as Pro and above. |
-| Cloudflare + Supabase | Cloudflare Worker with Hyperdrive | Supabase PostgreSQL | Supabase Cron | The production config selects Supabase Cron and removes Cloudflare Cron; CI successfully dry-runs this exact config without uploading. |
+| Cloudflare + Supabase | Cloudflare Worker with Hyperdrive | Supabase PostgreSQL | Supabase Cron | Worker unit tests and a dry-run of the production config pass in CI; the config removes Cloudflare Cron and no live upload is claimed. |
 | Self-hosted Docker + PostgreSQL | Docker services behind customer-managed Nginx/TLS | PostgreSQL 17 in Compose by default | One Compose maintenance worker | The production image now builds and serves the generated Vite bundle, and dependent services wait for database-backed `/api/ready`; a fresh first-tick run passed. Remote host inspection and automated Nginx orchestration are not implemented. |
 
 Vercel and native Netlify/Cloudflare schedules remain compatibility adapters
@@ -67,7 +67,7 @@ are in [deployment profiles](deployment-profiles.md).
 | Shared API/runtime adapters | The same server API is adapted for Netlify, Cloudflare, Vercel, and VPS/Docker. | The code has portability seams; that does not mean every transition is automated. |
 | Initial setup | Local Docker setup, Supabase bootstrap, direct PostgreSQL setup, migrations, and scheduler commands exist. | The deployment guide is secret-free. The operator creates/configures provider resources and enters secrets in the provider's private settings. |
 | Netlify function packaging | The build plugin selects the API-only bundle for Supabase Cron and includes the scheduled tick only for the legacy Netlify Cron selection. The pinned offline production packaging smoke is in CI. | This proves local build configuration and function selection; it does not prove a hosted deployment, runtime variables, or live scheduler state. |
-| Cloudflare Worker packaging | The production dry-run with `cloudflare/wrangler.supabase-cron.toml` passed in CI without uploading. | This verifies configuration bundling only; real Hyperdrive connectivity, deployed identity, domain routing, and provider Cron remain live rehearsal gates. |
+| Cloudflare Worker packaging | Worker unit tests cover shared API health, missing-Hyperdrive fail-closed behavior, and scheduler selection; the production dry-run with `cloudflare/wrangler.supabase-cron.toml` also passes in CI without uploading. | This verifies runtime adapter behavior and configuration bundling only; real Hyperdrive connectivity, deployed identity, domain routing, and provider Cron remain live rehearsal gates. |
 | Database schema upgrades | Append-only migrations and a 79-file release manifest are present at this reviewed revision. | Migration checksum and target protections exist; populated-database moves are a different, higher-risk operation. |
 | Customer updater | `nova:update` stages a pinned release in an isolated candidate, preserves committed fork changes through merge-based staging, validates a target migration ledger, asks for a backup attestation, migrates, and can separately offer an explicit non-force push. Hosted verification can require both the exact deployed commit and public `/api/ready` success. | A push alone does not prove deployment readiness. Hosted verification does not test sign-in or a business workflow. First adoption by an older clone requires a reviewed baseline merge. |
 | Deployment manager | `nova:deployment` has local status/doctor, optional scoped read-only provider inventory, protected runtime identity, migration-ledger comparison, immutable plans, re-verification, and a plan-bound journal library. New plans offer only Netlify, Cloudflare, and self-hosted Docker; Vercel remains a legacy adapter. | Plans and diagnostics work; `apply`, operation resume/rollback, project provisioning, and provider mutations are not implemented. |

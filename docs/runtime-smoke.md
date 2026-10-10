@@ -49,10 +49,13 @@ The pinned Netlify CLI 27.12.0 production-context offline smoke now passes in
 GitHub Actions for both scheduler selections: Supabase Cron packages only the
 API function, while the legacy Netlify Cron selection includes the scheduled
 tick. The workflow also dry-ran the exact Cloudflare + Supabase Wrangler
-configuration without uploading it. Both jobs passed in [GitHub Actions
-run 38038316215](https://github.com/amxcodes/novaprime/actions/runs/38038316215).
-These checks prove build/configuration
-selection only; they do not verify a hosted deploy or live provider resources.
+configuration without uploading it. The Cloudflare Worker unit suite also
+passed, covering health forwarding, missing-Hyperdrive rejection, and
+scheduler selection. Both jobs passed in [GitHub Actions
+run 38038813287](https://github.com/amxcodes/novaprime/actions/runs/38038813287).
+Dry-runs verify build/configuration selection only; the Worker tests verify
+local adapter behavior. None of these checks prove a hosted deploy or live
+provider resources.
 
 The QA Supabase management token available to this workspace returned 403 for
 the target project's migration-ledger endpoint, so a live read-only ledger
