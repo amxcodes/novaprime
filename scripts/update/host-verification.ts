@@ -28,7 +28,32 @@ function retryableIdentityFailure(resource: ProviderResource): boolean {
   ));
 }
 
-/** Polls only NOVA's protected, read-only runtime identity; it never changes provider resources. */
+async function checkPublicReadiness(fetcher: ProviderFetcher, origin: string): Promise<"ready" | "pending" | "unverifiable"> {
+  let response: Response;
+  try {
+    response = await fetcher(new URL("/api/ready", origin), {
+      method: "GET",
+      headers: { accept: "application/json" },
+      cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    return "pending";
+  }
+  if (response.status >= 500 && response.status <= 599) return "pending";
+  if (!response.ok) return "unverifiable";
+  try {
+    const body: unknown = await response.json();
+    if (body === null || typeof body !== "object" || Array.isArray(body)) return "unverifiable";
+    const value = body as Record<string, unknown>;
+    return value.service === "nova-api" && value.status === "ready" ? "ready" : "unverifiable";
+  } catch {
+    return "unverifiable";
+  }
+}
+
+/** Polls the protected runtime identity, then public API readiness; it never changes provider resources. */
 export async function waitForHostedCommit(options: {
   origin: string;
   secret: string;
@@ -50,6 +75,7 @@ export async function waitForHostedCommit(options: {
     throw new Error("UPDATE_HOST_POLL_CONFIGURATION_INVALID");
   }
   const wait = options.wait ?? ((milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+  const fetcher = options.fetcher ?? fetch;
   const environment = {
     NOVA_PUBLIC_ORIGIN: origin,
     NOVA_BACKGROUND_JOB_SECRET: options.secret,
@@ -58,18 +84,26 @@ export async function waitForHostedCommit(options: {
   let observedRelease: string | undefined;
 
   for (let checks = 1; checks <= maxChecks; checks += 1) {
-    const identity = await inspectNovaIdentity(environment, options.fetcher ?? fetch);
+    const identity = await inspectNovaIdentity(environment, fetcher);
     if (identity.state === "identified") {
+      lastDetail = undefined;
       const value = identity.release;
       if (!value || !fullCommitPattern.test(value)) {
         return { status: "unverifiable", checks, detail: "RUNTIME_RELEASE_COMMIT_NOT_FULL_SHA", origin };
       }
       observedRelease = value.toLowerCase();
       if (observedRelease === options.expectedCommit.toLowerCase()) {
-        return {
-          status: "verified", checks, release: observedRelease, origin,
-          ...(identity.runtime ? { runtime: identity.runtime } : {}),
-        };
+        const readiness = await checkPublicReadiness(fetcher, origin);
+        if (readiness === "ready") {
+          return {
+            status: "verified", checks, release: observedRelease, origin,
+            ...(identity.runtime ? { runtime: identity.runtime } : {}),
+          };
+        }
+        if (readiness === "unverifiable") {
+          return { status: "unverifiable", checks, detail: "PUBLIC_READINESS_RESPONSE_INVALID", origin };
+        }
+        lastDetail = "PUBLIC_API_NOT_READY";
       }
     } else {
       lastDetail = identity.detail;

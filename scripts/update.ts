@@ -724,7 +724,7 @@ async function verifyHostedDeploymentAfterPush(
     return;
   }
   if (!await askConfirm(
-    `Check whether ${origin} serves commit ${commit.slice(0, 12)}? This sends the configured background secret only to this origin's protected read-only identity endpoint and checks up to 21 times at 30-second intervals; slow requests can extend the wait to about 13.5 minutes.`,
+    `Check whether ${origin} serves commit ${commit.slice(0, 12)} and is ready? This sends the configured background secret only to this origin's protected read-only identity endpoint, then checks public /api/ready without credentials. It checks up to 21 times at 30-second intervals and can take about 17 minutes with request timeouts.`,
   )) {
     console.info("Hosted deployment check skipped; no identity request was sent.");
     return;
@@ -733,14 +733,15 @@ async function verifyHostedDeploymentAfterPush(
   console.info(`Waiting for ${origin} to report the pushed commit through NOVA's protected read-only identity endpoint…`);
   const result = await waitForHostedCommit({ origin, secret, expectedCommit: commit });
   if (result.status === "verified") {
-    console.info(`HOST_DEPLOYMENT_VERIFIED: ${result.runtime ?? "runtime"} serves exact commit ${result.release.slice(0, 12)} at ${origin}.`);
+    console.info(`HOST_DEPLOYMENT_VERIFIED: ${result.runtime ?? "runtime"} serves exact commit ${result.release.slice(0, 12)} and public /api/ready is healthy at ${origin}.`);
   } else if (result.status === "pending") {
     const observed = result.observedRelease
       ? ` It still reports ${result.observedRelease.slice(0, 12)}.`
       : " The runtime has not yet reported a full release SHA.";
-    console.info(`HOST_DEPLOYMENT_PENDING: ${origin} did not report the pushed commit after ${result.checks} checks.${observed} The source push succeeded; the provider deployment remains unverified.`);
+    const readiness = result.detail === "PUBLIC_API_NOT_READY" ? " The exact commit is live, but public /api/ready did not become healthy." : "";
+    console.info(`HOST_DEPLOYMENT_PENDING: ${origin} did not complete deployment verification after ${result.checks} checks.${observed}${readiness} The source push succeeded; readiness remains unverified.`);
   } else {
-    console.info(`HOST_DEPLOYMENT_UNVERIFIED: ${result.detail}. The source push succeeded; check the host deployment and run \`bun run nova:deployment status --remote\` after the runtime reports a full commit SHA.`);
+    console.info(`HOST_DEPLOYMENT_UNVERIFIED: ${result.detail}. The source push succeeded; check the host deployment and public readiness, then run \`bun run nova:deployment status --remote\` after the runtime reports a full commit SHA.`);
   }
 }
 

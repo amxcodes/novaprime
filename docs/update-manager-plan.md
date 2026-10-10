@@ -332,12 +332,12 @@ For an update-branch push, the provider may create only a preview build; product
 - Target identity, ledger-vs-release validation, backup confirmation, locks, per-file progress, retry reconciliation, and checksum backfill are implemented.
 - Unknown ledgers, schema gaps/drift, altered migration history, and downgrades are refused; only a known non-empty contiguous ledger prefix is accepted.
 
-### Phase 4 — Local activation and optional push (push is implemented; activation and deployment verification are deferred)
+### Phase 4 — Local activation and optional push (push and hosted identity/readiness verification are implemented; local activation remains deferred)
 
 - Local Bun/Docker Compose activation remains a documented operator step; the updater does not switch the active checkout or restart a service.
 - The opt-in push step shows the selected remote/branch and possible production impact, requires typed confirmation, runs `nova_app` preflight, and never force-pushes.
 - Keep provider CLI/deploy-hook adapters out of V1 unless customer evidence requires them. A normal Git integration should deploy after the updater's migration-first step.
-- Poll/report host build and `/api/health`/`/api/ready` separately; do not equate Git push with successful deployment.
+- After explicit confirmation, poll the protected host identity endpoint for the exact full commit SHA, then require public `/api/ready` to report `nova-api` ready before reporting hosted verification. This does not test sign-in or a business workflow and does not inspect provider build logs.
 
 ### Phase 5 — Rehearsal, documentation, and release (remaining release gate)
 

@@ -15,6 +15,10 @@ function identityResponse(releaseSha: string | undefined): Response {
   });
 }
 
+function readinessResponse(status = 200): Response {
+  return Response.json({ service: "nova-api", status: status === 200 ? "ready" : "not_ready" }, { status });
+}
+
 test("host verification accepts only an exact HTTPS origin", () => {
   expect(normalizeHostedDeploymentOrigin("https://nova.example/")).toBe("https://nova.example");
   for (const value of [
@@ -27,15 +31,22 @@ test("host verification accepts only an exact HTTPS origin", () => {
 });
 
 test("polls the protected deployment identity until the exact pushed commit is live", async () => {
-  let calls = 0;
+  let identityCalls = 0;
+  let readinessCalls = 0;
   const waits: number[] = [];
   const fetcher: ProviderFetcher = async (input, init) => {
-    calls += 1;
     expect(new URL(String(input)).origin).toBe("https://nova.example");
+    expect(init?.redirect).toBe("error");
+    if (new URL(String(input)).pathname === "/api/ready") {
+      readinessCalls += 1;
+      expect(init?.method).toBe("GET");
+      expect(new Headers(init?.headers).get("authorization")).toBeNull();
+      return readinessResponse();
+    }
+    identityCalls += 1;
     expect(new URL(String(input)).pathname).toBe("/api/internal/deployment/identity");
     expect(new Headers(init?.headers).get("authorization")).toBe("Bearer background-secret");
-    expect(init?.redirect).toBe("error");
-    return identityResponse(calls === 1 ? oldCommit : expectedCommit);
+    return identityResponse(identityCalls === 1 ? oldCommit : expectedCommit);
   };
   const result = await waitForHostedCommit({
     origin: "https://nova.example",
@@ -49,7 +60,8 @@ test("polls the protected deployment identity until the exact pushed commit is l
   expect(result).toEqual({
     status: "verified", checks: 2, release: expectedCommit, runtime: "netlify", origin: "https://nova.example",
   });
-  expect(calls).toBe(2);
+  expect(identityCalls).toBe(2);
+  expect(readinessCalls).toBe(1);
   expect(waits).toEqual([100]);
 });
 
@@ -70,12 +82,74 @@ test("leaves a deployment pending when the host still serves an older full commi
     origin: "https://nova.example",
     secret: "background-secret",
     expectedCommit,
-    fetcher: async () => { calls += 1; return identityResponse(oldCommit); },
+    fetcher: async (input) => {
+      expect(new URL(String(input)).pathname).toBe("/api/internal/deployment/identity");
+      calls += 1;
+      return identityResponse(oldCommit);
+    },
     wait: async () => {},
     maxChecks: 3,
   });
   expect(result).toMatchObject({ status: "pending", checks: 3, observedRelease: oldCommit, origin: "https://nova.example" });
   expect(calls).toBe(3);
+});
+
+test("requires the public API to become ready after the exact commit is deployed", async () => {
+  let identityCalls = 0;
+  let readinessCalls = 0;
+  const waits: number[] = [];
+  const result = await waitForHostedCommit({
+    origin: "https://nova.example",
+    secret: "background-secret",
+    expectedCommit,
+    fetcher: async (input, init) => {
+      if (new URL(String(input)).pathname === "/api/ready") {
+        readinessCalls += 1;
+        expect(new Headers(init?.headers).get("authorization")).toBeNull();
+        if (readinessCalls === 1) return readinessResponse(502);
+        return readinessCalls === 2 ? readinessResponse(503) : readinessResponse();
+      }
+      identityCalls += 1;
+      return identityResponse(expectedCommit);
+    },
+    wait: async (milliseconds) => { waits.push(milliseconds); },
+    intervalMs: 100,
+    maxChecks: 3,
+  });
+  expect(result).toMatchObject({ status: "verified", checks: 3, release: expectedCommit, origin: "https://nova.example" });
+  expect(identityCalls).toBe(3);
+  expect(readinessCalls).toBe(3);
+  expect(waits).toEqual([100, 100]);
+});
+
+test("does not mark an exact deployment ready when the public readiness response is invalid", async () => {
+  const result = await waitForHostedCommit({
+    origin: "https://nova.example",
+    secret: "background-secret",
+    expectedCommit,
+    fetcher: async (input) => new URL(String(input)).pathname === "/api/ready"
+      ? Response.json({ service: "another-app", status: "ready" })
+      : identityResponse(expectedCommit),
+  });
+  expect(result).toMatchObject({
+    status: "unverifiable", checks: 1, detail: "PUBLIC_READINESS_RESPONSE_INVALID", origin: "https://nova.example",
+  });
+});
+
+test("reports readiness as pending when the exact deployed commit never becomes ready", async () => {
+  const result = await waitForHostedCommit({
+    origin: "https://nova.example",
+    secret: "background-secret",
+    expectedCommit,
+    fetcher: async (input) => new URL(String(input)).pathname === "/api/ready"
+      ? readinessResponse(503)
+      : identityResponse(expectedCommit),
+    wait: async () => {},
+    maxChecks: 2,
+  });
+  expect(result).toMatchObject({
+    status: "pending", checks: 2, observedRelease: expectedCommit, detail: "PUBLIC_API_NOT_READY", origin: "https://nova.example",
+  });
 });
 
 test("stops on an invalid identity credential without repeated requests", async () => {
