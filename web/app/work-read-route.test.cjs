@@ -28,9 +28,18 @@ function reader(overrides = {}) {
   return {
     calls,
     lifetime,
-    pageApi: async (path, receivedLifetime) => {
-      calls.push({ path, lifetime: receivedLifetime });
-      if (overrides.pageApi) return overrides.pageApi(path, receivedLifetime);
+    pageApi: async (path, receivedLifetime, options) => {
+      calls.push({ path, lifetime: receivedLifetime, options });
+      if (overrides.pageApi) return overrides.pageApi(path, receivedLifetime, options);
+      if (path === "/api/work/page-read") {
+        return {
+          reads: options.body.reads.map((readPath) => ({
+            path: readPath,
+            status: 200,
+            body: { path: readPath, allowed: true },
+          })),
+        };
+      }
       return { path, allowed: true };
     },
   };
@@ -53,19 +62,25 @@ test("dispatches only reads present in the authorized Work plan and preserves UR
     pageApi: host.pageApi,
   });
 
-  assert.deepEqual(host.calls.map(({ path }) => path), [
+  const batchCall = host.calls.find(({ path }) => path === "/api/work/page-read");
+  assert.ok(batchCall);
+  assert.deepEqual(batchCall.options, {
+    method: "POST",
+    readOnly: true,
+    body: { reads: [
     "/api/work/assignments/mine?limit=30&status=late&due=overdue&q=client+review&cursor=next%2Fpage",
-    "/api/work-sessions/mine",
     "/api/work/timeline?date=2026-10-06",
     "/api/reviews/pending?assignmentId=assignment-1",
     "/api/task-reviewer-requests",
     "/api/task-handover-requests",
-    "/api/work-context",
-    "/api/tasks",
     "/api/work/tasks/visible?limit=30&status=blocked&due=today&q=handoff&cursor=cursor%3D2",
     "/api/task-catalog",
     "/api/attendance/today",
     "/api/task-assignments/reviewer-management?limit=25",
+    ] },
+  });
+  assert.deepEqual(host.calls.filter(({ path }) => path !== "/api/work/page-read").map(({ path }) => path), [
+    "/api/work-sessions/mine", "/api/work-context", "/api/tasks",
   ]);
   assert.ok(host.calls.every((call) => call.lifetime === host.lifetime));
 });
@@ -132,7 +147,9 @@ test("read failures stay local and do not discard other authorized results", asy
     pageApi: host.pageApi,
   });
 
-  assert.deepEqual(host.calls.map(({ path }) => path), ["/api/work/assignments/mine?limit=30", "/api/work-sessions/mine"]);
+  assert.deepEqual(host.calls.map(({ path }) => path).sort(), [
+    "/api/work-sessions/mine", "/api/work/assignments/mine?limit=30",
+  ].sort());
   assert.deepEqual(result.assignmentsResult, { path: "/api/work/assignments/mine?limit=30", rows: ["/api/work/assignments/mine?limit=30"] });
   assert.deepEqual(result.sessionsResult, { sessions: [], readError: "REQUEST_FAILED" });
   assert.equal("private transport detail" in result.sessionsResult, false);

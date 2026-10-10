@@ -527,8 +527,13 @@ function isCurrentPageRequest(lifetime) {
   return pageRequestLifecycle.isCurrent(lifetime, state.identityEpoch);
 }
 
-function pageApi(path, lifetime) {
-  return api(path, withPageReadSignal(requestOptions("GET"), lifetime)).catch((error) => {
+function pageApi(path, lifetime, options = {}) {
+  const readOnlyBatch = path === "/api/work/page-read" && options.method === "POST" && options.readOnly === true;
+  const request = requestOptions(readOnlyBatch ? "POST" : "GET",
+    readOnlyBatch ? options.body : undefined,
+    readOnlyBatch ? options.headers : undefined);
+  if (readOnlyBatch && lifetime?.signal) request.signal = lifetime.signal;
+  return api(path, withPageReadSignal(request, lifetime)).catch((error) => {
     // A page read can be wrapped by readOrError and therefore never reach a
     // route-level command catch. Expired sessions still need to clear all
     // protected UI before that read is reduced to its safe feature state.

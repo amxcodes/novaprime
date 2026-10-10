@@ -10,6 +10,11 @@ const safeApiGroups = new Set([
   "task-composer", "task-handover-requests", "task-reviewer-requests", "tasks",
   "work", "work-context", "work-groups", "work-sessions", "workstreams",
 ]);
+const safeWorkReadNames = new Set([
+  "assignments", "timeline", "reviews", "reviewer-requests",
+  "handover-requests", "visible-tasks",
+  "task-catalog", "attendance", "reviewer-management",
+]);
 
 export type SlowRequestInput = Readonly<{
   method: string;
@@ -19,8 +24,23 @@ export type SlowRequestInput = Readonly<{
   appMs?: number;
   authModuleLoadMs?: number;
   entryModuleLoadMs: number;
+  serverTiming?: string;
   databaseDiagnostics?: DatabaseDiagnostics;
 }>;
+
+function safeWorkReadTimings(serverTiming: string | undefined): Record<string, number> | undefined {
+  if (!serverTiming) return undefined;
+  const timings: Record<string, number> = {};
+  for (const entry of serverTiming.split(",")) {
+    const match = /^\s*nova-work-([a-z-]+)\s*;\s*dur=([\d.]+)\s*$/i.exec(entry);
+    if (!match || !safeWorkReadNames.has(match[1])) continue;
+    const duration = Number(match[2]);
+    if (Number.isFinite(duration) && duration >= 0 && duration <= 60_000) {
+      timings[match[1]] = Math.round(duration);
+    }
+  }
+  return Object.keys(timings).length ? timings : undefined;
+}
 
 /** Return a route label without identifiers, query strings, or arbitrary paths. */
 function safeRoute(pathname: string): string {
@@ -43,6 +63,7 @@ export function slowRequestDiagnostic(input: SlowRequestInput) {
     ? input.method
     : "OTHER";
   const database = input.databaseDiagnostics;
+  const workReadTimings = safeWorkReadTimings(input.serverTiming);
   return {
     event: "NOVA_REQUEST_DIAGNOSTIC",
     method,
@@ -54,6 +75,7 @@ export function slowRequestDiagnostic(input: SlowRequestInput) {
     ...(input.authModuleLoadMs === undefined
       ? {}
       : { auth_module_load_ms: Math.round(input.authModuleLoadMs) }),
+    ...(workReadTimings ? { work_read_ms: workReadTimings } : {}),
     ...(database ? {
       nova_db_pool_acquire_ms: Math.round(database.nova.poolAcquireMs),
       nova_db_pool_acquisitions: database.nova.poolAcquisitions,

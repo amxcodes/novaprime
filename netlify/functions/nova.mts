@@ -38,6 +38,9 @@ export default async function handler(
     ...(timing ? { appMs: Number(timing[1]) } : {}),
     ...(authModuleTiming ? { authModuleLoadMs: Number(authModuleTiming[1]) } : {}),
     entryModuleLoadMs,
+    ...(response.headers.get("server-timing")
+      ? { serverTiming: response.headers.get("server-timing") ?? undefined }
+      : {}),
     ...(requestDiagnostics.database ? { databaseDiagnostics: requestDiagnostics.database } : {}),
   });
   if (diagnostic) console.warn(JSON.stringify(diagnostic));

@@ -50,6 +50,17 @@ test("returns a deterministic domain-shaped error for an unknown route", async (
   });
 });
 
+test("routes Work read batches through the bounded read-only dispatcher", async () => {
+  const response = await handleRequest(new Request("http://nova.test/api/work/page-read", {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: "http://nova.test" },
+    body: JSON.stringify({ reads: ["/api/people"] }),
+  }));
+
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({ error: "INVALID_WORK_READ_PLAN" });
+});
+
 test("directs stale per-definition billing clients to the canonical policy route", async () => {
   const response = await handleRequest(new Request(
     "http://nova.test/api/workstreams/client/00000000-0000-4000-8000-000000000001/task-billing-rules/00000000-0000-4000-8000-000000000002",

@@ -291,6 +291,19 @@ permanent hosting change.
 - [ ] Evaluate reusing the already loaded grant projection for Admin's first
   page read. Keep a refresh/invalidation rule for permission changes and keep
   the API as the final authorization authority.
+- [x] Consolidate Work's bounded, feature-grant-planned reads behind a
+  server-only page-read batch. The batch accepts at most nine allow-listed
+  read routes, rejects mutations and unexpected query parameters, preserves
+  each route's status/body for partial failures, and leaves unbounded reads as
+  separate requests. Existing route handlers still make their normal
+  permission and row-scope decisions. A request-scoped actor resolver shares
+  session/actor work only inside that explicit batch; it is not a browser or
+  cross-request cache. Focused server, dispatcher, diagnostics, and Work UI
+  tests pass in local validation in the current `main` commit.
+- [ ] Publish the current `main` commit, then compare Work's browser request count, warm and
+  cold navigation-to-interactive time, `/api/work/page-read` handler/query
+  timings, partial-read behavior, and error rate against the baseline. Local
+  test results do not prove a production speed improvement.
 - [ ] If a page waits for many independently slow reads, consider a
   permission-aware aggregate read endpoint only where it materially reduces
   repeated session validation, function dispatches, or database round trips.

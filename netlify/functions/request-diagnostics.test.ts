@@ -53,6 +53,22 @@ test("records auth and server failure classes", () => {
   }))).toMatchObject({ auth_module_load_ms: 1_250 });
 });
 
+test("records only allowlisted Work subread timings", () => {
+  const diagnostic = slowRequestDiagnostic(request({
+    method: "POST",
+    pathname: "/api/work/page-read",
+    durationMs: 4_800,
+    appMs: 4_700,
+    serverTiming: "nova-work-task-catalog;dur=2450.2, nova-work-attendance;dur=1810, nova-work-private;dur=9999",
+  }));
+
+  expect(diagnostic).toMatchObject({
+    route: "api.work",
+    work_read_ms: { "task-catalog": 2_450, attendance: 1_810 },
+  });
+  expect(JSON.stringify(diagnostic)).not.toContain("private");
+});
+
 test("records aggregate database time and counts without request data", () => {
   const diagnostic = slowRequestDiagnostic(request({
     durationMs: 1_700,

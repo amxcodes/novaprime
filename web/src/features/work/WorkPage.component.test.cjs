@@ -243,14 +243,17 @@ test("the route host keeps API and capability orchestration while React owns tim
     "no host path imports all Work UI modules through the aggregate barrel");
   assert.match(app, /await import\("\.\/src\/features\/work\/SettingsSavedTaskViews\.tsx"\)/,
     "Settings loads its saved-view component directly when its editor is needed");
-  assert.match(readsRoute, /read\(nonFocusedFeatureReads && readPlan\.assignments,[\s\S]*?workAssignmentReadUrl\(assignmentFilter\)/,
-    "direct review routes do not fetch the hidden My Assignments collection");
-  assert.match(readsRoute, /read\(nonFocusedFeatureReads && readPlan\.sessions,[\s\S]*?"\/api\/work-sessions\/mine"/,
-    "direct review routes do not fetch hidden session data");
-  assert.match(readsRoute, /read\(nonFocusedFeatureReads && readPlan\.taskCollection,[\s\S]*?visibleTaskReadUrl\(visibleTaskFilter\)/,
-    "direct review routes do not fetch hidden visible-task data");
-  assert.match(readsRoute, /read\(nonFocusedFeatureReads && readPlan\.workContext,[\s\S]*?"\/api\/work-context"/,
-    "direct review routes do not fetch hidden Work Context data");
+  assert.match(readsRoute, /enabled: nonFocusedFeatureReads && readPlan\.assignments,[\s\S]*?path: workAssignmentReadUrl\(assignmentFilter\)/,
+    "assignment reads remain gated by the authorized Work plan");
+  assert.match(readsRoute, /enabled: nonFocusedFeatureReads && readPlan\.sessions,[\s\S]*?path: "\/api\/work-sessions\/mine", fallback: emptySessions, batchable: false/,
+    "the potentially large session history stays a separate authorized read");
+  assert.match(readsRoute, /enabled: nonFocusedFeatureReads && readPlan\.taskCollection,[\s\S]*?visibleTaskReadUrl\(visibleTaskFilter\)/,
+    "visible-task reads remain gated by the authorized Work plan");
+  assert.match(readsRoute, /enabled: nonFocusedFeatureReads && readPlan\.workContext,[\s\S]*?path: "\/api\/work-context", fallback: emptyContext, batchable: false/,
+    "the unbounded work context stays a separate server-filtered read");
+  assert.match(readsRoute, /const batchReads = activeReads\.filter\(\(read\) => read\.batchable !== false\)/);
+  assert.match(readsRoute, /pageApi\("\/api\/work\/page-read", lifetime,[\s\S]*?readOnly: true/,
+    "only bounded authorized Work reads use the server batch endpoint");
   assert.doesNotMatch(featureIndex, /export\s*\{\s*VisibleTasks\s*\}\s*from/,
     "the Work feature barrel does not eagerly pull VisibleTasks into the route chunk");
   assert.match(route, /if \(readPlan\.taskCollection && pageSections\.some\(\(section\) => section\.id === "tasks"\)\)/,

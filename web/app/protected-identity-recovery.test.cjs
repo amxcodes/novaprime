@@ -13,8 +13,10 @@ function section(startMarker, endMarker) {
 }
 
 test("page-scoped reads recover expired sessions and non-operational actors without swallowing local permission denials", () => {
-  const pageRead = section("function pageApi(path, lifetime)", "async function api(path, options)");
+  const pageRead = section("function pageApi(path, lifetime, options = {})", "async function api(path, options)");
   assert.match(pageRead, /error\?\.httpStatus === 401 \|\| \(error\?\.httpStatus === 403 && error\?\.code === "ACCOUNT_NOT_OPERATIONAL"\)/);
+  assert.match(pageRead, /path === "\/api\/work\/page-read" && options\.method === "POST" && options\.readOnly === true/);
+  assert.match(pageRead, /if \(readOnlyBatch && lifetime\?\.signal\)/);
   assert.match(pageRead, /isCurrentPageRequest\(lifetime\)[\s\S]*?recoverProtectedCommandFailure\(error\)/);
   assert.match(pageRead, /throw error;/);
 });
