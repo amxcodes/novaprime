@@ -15,7 +15,7 @@ const cloudflareBindings = [
 const cloudflareDomainRoutes = {
   state: "verified" as const,
   completeness: "selected-runtime" as const,
-  domains: [{ hostname: "nova.example.test", source: "custom-domain" as const }],
+  domains: [{ hostname: "nova.example.test", source: "custom-domain" as const, enabled: true }],
   cloudflareRouting: {
     state: "verified" as const,
     completeness: "selected-runtime" as const,
@@ -197,6 +197,17 @@ test("runtime move requires target production bindings, secret classification, a
   ], true);
   expect(targetHostnameMissing.blockers).toContain("TARGET_RUNTIME_PUBLIC_HOSTNAME_NOT_ATTACHED");
 
+  const targetHostnameDisabled = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
+    { ...providers[0]!, domainRoutes: { ...cloudflareDomainRoutes, domains: [{ hostname: "nova.example.test", source: "custom-domain", enabled: false }] } },
+    ...providers.slice(1),
+  ], true);
+  expect(targetHostnameDisabled.blockers).toContain("TARGET_CLOUDFLARE_PUBLIC_HOSTNAME_DISABLED");
+  const targetHostnameStatusUnknown = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
+    { ...providers[0]!, domainRoutes: { ...cloudflareDomainRoutes, domains: [{ hostname: "nova.example.test", source: "custom-domain" }] } },
+    ...providers.slice(1),
+  ], true);
+  expect(targetHostnameStatusUnknown.blockers).toContain("TARGET_CLOUDFLARE_DOMAIN_ROUTABILITY_UNVERIFIED");
+
   const shadowedRoute = buildDeploymentPreview(inventory, { runtime: "cloudflare", database: "keep", scheduler: "keep" }, [
     { ...providers[0]!, domainRoutes: {
       ...cloudflareDomainRoutes,
@@ -240,7 +251,7 @@ test("Netlify target bindings must be Functions-scoped and available in producti
     {
       provider: "netlify" as const, state: "identified" as const, target: "site-id", revision: "deploy-id",
       runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings, configuredScheduler: "supabase", buildSchedulerAvailable: true, configuredBuildScheduler: "supabase" },
-      domainRoutes: { state: "verified" as const, completeness: "selected-runtime" as const, domains: [{ hostname: "nova.example.test", source: "custom-domain" as const }] },
+      domainRoutes: { state: "verified" as const, completeness: "selected-runtime" as const, domains: [{ hostname: "nova.example.test", source: "custom-domain" as const, enabled: true }] },
     },
     { provider: "nova" as const, state: "identified" as const, runtime: "cloudflare", origin: "https://nova.example.test", configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64) },
   ];
@@ -503,7 +514,7 @@ test("the curated hosted footprint does not require unrelated Vercel credentials
       provider: "cloudflare" as const, state: "identified" as const, target: "account/worker",
       schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "resource-only" as const, triggers: [] },
       runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings: cloudflareBindings, configuredScheduler: "supabase" },
-      domainRoutes: { state: "verified" as const, completeness: "selected-runtime" as const, domains: [{ hostname: "nova.example.test", source: "custom-domain" as const }] },
+      domainRoutes: { state: "verified" as const, completeness: "selected-runtime" as const, domains: [{ hostname: "nova.example.test", source: "custom-domain" as const, enabled: true }] },
       revision: "worker-revision",
     },
     { provider: "netlify" as const, state: "identified" as const, target: "site-id", schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [] } },

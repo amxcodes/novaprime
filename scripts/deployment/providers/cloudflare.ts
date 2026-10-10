@@ -8,7 +8,7 @@ const routesPerPage = 100;
 const maxRoutePages = 20;
 const maxDnsPages = 2;
 
-interface WorkerDomain { hostname: string; zoneId: string }
+interface WorkerDomain { hostname: string; zoneId: string; enabled: boolean }
 
 async function cloudflarePages(
   urlForPage: (page: number) => string,
@@ -130,6 +130,7 @@ async function workerDomains(
   fetcher: ProviderFetcher,
 ): Promise<DomainRouteInventory> {
   const domains = new Map<string, WorkerDomain>();
+  const discoveredDomains = () => [...domains.values()].map(({ hostname, enabled }) => ({ hostname, enabled, source: "custom-domain" as const }));
   let expectedPages: number | undefined;
   for (let page = 1; page <= maxDomainPages; page += 1) {
     const query = new URLSearchParams({ service: worker, page: String(page), per_page: String(domainsPerPage) });
@@ -138,18 +139,18 @@ async function workerDomains(
       envelope = asObject(await getProviderJson(fetcher,
         `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/workers/domains?${query}`, token, "cloudflare"));
     } catch (error) {
-      return { state: "unavailable", completeness: "partial", domains: [...domains.keys()].map((hostname) => ({ hostname, source: "custom-domain" })), detail: providerFailure("cloudflare", error).detail };
+      return { state: "unavailable", completeness: "partial", domains: discoveredDomains(), detail: providerFailure("cloudflare", error).detail };
     }
     const result = envelope && Array.isArray(envelope.result) ? envelope.result : null;
     const resultInfo = asObject(envelope?.result_info);
     const totalPages = resultInfo?.total_pages;
     if (!envelope?.success || !result || !Number.isInteger(totalPages) || (totalPages as number) < 0 || !resultInfo ||
         (resultInfo.page !== undefined && resultInfo.page !== page)) {
-      return { state: "unavailable", completeness: "partial", domains: [...domains.keys()].map((hostname) => ({ hostname, source: "custom-domain" })), detail: "CLOUDFLARE_WORKER_DOMAIN_INVENTORY_INVALID" };
+      return { state: "unavailable", completeness: "partial", domains: discoveredDomains(), detail: "CLOUDFLARE_WORKER_DOMAIN_INVENTORY_INVALID" };
     }
     if (totalPages === 0) {
       if (page !== 1 || result.length !== 0 || domains.size !== 0) {
-        return { state: "unavailable", completeness: "partial", domains: [...domains.keys()].map((hostname) => ({ hostname, source: "custom-domain" })), detail: "CLOUDFLARE_WORKER_DOMAIN_INVENTORY_INVALID" };
+        return { state: "unavailable", completeness: "partial", domains: discoveredDomains(), detail: "CLOUDFLARE_WORKER_DOMAIN_INVENTORY_INVALID" };
       }
       return {
         state: "verified", completeness: "selected-runtime", domains: [],
@@ -158,17 +159,19 @@ async function workerDomains(
     }
     if (expectedPages === undefined) expectedPages = totalPages as number;
     if (expectedPages !== totalPages) {
-      return { state: "unavailable", completeness: "partial", domains: [...domains.keys()].map((hostname) => ({ hostname, source: "custom-domain" })), detail: "CLOUDFLARE_WORKER_DOMAIN_INVENTORY_CHANGED_DURING_READ" };
+      return { state: "unavailable", completeness: "partial", domains: discoveredDomains(), detail: "CLOUDFLARE_WORKER_DOMAIN_INVENTORY_CHANGED_DURING_READ" };
     }
     for (const entry of result) {
       const domain = asObject(entry);
       const service = firstString(domain?.service);
       const hostname = safeHostname(domain?.hostname);
       const zoneId = firstString(domain?.zone_id);
-      if (service !== worker || !hostname || !zoneId || !/^[a-f0-9]{32}$/i.test(zoneId) || domains.has(hostname)) {
-        return { state: "unavailable", completeness: "partial", domains: [...domains.keys()].map((hostname) => ({ hostname, source: "custom-domain" })), detail: "CLOUDFLARE_WORKER_DOMAIN_INVENTORY_INVALID" };
+      const enabled = domain?.enabled;
+      if (service !== worker || !hostname || !zoneId || !/^[a-f0-9]{32}$/i.test(zoneId) ||
+          typeof enabled !== "boolean" || domains.has(hostname)) {
+        return { state: "unavailable", completeness: "partial", domains: discoveredDomains(), detail: "CLOUDFLARE_WORKER_DOMAIN_INVENTORY_INVALID" };
       }
-      domains.set(hostname, { hostname, zoneId: zoneId.toLowerCase() });
+      domains.set(hostname, { hostname, zoneId: zoneId.toLowerCase(), enabled });
     }
     if (page >= expectedPages) {
       const selectedDomains = [...domains.values()].sort((left, right) => left.hostname.localeCompare(right.hostname));
@@ -181,7 +184,7 @@ async function workerDomains(
       if (domainsByZone.size > maxRoutingDomains || selectedDomains.length > maxRoutingDomains) {
         return {
           state: "verified", completeness: "selected-runtime",
-          domains: selectedDomains.map(({ hostname }) => ({ hostname, source: "custom-domain" })),
+          domains: selectedDomains.map(({ hostname, enabled }) => ({ hostname, enabled, source: "custom-domain" })),
           cloudflareRouting: { state: "unavailable", completeness: "partial", zones: [], detail: "CLOUDFLARE_ROUTING_DOMAIN_LIMIT" },
         };
       }
@@ -189,7 +192,7 @@ async function workerDomains(
       const routingComplete = zoneEvidence.every(({ state }) => state === "verified");
       return {
         state: "verified", completeness: "selected-runtime",
-        domains: selectedDomains.map(({ hostname }) => ({ hostname, source: "custom-domain" })),
+        domains: selectedDomains.map(({ hostname, enabled }) => ({ hostname, enabled, source: "custom-domain" })),
         cloudflareRouting: {
           state: routingComplete ? "verified" : "unavailable",
           completeness: routingComplete ? "selected-runtime" : "partial",
@@ -200,7 +203,7 @@ async function workerDomains(
     }
     if (page === maxDomainPages) break;
   }
-  return { state: "unavailable", completeness: "partial", domains: [...domains.keys()].map((hostname) => ({ hostname, source: "custom-domain" })), detail: "CLOUDFLARE_WORKER_DOMAIN_INVENTORY_PAGE_LIMIT" };
+  return { state: "unavailable", completeness: "partial", domains: discoveredDomains(), detail: "CLOUDFLARE_WORKER_DOMAIN_INVENTORY_PAGE_LIMIT" };
 }
 
 export async function inspectCloudflare(

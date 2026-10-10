@@ -110,7 +110,7 @@ test("plan verification detects changed Cloudflare route or exact-host DNS evide
     domainRoutes: {
       state: "verified",
       completeness: "selected-runtime",
-      domains: [{ hostname: "nova.example.test", source: "custom-domain" }],
+      domains: [{ hostname: "nova.example.test", source: "custom-domain", enabled: true }],
       cloudflareRouting: {
         state: "verified",
         completeness: "selected-runtime",
@@ -139,6 +139,11 @@ test("plan verification detects changed Cloudflare route or exact-host DNS evide
     },
   }];
   expect(verifyDeploymentPlanSnapshot(cloudflarePlan, local, changed).issues).toEqual(["REMOTE_INVENTORY_CHANGED"]);
+  const domainDisabled = [{
+    ...cloudflare,
+    domainRoutes: { ...cloudflare.domainRoutes!, domains: [{ hostname: "nova.example.test", source: "custom-domain" as const, enabled: false }] },
+  }];
+  expect(verifyDeploymentPlanSnapshot(cloudflarePlan, local, domainDisabled).issues).toEqual(["REMOTE_INVENTORY_CHANGED"]);
 });
 
 test("remote-bound plans require a fresh remote read and clean exact source", () => {

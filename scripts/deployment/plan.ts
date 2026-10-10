@@ -263,6 +263,11 @@ export function buildDeploymentPreview(
           blockers.push("TARGET_RUNTIME_PUBLIC_HOSTNAME_NOT_ATTACHED");
         }
         if (request.runtime === "cloudflare") {
+          const hostnameDomain = currentHostname
+            ? runtimeState.domainRoutes.domains.find(({ hostname }) => hostname === currentHostname)
+            : undefined;
+          if (hostnameDomain && hostnameDomain.enabled === false) blockers.push("TARGET_CLOUDFLARE_PUBLIC_HOSTNAME_DISABLED");
+          else if (hostnameDomain && hostnameDomain.enabled !== true) blockers.push("TARGET_CLOUDFLARE_DOMAIN_ROUTABILITY_UNVERIFIED");
           const routing = runtimeState.domainRoutes.cloudflareRouting;
           if (routing?.state !== "verified" || routing.completeness !== "selected-runtime") {
             blockers.push("TARGET_CLOUDFLARE_ROUTE_DNS_INVENTORY_INCOMPLETE");

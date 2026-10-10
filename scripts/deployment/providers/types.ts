@@ -38,7 +38,7 @@ export interface RuntimeBindingInventory {
 export interface DomainRouteInventory {
   state: "verified" | "unavailable" | "not-inspected";
   completeness: "selected-runtime" | "partial" | "not-inspected";
-  domains: Array<{ hostname: string; source: "provider-default" | "custom-domain" }>;
+  domains: Array<{ hostname: string; source: "provider-default" | "custom-domain"; enabled?: boolean }>;
   cloudflareRouting?: {
     state: "verified" | "unavailable";
     completeness: "selected-runtime" | "partial";

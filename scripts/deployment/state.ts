@@ -161,9 +161,10 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
               (domains.detail === undefined || typeof domains.detail === "string") && Array.isArray(domains.domains) &&
               domains.domains.length <= 2_000 && domains.domains.every((value) => {
                 const domain = typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
-                return domain !== null && hasOnly(domain, ["hostname", "source"]) &&
+                return domain !== null && hasOnly(domain, ["hostname", "source", "enabled"]) &&
                   typeof domain.hostname === "string" && domain.hostname.length <= 253 && /^[a-z0-9.-]+$/.test(domain.hostname) &&
-                  ["provider-default", "custom-domain"].includes(String(domain.source));
+                  ["provider-default", "custom-domain"].includes(String(domain.source)) &&
+                  (domain.enabled === undefined || typeof domain.enabled === "boolean");
               }) &&
               (domains.cloudflareRouting === undefined || (() => {
                 const routing = typeof domains.cloudflareRouting === "object" && domains.cloudflareRouting !== null && !Array.isArray(domains.cloudflareRouting)

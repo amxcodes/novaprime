@@ -70,9 +70,12 @@ does not return container IDs, ports, logs, or environment values. Remote
 inventory can inspect selected Netlify production
 variable names/scopes/contexts and Cloudflare Worker binding names/types, plus
 site domains and Cloudflare Worker custom domains. For each attached Worker
-domain, Cloudflare inventory reads that zone's Worker Routes and exact-host DNS
-record names, types, and proxy flags; it does not retain DNS targets or other
-variable values. Only the allowlisted scheduler selector is read as a
+domain, NOVA records Cloudflare's `enabled` routability flag, reads that zone's
+Worker Routes and exact-host DNS record names, types, and proxy flags, and does
+not retain DNS targets or other variable values. A disabled or unreported
+target hostname blocks the move. An issued certificate ID does not prove a
+public TLS handshake; candidate TLS and readiness still require a public probe.
+Only the allowlisted scheduler selector is read as a
 configuration value. An overlapping route assigned to another Worker, a
 missing exact-host record, or incomplete route/DNS permissions blocks a
 Cloudflare runtime move. This metadata still does not prove public TLS or

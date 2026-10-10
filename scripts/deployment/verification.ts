@@ -53,7 +53,7 @@ function providerSnapshot(resources: readonly ProviderResource[]): unknown[] {
       state: resource.domainRoutes.state,
       completeness: resource.domainRoutes.completeness,
       domains: [...resource.domainRoutes.domains]
-        .map(({ hostname, source }) => ({ hostname, source }))
+        .map(({ hostname, source, enabled }) => ({ hostname, source, enabled: enabled ?? null }))
         .sort((left, right) => left.hostname.localeCompare(right.hostname)),
       cloudflareRouting: resource.domainRoutes.cloudflareRouting ? {
         state: resource.domainRoutes.cloudflareRouting.state,

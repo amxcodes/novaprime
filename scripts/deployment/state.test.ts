@@ -67,7 +67,7 @@ test("plans persist outside the checkout with a random ID and private file mode"
       domainRoutes: {
         state: "verified" as const,
         completeness: "selected-runtime" as const,
-        domains: [{ hostname: "nova.example.test", source: "custom-domain" as const }],
+        domains: [{ hostname: "nova.example.test", source: "custom-domain" as const, enabled: true }],
         cloudflareRouting: {
           state: "verified" as const,
           completeness: "selected-runtime" as const,
@@ -134,6 +134,11 @@ test("plans persist outside the checkout with a random ID and private file mode"
   await expect(loadDeploymentPlan(repo, stored.id)).rejects.toThrow("DEPLOYMENT_PLAN_CORRUPT");
   netlifyBindings.configuredBuildScheduler = "supabase";
   const cloudflare = persistedPreview.providerInventory.find(({ provider }) => provider === "cloudflare")!;
+  const domains = (cloudflare.domainRoutes as { domains: Array<Record<string, unknown>> }).domains;
+  domains[0]!.enabled = "true";
+  await writeFile(persistedPath, JSON.stringify(editedPlan));
+  await expect(loadDeploymentPlan(repo, stored.id)).rejects.toThrow("DEPLOYMENT_PLAN_CORRUPT");
+  domains[0]!.enabled = true;
   const runtimeBindings = cloudflare.runtimeBindings as { bindings: Array<Record<string, unknown>> };
   runtimeBindings.bindings[0]!.value = "must-not-enter-plan-state";
   await writeFile(persistedPath, JSON.stringify(editedPlan));

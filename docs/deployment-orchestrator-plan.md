@@ -742,7 +742,10 @@ plan's documented phase bounds and observed provider behavior.
      jobs from the database-pinned owner URL. Runtime-move plans block when
      required target bindings are absent, misclassified, or configured for a
    different scheduler. Cloudflare's Worker Domain inventory exposes the
-   hostname, Worker, zone ID, and TLS certificate ID. For those attached
+   hostname, Worker, zone ID, issued TLS certificate ID, and `enabled` routing
+   state. The planner blocks the selected hostname when `enabled` is false or
+   missing; an issued certificate ID alone does not prove public TLS is ready.
+   For those attached
    domains, the manager now reads the selected zones' Worker Routes and
    exact-host DNS record names/types/proxy flags, rejects incomplete reads,
    and blocks a route that can intercept the current hostname unless that
