@@ -51,8 +51,9 @@ API function, while the legacy Netlify Cron selection includes the scheduled
 tick. The workflow also dry-ran the exact Cloudflare + Supabase Wrangler
 configuration without uploading it. The Cloudflare Worker unit suite also
 passed, covering health forwarding, missing-Hyperdrive rejection, and
-scheduler selection. Both jobs passed in [GitHub Actions
-run 38038813287](https://github.com/amxcodes/novaprime/actions/runs/38038813287).
+scheduler selection. The follow-up workflow run passed both jobs on the pinned
+Ubuntu 24.04 / Node 24 runners in [GitHub Actions
+run 38039109884](https://github.com/amxcodes/novaprime/actions/runs/38039109884).
 Dry-runs verify build/configuration selection only; the Worker tests verify
 local adapter behavior. None of these checks prove a hosted deploy or live
 provider resources.
