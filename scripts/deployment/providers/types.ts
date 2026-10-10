@@ -68,6 +68,8 @@ export interface ProviderResource {
   databaseFingerprint?: string;
   schemaReady?: boolean;
   migrationLedgerPresent?: boolean;
+  /** Set only when a caller explicitly performs an unauthenticated public /api/ready probe. */
+  publicReadiness?: "ready" | "not-ready" | "unavailable";
   configuredScheduler?: string;
   schedulerInventory?: SchedulerTriggerInventory;
   migrationInventory?: DatabaseMigrationInventory;

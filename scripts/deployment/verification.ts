@@ -18,6 +18,7 @@ function providerSnapshot(resources: readonly ProviderResource[]): unknown[] {
     databaseFingerprint: resource.databaseFingerprint ?? null,
     schemaReady: resource.schemaReady ?? null,
     migrationLedgerPresent: resource.migrationLedgerPresent ?? null,
+    publicReadiness: resource.publicReadiness ?? null,
     configuredScheduler: resource.configuredScheduler ?? null,
     schedulerInventory: resource.schedulerInventory ? {
       scope: resource.schedulerInventory.scope,

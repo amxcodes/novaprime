@@ -302,7 +302,7 @@ test("Netlify Cron to Supabase Cron is a staged scheduler-only plan with exact s
     },
     { provider: "supabase" as const, state: "identified" as const, target: sourceInventory.database.projectRef!,
       schedulerInventory: { scope: "database-project" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [] } },
-    { provider: "nova" as const, state: "identified" as const, target: "https://nova.example.test", runtime: "netlify", configuredScheduler: "netlify", databaseFingerprint: sourceInventory.database.identityFingerprint!, schemaReady: true, migrationLedgerPresent: true },
+    { provider: "nova" as const, state: "identified" as const, target: "https://nova.example.test", runtime: "netlify", configuredScheduler: "netlify", databaseFingerprint: sourceInventory.database.identityFingerprint!, schemaReady: true, migrationLedgerPresent: true, publicReadiness: "ready" as const },
   ];
   const preview = buildDeploymentPreview(sourceInventory, { runtime: "netlify", database: "keep", scheduler: "supabase" }, providers, true);
   const actionIds = preview.actions.map(({ id }) => id);

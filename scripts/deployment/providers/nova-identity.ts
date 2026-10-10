@@ -1,12 +1,41 @@
 import type { ProviderFetcher, ProviderResource } from "./types.ts";
 import { asObject, firstString, getProviderJson, providerFailure } from "./shared.ts";
 
+const publicReadinessTimeoutMs = 10_000;
+const maxReadinessBytes = 16_384;
+
 const schedulers = ["cloudflare", "netlify", "vercel", "supabase", "vps"];
 const runtimes = ["cloudflare", "netlify", "vercel", "vps"];
+
+async function inspectPublicReadiness(fetcher: ProviderFetcher, origin: URL): Promise<"ready" | "not-ready" | "unavailable"> {
+  try {
+    const response = await fetcher(new URL("/api/ready", origin), {
+      method: "GET",
+      headers: { accept: "application/json" },
+      cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(publicReadinessTimeoutMs),
+    });
+    const declaredSize = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declaredSize) && declaredSize > maxReadinessBytes) return "unavailable";
+    const body = await response.text();
+    if (Buffer.byteLength(body, "utf8") > maxReadinessBytes) return "unavailable";
+    let payload: unknown;
+    try { payload = JSON.parse(body); }
+    catch { return "unavailable"; }
+    const readiness = asObject(payload);
+    if (readiness?.service !== "nova-api") return "unavailable";
+    return response.status === 200 && response.ok && readiness.status === "ready" ? "ready" : "not-ready";
+  } catch {
+    // Do not surface URL, certificate, transport, or response details in saved inventory.
+    return "unavailable";
+  }
+}
 
 export async function inspectNovaIdentity(
   environment: Readonly<Record<string, string>>,
   fetcher: ProviderFetcher,
+  options: { probePublicReadiness?: boolean } = {},
 ): Promise<ProviderResource> {
   const publicOrigin = environment.NOVA_PUBLIC_ORIGIN ?? environment.BETTER_AUTH_URL;
   const secret = environment.NOVA_BACKGROUND_JOB_SECRET;
@@ -21,8 +50,11 @@ export async function inspectNovaIdentity(
     if (origin.protocol !== "https:" || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash) {
       throw new Error("nova:PUBLIC_ORIGIN_MUST_BE_HTTPS_ORIGIN_ONLY");
     }
-    const identity = asObject(await getProviderJson(fetcher,
-      new URL("/api/internal/deployment/identity", origin).toString(), secret, "nova"));
+    const [identityValue, publicReadiness] = await Promise.all([
+      getProviderJson(fetcher, new URL("/api/internal/deployment/identity", origin).toString(), secret, "nova"),
+      options.probePublicReadiness ? inspectPublicReadiness(fetcher, origin) : Promise.resolve(undefined),
+    ]);
+    const identity = asObject(identityValue);
     const runtime = asObject(identity?.runtime);
     const database = asObject(identity?.database);
     const configuredScheduler = firstString(identity?.scheduler);
@@ -42,6 +74,7 @@ export async function inspectNovaIdentity(
       databaseFingerprint: database.fingerprint.toLowerCase(),
       schemaReady: database.schemaReady,
       migrationLedgerPresent: database.migrationLedgerPresent,
+      ...(publicReadiness ? { publicReadiness } : {}),
       ...(configuredScheduler && schedulers.includes(configuredScheduler) ? { configuredScheduler } : {}),
       detail: `SCHEMA_${database.schemaReady ? "READY" : "NOT_READY"};MIGRATION_LEDGER_${database.migrationLedgerPresent ? "VISIBLE" : "NOT_VISIBLE_TO_APP_ROLE"}`,
     };

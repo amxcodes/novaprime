@@ -377,6 +377,54 @@ test("live deployment identity sends its bearer only to the configured HTTPS ori
   expect(JSON.stringify(resources)).not.toContain("should never be retained");
 });
 
+test("deployment plans can probe public readiness without sending the identity secret", async () => {
+  const requests: Array<{ url: string; authorization: string | null }> = [];
+  const secret = "identity-secret-must-not-reach-public-readiness";
+  const fetcher: ProviderFetcher = async (input, init) => {
+    const url = String(input);
+    requests.push({ url, authorization: new Headers(init?.headers).get("authorization") });
+    return url.endsWith("/api/ready")
+      ? Response.json({ service: "nova-api", status: "ready", scheduler: "supabase" })
+      : Response.json({
+        service: "nova-api", status: "identified",
+        runtime: { adapter: "netlify", id: "deploy-1" },
+        database: { fingerprint: "b".repeat(64), schemaReady: true, migrationLedgerPresent: true },
+        scheduler: "supabase",
+      });
+  };
+  const resources = await discoverProviderResources({
+    NOVA_PUBLIC_ORIGIN: "https://nova.example",
+    NOVA_BACKGROUND_JOB_SECRET: secret,
+  }, fetcher, { probePublicReadiness: true });
+  expect(requests).toContainEqual({
+    url: "https://nova.example/api/internal/deployment/identity", authorization: `Bearer ${secret}`,
+  });
+  expect(requests).toContainEqual({ url: "https://nova.example/api/ready", authorization: null });
+  expect(resources.find(({ provider }) => provider === "nova")).toMatchObject({ publicReadiness: "ready" });
+  expect(JSON.stringify(resources)).not.toContain(secret);
+});
+
+test("public readiness fails closed on unhealthy, redirected, malformed, or unreachable endpoints", async () => {
+  const identity = () => Response.json({
+    service: "nova-api", status: "identified",
+    runtime: { adapter: "netlify", id: "deploy-1" },
+    database: { fingerprint: "b".repeat(64), schemaReady: true, migrationLedgerPresent: true },
+    scheduler: "supabase",
+  });
+  const run = async (readiness: () => Promise<Response>) => {
+    const resources = await discoverProviderResources({
+      NOVA_PUBLIC_ORIGIN: "https://nova.example",
+      NOVA_BACKGROUND_JOB_SECRET: "identity-secret",
+    }, async (input) => String(input).endsWith("/api/ready") ? readiness() : identity(),
+    { probePublicReadiness: true });
+    return resources.find(({ provider }) => provider === "nova")?.publicReadiness;
+  };
+  expect(await run(async () => Response.json({ service: "nova-api", status: "not_ready" }, { status: 503 }))).toBe("not-ready");
+  expect(await run(async () => Response.redirect("https://other.example/ready", 302))).toBe("unavailable");
+  expect(await run(async () => new Response("not json"))).toBe("unavailable");
+  expect(await run(async () => { throw new Error("private transport details"); })).toBe("unavailable");
+});
+
 test("live identity omits malformed runtime IDs and release metadata", async () => {
   const resources = await discoverProviderResources({
     NOVA_PUBLIC_ORIGIN: "https://nova.example",

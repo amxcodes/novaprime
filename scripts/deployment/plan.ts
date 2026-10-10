@@ -203,6 +203,7 @@ function netlifyCronToSupabaseBlockers(providerInventory: readonly ProviderResou
   if (liveIdentity?.schemaReady !== true || liveIdentity.migrationLedgerPresent !== true) {
     blockers.push("LIVE_NOVA_SCHEMA_NOT_READY");
   }
+  if (liveIdentity?.publicReadiness !== "ready") blockers.push("LIVE_PUBLIC_API_READINESS_NOT_VERIFIED");
 
   const supabaseSchedules = providerInventory.find(({ provider }) => provider === "supabase")?.schedulerInventory;
   if (supabaseSchedules?.state !== "not-installed" || supabaseSchedules.completeness !== "project-scoped" ||
@@ -250,6 +251,7 @@ export function buildDeploymentPreview(
     if (runtimeState?.state !== "identified") blockers.push("TARGET_RUNTIME_NOT_VERIFIED");
     else if (!runtimeState.revision) blockers.push("TARGET_RUNTIME_REVISION_UNAVAILABLE");
     if (runtimeChanges && runtimeState?.state === "identified") {
+      if (liveIdentity?.publicReadiness !== "ready") blockers.push("LIVE_PUBLIC_API_READINESS_NOT_VERIFIED");
       const expectedScheduler = request.scheduler === "keep" ? currentScheduler : request.scheduler;
       blockers.push(...runtimeConfigurationBlockers(request.runtime, expectedScheduler, runtimeState.runtimeBindings));
       if (runtimeState.domainRoutes?.state !== "verified" || runtimeState.domainRoutes.completeness !== "selected-runtime") {

@@ -96,7 +96,7 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
       }) || !Array.isArray(preview.blockers) || !preview.blockers.every((item) => typeof item === "string") ||
       (providerInventory !== undefined && (!Array.isArray(providerInventory) || !providerInventory.every((item) => {
         const provider = typeof item === "object" && item !== null && !Array.isArray(item) ? item as Record<string, unknown> : null;
-        return provider !== null && hasOnly(provider, ["provider", "state", "target", "revision", "runtime", "runtimeId", "release", "origin", "databaseVersion", "databaseFingerprint", "schemaReady", "migrationLedgerPresent", "configuredScheduler", "schedulerInventory", "migrationInventory", "runtimeBindings", "domainRoutes", "detail"]) &&
+        return provider !== null && hasOnly(provider, ["provider", "state", "target", "revision", "runtime", "runtimeId", "release", "origin", "databaseVersion", "databaseFingerprint", "schemaReady", "migrationLedgerPresent", "publicReadiness", "configuredScheduler", "schedulerInventory", "migrationInventory", "runtimeBindings", "domainRoutes", "detail"]) &&
           ["netlify", "cloudflare", "vercel", "supabase", "nova"].includes(String(provider.provider)) &&
           ["identified", "target-required", "not-configured", "unavailable"].includes(String(provider.state)) &&
           ["target", "revision", "runtime", "runtimeId", "release", "origin", "databaseVersion", "detail"].every((key) => provider[key] === undefined || typeof provider[key] === "string") &&
@@ -105,6 +105,7 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
           (provider.configuredScheduler === undefined || ["cloudflare", "netlify", "vercel", "supabase", "vps"].includes(String(provider.configuredScheduler))) &&
           (provider.databaseFingerprint === undefined || (typeof provider.databaseFingerprint === "string" && /^[a-f0-9]{64}$/.test(provider.databaseFingerprint))) &&
           ["schemaReady", "migrationLedgerPresent"].every((key) => provider[key] === undefined || typeof provider[key] === "boolean") &&
+          (provider.publicReadiness === undefined || ["ready", "not-ready", "unavailable"].includes(String(provider.publicReadiness))) &&
           (provider.schedulerInventory === undefined || (() => {
             const scheduler = typeof provider.schedulerInventory === "object" && provider.schedulerInventory !== null && !Array.isArray(provider.schedulerInventory)
               ? provider.schedulerInventory as Record<string, unknown> : null;

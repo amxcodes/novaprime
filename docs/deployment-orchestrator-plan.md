@@ -761,9 +761,16 @@ plan's documented phase bounds and observed provider behavior.
      the operator reviews the customer's full NOVA footprint; scope confirmation
      never counts as provider inventory. Inspect every resource in that footprint
      and never infer that an absent API row means no schedule.
-   - Finish domain readiness inventory with selected-zone ownership/status,
-     the public TLS handshake, and an unauthenticated readiness probe through
-     the candidate hostname. Runtime moves must also prove that the exact
+   - The plan and verify commands now perform a bounded, unauthenticated
+     `GET /api/ready` against the HTTPS origin returned by NOVA's protected
+     identity endpoint. The TLS handshake must validate, redirects are refused,
+     response data is bounded, and no identity secret is sent to this request.
+     An unhealthy or unverified public origin blocks runtime and scheduler
+     transition plans; its result is bound into the saved inventory and must
+     still match on re-verification. This proves only the currently routed
+     public service is ready; it does not prove a future candidate is ready.
+     Finish candidate verification with a candidate-specific origin after
+     implementing the deploy executor. Runtime moves must also prove that the exact
      current public hostname is attached to the selected target; an empty or
      unrelated custom-domain list is not enough. If the current hostname or
      target attachment cannot be verified, block the move. Current binding

@@ -102,6 +102,16 @@ test("plan verification detects changed Netlify build-time scheduler selection",
   expect(verifyDeploymentPlanSnapshot(plan, local, changed).issues).toEqual(["REMOTE_INVENTORY_CHANGED"]);
 });
 
+test("plan verification detects changes to the public readiness result", () => {
+  const nova: ProviderResource = {
+    provider: "nova", state: "identified", target: "https://nova.example.test",
+    runtime: "netlify", publicReadiness: "ready",
+  };
+  const boundPlan = { preview: { ...plan.preview, providerInventory: [nova] } } as StoredDeploymentPlan;
+  expect(verifyDeploymentPlanSnapshot(boundPlan, local, [{ ...nova, publicReadiness: "not-ready" }]).issues)
+    .toEqual(["REMOTE_INVENTORY_CHANGED"]);
+});
+
 test("plan verification detects changed Cloudflare route or exact-host DNS evidence", () => {
   const cloudflare: ProviderResource = {
     ...remote[0]!,

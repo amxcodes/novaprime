@@ -11,12 +11,13 @@ export type { DatabaseMigrationInventory, ProviderFetcher, ProviderName, Provide
 export async function discoverProviderResources(
   environment: Readonly<Record<string, string>>,
   fetcher: ProviderFetcher = fetch,
+  options: { probePublicReadiness?: boolean } = {},
 ): Promise<ProviderResource[]> {
   return await Promise.all([
     inspectNetlify(environment, fetcher),
     inspectCloudflare(environment, fetcher),
     inspectVercel(environment, fetcher),
     inspectSupabase(environment, fetcher),
-    inspectNovaIdentity(environment, fetcher),
+    inspectNovaIdentity(environment, fetcher, options),
   ]);
 }

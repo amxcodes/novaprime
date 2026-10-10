@@ -196,7 +196,9 @@ function reportStatus(
         ? `configured scheduler ${provider.configuredScheduler}` : undefined, scheduler, provider.schedulerInventory?.detail,
         runtimeBindings, provider.runtimeBindings?.detail, domains, provider.domainRoutes?.detail, cloudflareRouting,
         provider.domainRoutes?.cloudflareRouting?.detail,
-        migrations, provider.migrationInventory?.detail, provider.detail]
+        migrations, provider.migrationInventory?.detail,
+        provider.publicReadiness ? `public readiness ${provider.publicReadiness}` : undefined,
+        provider.detail]
         .filter(Boolean).join(" — ");
       write("  " + summary);
     }
@@ -298,7 +300,7 @@ export async function runDeploymentManager(
     if (options.command === "verify") {
       const plan = await loadDeploymentPlan(repoRoot, options.planId!);
       const inventory = await inspectLocalDeployment(repoRoot, selected.values, selected.label);
-      const remote = options.remote ? await discoverProviderResources(selected.values) : undefined;
+      const remote = options.remote ? await discoverProviderResources(selected.values, fetch, { probePublicReadiness: true }) : undefined;
       const verification = verifyDeploymentPlanSnapshot(plan, inventory, remote);
       const result = {
         planId: plan.id,
@@ -322,7 +324,7 @@ export async function runDeploymentManager(
     }
 
     const inventory = await inspectLocalDeployment(repoRoot, selected.values, selected.label);
-    const providerInventory = options.remote ? await discoverProviderResources(selected.values) : undefined;
+    const providerInventory = options.remote ? await discoverProviderResources(selected.values, fetch, { probePublicReadiness: true }) : undefined;
     const preview = buildDeploymentPreview(inventory, {
       runtime: options.runtime!,
       database: options.database,
