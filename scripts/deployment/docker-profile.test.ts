@@ -41,7 +41,7 @@ describe("self-hosted Docker entry point", () => {
 
   test("Nginx forwards only to the internal API and sets trusted proxy metadata", () => {
     expect(proxyConfig).toContain("proxy_pass http://api:3001");
-    expect(proxyConfig).toContain("proxy_set_header X-Forwarded-Host $host");
+    expect(proxyConfig).toContain("proxy_set_header X-Forwarded-Host $http_host;");
     expect(proxyConfig).toContain("proxy_set_header X-Forwarded-Proto $nova_forwarded_proto");
     expect(proxyConfig).toContain("proxy_set_header X-Forwarded-For $nova_forwarded_for");
     expect(proxyConfig).toContain('proxy_set_header CF-Connecting-IP ""');
