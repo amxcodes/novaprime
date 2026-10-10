@@ -48,14 +48,16 @@ version and connect a tested candidate to its source commit. Version URLs use
 the uploaded version's existing bindings, including production Hyperdrive and
 secrets. Cloudflare documents them as public when enabled, so protect candidate
 access with an Access application scoped to this Worker's preview deployments
-and a restrictive operator identity policy. Do not use an account-wide preview
-policy as an automatic substitute, and review any public Access destination
-overrides that could take precedence. The deployment manager currently cannot
-inventory and verify this Access boundary, so its Cloudflare candidate plan
-remains blocked; do not upload a candidate that reuses production bindings
-until that gate is verified. When enabled, limit candidate checks to health,
-readiness, assets, and the protected read-only identity endpoint. Do not run
-sign-in or writes against production records as a deployment smoke test. See
+and a restrictive operator identity policy. The read-only deployment manager
+inventory checks the immutable Worker ID, preview-URL setting, this
+preview-specific application, policies for overlapping Worker/preview/public
+destinations, and public path overrides. Missing permissions, broad policies,
+or ambiguous wildcard destinations fail closed. A verified Access boundary
+does not enable candidate upload yet: the journaled executor and recovery
+rehearsal are still unimplemented. When enabled, limit candidate checks to
+health, readiness, assets, and the protected read-only identity endpoint. Do
+not run sign-in or writes against production records as a deployment smoke
+test. See
 [Version Metadata](https://developers.cloudflare.com/workers/runtime-apis/bindings/version-metadata/),
 [Version URLs](https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/),
 and [Access application destinations](https://developers.cloudflare.com/api/resources/zero_trust/subresources/access/subresources/applications/methods/list/).

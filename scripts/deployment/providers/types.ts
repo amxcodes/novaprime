@@ -82,6 +82,13 @@ export interface ProviderResource {
   schedulerInventory?: SchedulerTriggerInventory;
   migrationInventory?: DatabaseMigrationInventory;
   runtimeBindings?: RuntimeBindingInventory;
+  candidateAccessProtection?: {
+    state: "verified" | "unavailable";
+    previewUrlsEnabled: boolean | null;
+    workerScopedPolicy: "verified" | "missing" | "unsafe" | "unverified";
+    publicDestinationOverrides: "none" | "present" | "unverified";
+    detail?: string;
+  };
   domainRoutes?: DomainRouteInventory;
   detail?: string;
 }

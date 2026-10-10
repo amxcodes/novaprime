@@ -193,6 +193,21 @@ queries only those zone IDs and exact hostnames; it does not list unrelated
 zones or retain DNS record targets. An absent permission makes the selected
 route/DNS inventory incomplete and keeps the runtime move blocked.
 
+Cloudflare candidate Access inventory additionally requires Workers Scripts
+Read and Access Apps and Policies Read. It reads the account's Worker list for
+the immutable Worker ID, the selected Worker preview-URL setting, all Access
+applications, and policies for each application that can cover that Worker or
+its preview hostname. It accepts only allow rules scoped to explicit operator
+email addresses; email-domain, bypass, non-identity, broad, missing, or unreadable
+policies block the candidate. Public path overrides and ambiguous wildcard
+destinations also block. The inventory records only verified/unsafe/missing
+states; it never persists policy identity values. See the Cloudflare
+[List Workers API](https://developers.cloudflare.com/api/resources/workers/subresources/beta/subresources/workers/methods/list/),
+[Get Worker Script Subdomain API](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/subdomain/methods/get/),
+[Get Workers Subdomain API](https://developers.cloudflare.com/api/resources/workers/subresources/subdomains/methods/get/),
+[List Access Applications API](https://developers.cloudflare.com/api/resources/zero_trust/subresources/access/subresources/applications/methods/list/),
+and [List Application Policies API](https://developers.cloudflare.com/api/resources/zero_trust/subresources/access/subresources/applications/subresources/policies/methods/list/).
+
 Provider API contracts used by this inventory:
 
 - Netlify `GET /api/v1/accounts/{account_id}/env`, queried for the selected
@@ -785,12 +800,15 @@ plan's documented phase bounds and observed provider behavior.
      Finish candidate verification with a candidate-specific origin after
      implementing the deploy executor. Cloudflare Version URLs reuse the
      selected Worker's configured production bindings, so block candidate
-     upload until the manager can verify a worker-scoped Access application,
-     restrictive operator identity policy, and absence of public destination
-     overrides that take precedence. The current manager does not inventory
-     Access apps/policies and therefore emits
-     `TARGET_CLOUDFLARE_CANDIDATE_ACCESS_POLICY_NOT_INVENTORIED`; an operator
-     reminder alone is not a passing check. Runtime moves must also prove that the exact
+     upload until the manager verifies that preview URLs are enabled, the
+     immutable Worker ID has exactly one preview-specific Access application,
+     every overlapping Worker/preview/public Access application has a
+     restrictive operator identity policy, and no relevant path override is
+     public. The read-only inventory now checks these conditions and binds its
+     summary into the saved plan without storing identity values. Missing API
+     permissions or ambiguous wildcard destinations remain blockers; the
+     deployment executor and isolated/recovery rehearsal are still absent.
+     Runtime moves must also prove that the exact
      current public hostname is attached to the selected target; an empty or
      unrelated custom-domain list is not enough. If the current hostname or
      target attachment cannot be verified, block the move. Runtime binding

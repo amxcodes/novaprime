@@ -56,6 +56,12 @@ function providerSnapshot(resources: readonly ProviderResource[]): unknown[] {
       buildSchedulerAvailable: resource.runtimeBindings.buildSchedulerAvailable ?? null,
       configuredBuildScheduler: resource.runtimeBindings.configuredBuildScheduler ?? null,
     } : null,
+    candidateAccessProtection: resource.candidateAccessProtection ? {
+      state: resource.candidateAccessProtection.state,
+      previewUrlsEnabled: resource.candidateAccessProtection.previewUrlsEnabled,
+      workerScopedPolicy: resource.candidateAccessProtection.workerScopedPolicy,
+      publicDestinationOverrides: resource.candidateAccessProtection.publicDestinationOverrides,
+    } : null,
     domainRoutes: resource.domainRoutes ? {
       state: resource.domainRoutes.state,
       completeness: resource.domainRoutes.completeness,

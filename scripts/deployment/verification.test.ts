@@ -126,6 +126,21 @@ test("plan verification detects a changed Hyperdrive attachment or database iden
   expect(verifyDeploymentPlanSnapshot(boundPlan, local, changedTarget).issues).toEqual(["REMOTE_INVENTORY_CHANGED"]);
 });
 
+test("plan verification detects changes to Cloudflare candidate Access protection", () => {
+  const cloudflare: ProviderResource = {
+    provider: "cloudflare", state: "identified", target: "account/worker", runtime: "cloudflare",
+    runtimeId: "worker-immutable-id",
+    candidateAccessProtection: {
+      state: "verified", previewUrlsEnabled: true, workerScopedPolicy: "verified", publicDestinationOverrides: "none",
+    },
+  };
+  const boundPlan = { preview: { ...plan.preview, providerInventory: [cloudflare] } } as StoredDeploymentPlan;
+  expect(verifyDeploymentPlanSnapshot(boundPlan, local, [{
+    ...cloudflare,
+    candidateAccessProtection: { ...cloudflare.candidateAccessProtection!, publicDestinationOverrides: "present" },
+  }]).issues).toEqual(["REMOTE_INVENTORY_CHANGED"]);
+});
+
 test("plan verification detects changed Netlify build-time scheduler selection", () => {
   const changed = [{
     ...remote[0]!,

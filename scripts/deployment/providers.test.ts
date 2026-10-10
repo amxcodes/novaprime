@@ -44,6 +44,125 @@ test("provider discovery requires explicit target IDs and sanitizes API failure 
   expect(JSON.stringify(rejected)).not.toContain("token response");
 });
 
+function cloudflareCandidateInventoryFetcher(options: {
+  previewsEnabled?: boolean;
+  appDestinations?: readonly unknown[];
+  extraApplications?: readonly unknown[];
+  policies?: readonly unknown[];
+  denyApps?: boolean;
+  denyPolicies?: boolean;
+} = {}): ProviderFetcher {
+  return async (input) => {
+    const url = new URL(String(input));
+    const page = Number(url.searchParams.get("page") ?? 1);
+    const pageEnvelope = (result: readonly unknown[]) => Response.json({
+      success: true, result, result_info: { page, total_pages: result.length ? 1 : 0 },
+    });
+    if (url.pathname.endsWith("/schedules")) return Response.json({ success: true, result: { schedules: [] } });
+    if (url.pathname.endsWith("/settings")) return Response.json({ success: true, result: { bindings: [] } });
+    if (url.pathname.endsWith("/workers/domains")) return pageEnvelope([]);
+    if (url.pathname.endsWith("/workers/routes")) return pageEnvelope([]);
+    if (url.pathname.endsWith("/workers/workers")) return pageEnvelope([{
+      id: "worker-immutable-id", name: "nova-api",
+    }]);
+    if (url.pathname.endsWith("/scripts/nova-api/subdomain")) return Response.json({ success: true, result: {
+      enabled: true, previews_enabled: options.previewsEnabled ?? true,
+    } });
+    if (url.pathname.endsWith("/workers/subdomain")) return Response.json({ success: true, result: { subdomain: "nova-team" } });
+    if (url.pathname.endsWith("/access/apps")) {
+      if (options.denyApps) return new Response("private access inventory response", { status: 403 });
+      return pageEnvelope([{
+        id: "access-app-id", type: "self_hosted", destinations: options.appDestinations ?? [{
+          type: "preview_worker", worker_id: "worker-immutable-id", overrides: [],
+        }],
+      }, ...(options.extraApplications ?? [])]);
+    }
+    if (url.pathname.includes("/access/apps/") && url.pathname.endsWith("/policies")) {
+      if (options.denyPolicies) return new Response("private policy inventory response", { status: 403 });
+      return pageEnvelope(options.policies ?? [{
+        decision: "allow", include: [{ email: { email: "operator@example.test" } }],
+      }]);
+    }
+    if (url.pathname.endsWith("/access/apps/")) return pageEnvelope([]);
+    if (url.pathname.endsWith("/scripts/nova-api")) return Response.json({ success: true, result: {
+      id: "nova-api", modified_on: "2026-10-07T00:00:00Z",
+    } });
+    throw new Error("unexpected Cloudflare read: " + url.pathname);
+  };
+}
+
+const cloudflareCandidateEnvironment = {
+  CLOUDFLARE_API_TOKEN: "cloudflare-token",
+  CLOUDFLARE_ACCOUNT_ID: "a".repeat(32),
+  CLOUDFLARE_WORKER_NAME: "nova-api",
+};
+
+test("Cloudflare candidate inventory verifies the exact preview application and an identity-limited policy", async () => {
+  const resources = await discoverProviderResources(cloudflareCandidateEnvironment, cloudflareCandidateInventoryFetcher());
+  const cloudflare = resources.find(({ provider }) => provider === "cloudflare")!;
+  expect(cloudflare).toMatchObject({
+    runtimeId: "worker-immutable-id",
+    candidateAccessProtection: {
+      state: "verified", previewUrlsEnabled: true, workerScopedPolicy: "verified", publicDestinationOverrides: "none",
+    },
+  });
+  expect(JSON.stringify(cloudflare)).not.toContain("operator@example.test");
+});
+
+test("Cloudflare candidate inventory fails closed for disabled previews, broad policies, and public overrides", async () => {
+  const cases = [
+    { options: { previewsEnabled: false }, expected: { previewUrlsEnabled: false } },
+    { options: { policies: [{ decision: "allow", include: [{ everyone: {} }] }] }, expected: { workerScopedPolicy: "unsafe" } },
+    { options: { policies: [{ decision: "allow", include: [{ email_domain: { domain: "example.test" } }] }] }, expected: { workerScopedPolicy: "unsafe" } },
+    { options: { policies: [{ decision: "bypass", include: [{ email: { email: "operator@example.test" } }] }] }, expected: { workerScopedPolicy: "unsafe" } },
+    { options: {
+      extraApplications: [{
+        id: "higher-priority-app", type: "self_hosted",
+        destinations: [{ type: "public", uri: "https://*-nova-api.nova-team.workers.dev/*", overrides: [] }],
+      }],
+      policies: [{ decision: "allow", include: [{ everyone: {} }] }],
+    }, expected: { workerScopedPolicy: "unsafe" } },
+    { options: {
+      extraApplications: [{
+        id: "account-preview-app", type: "self_hosted",
+        destinations: [{ type: "all_preview_workers", overrides: [] }],
+      }],
+      policies: [{ decision: "allow", include: [{ everyone: {} }] }],
+    }, expected: { workerScopedPolicy: "unsafe" } },
+    { options: { appDestinations: [{ type: "all_preview_workers", overrides: [{ behavior: "public", path_pattern: "/debug/*" }] }] }, expected: { publicDestinationOverrides: "present" } },
+    { options: { appDestinations: [{ type: "public", uri: "https://*-nova-api.nova-team.workers.dev/*", overrides: [{ behavior: "public", path_pattern: "/*" }] }] }, expected: { publicDestinationOverrides: "present" } },
+    { options: { appDestinations: [{ type: "public", uri: "https://v1-nova-api.nova-team.workers.dev/*", overrides: [] }] }, expected: { workerScopedPolicy: "unverified" } },
+  ] as const;
+  for (const { options, expected } of cases) {
+    const resources = await discoverProviderResources(cloudflareCandidateEnvironment, cloudflareCandidateInventoryFetcher(options));
+    const protection = resources.find(({ provider }) => provider === "cloudflare")?.candidateAccessProtection;
+    expect(protection?.state).toBe("unavailable");
+    expect(protection).toMatchObject(expected);
+  }
+});
+
+test("Cloudflare candidate inventory verifies restrictive policies on a higher-priority public destination", async () => {
+  const resources = await discoverProviderResources(cloudflareCandidateEnvironment, cloudflareCandidateInventoryFetcher({
+    extraApplications: [{
+      id: "higher-priority-app", type: "self_hosted",
+      destinations: [{ type: "public", uri: "https://*-nova-api.nova-team.workers.dev/*", overrides: [] }],
+    }],
+  }));
+  expect(resources.find(({ provider }) => provider === "cloudflare")?.candidateAccessProtection).toMatchObject({
+    state: "verified", workerScopedPolicy: "verified", publicDestinationOverrides: "none",
+  });
+});
+
+test("Cloudflare candidate inventory reports missing policy-read access and absent application separately", async () => {
+  for (const options of [{ denyApps: true }, { denyPolicies: true }, { appDestinations: [] }]) {
+    const resources = await discoverProviderResources(cloudflareCandidateEnvironment, cloudflareCandidateInventoryFetcher(options));
+    const protection = resources.find(({ provider }) => provider === "cloudflare")?.candidateAccessProtection;
+    expect(protection?.state).toBe("unavailable");
+    expect(["missing", "unverified"].includes(protection?.workerScopedPolicy ?? "")).toBe(true);
+    expect(JSON.stringify(protection)).not.toContain("private");
+  }
+});
+
 test("Netlify Cron inventory comes only from its latest published production deploy", async () => {
   const requests: string[] = [];
   const fetcher: ProviderFetcher = async (input) => {

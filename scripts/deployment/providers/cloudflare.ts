@@ -286,6 +286,213 @@ async function workerDomains(
   return { state: "unavailable", completeness: "partial", domains: discoveredDomains(), detail: "CLOUDFLARE_WORKER_DOMAIN_INVENTORY_PAGE_LIMIT" };
 }
 
+function restrictedAccessPolicySet(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length === 0) return false;
+  const policies = value.map(asObject);
+  if (policies.some((policy) => !policy || !["allow", "deny"].includes(String(policy.decision)))) return false;
+  const allows = policies.filter((policy) => policy?.decision === "allow");
+  return allows.length > 0 && allows.every((policy) =>
+    Array.isArray(policy?.include) && policy.include.length > 0 &&
+    policy.include.every((rule) => {
+      const entry = asObject(rule);
+      const keys = entry ? Object.keys(entry) : [];
+      if (keys.length !== 1) return false;
+      const value = asObject(entry?.[keys[0]!]);
+      if (keys[0] !== "email" || typeof value?.email !== "string" || value.email.length > 254) return false;
+      const separator = value.email.lastIndexOf("@");
+      const local = value.email.slice(0, separator);
+      const domain = value.email.slice(separator + 1);
+      return separator > 0 && local.length <= 64 && !/[\s@]/.test(local) && !!safeHostname(domain);
+    }));
+}
+
+function candidateVersionHostMatches(uri: string | undefined, worker: string, subdomain: string): boolean | null {
+  if (!uri || uri.length > 2_000) return null;
+  const schemeEnd = uri.indexOf("://");
+  const authority = (schemeEnd >= 0 ? uri.slice(schemeEnd + 3) : uri).split(/[/?#]/, 1)[0];
+  if (!authority || authority.length > 512 || /[@:\u0000-\u0020]/.test(authority)) return null;
+  const normalized = authority.toLowerCase();
+  const normalizedWorker = worker.toLowerCase();
+  const candidateSuffix = "." + subdomain.toLowerCase() + ".workers.dev";
+  const candidateLabelSuffix = "-" + normalizedWorker;
+  const candidate = "nova-candidate-probe-" + normalizedWorker + candidateSuffix;
+  const firstLabel = normalized.split(".", 1)[0] ?? "";
+  const exactAccountSuffix = normalized.endsWith(candidateSuffix);
+  const wildcardAccountSuffix = !exactAccountSuffix && normalized.endsWith(".workers.dev") &&
+    normalized.slice(firstLabel.length).includes("*");
+  if (!exactAccountSuffix && !wildcardAccountSuffix) return false;
+  const escaped = normalized.split("*").map((part) => part.split("").map((character) =>
+    ".+?^$(){}|[]\\".includes(character) ? "\\" + character : character).join("")).join(".*");
+  try {
+    const pattern = new RegExp("^" + escaped + "$");
+    if (pattern.test(candidate)) {
+      // A host glob that matches this Worker is an overlapping destination;
+      // exact synthetic labels remain ambiguous rather than being called safe.
+      return firstLabel.includes("*") ? true : null;
+    }
+    const wildcardTail = firstLabel.includes("*") ? firstLabel.slice(firstLabel.lastIndexOf("*") + 1) : null;
+    if (wildcardTail !== null) {
+      // The wildcard can cover a version prefix if its fixed tail is compatible
+      // with the selected Worker's version-host suffix.
+      return candidateLabelSuffix.endsWith(wildcardTail) ? true : false;
+    }
+    if (!firstLabel.endsWith(candidateLabelSuffix)) return false;
+    const versionPrefix = firstLabel.slice(0, -candidateLabelSuffix.length);
+    // An exact non-empty version prefix is ambiguous before candidate creation.
+    return versionPrefix.length > 0 ? null : false;
+  }
+  catch { return null; }
+}
+
+function inspectCandidateAccessApplications(
+  apps: readonly unknown[],
+  workerId: string,
+  worker: string,
+  subdomain: string,
+): {
+  relevantApplications: Array<{ id: string; type: string }>;
+  targetPreviewApplications: Array<{ id: string; type: string }>;
+  publicDestinationOverrides: "none" | "present" | "unverified";
+  unverified: boolean;
+} {
+  const relevantApplications = new Map<string, { id: string; type: string }>();
+  const targetPreviewApplications = new Map<string, { id: string; type: string }>();
+  let publicDestinationOverrides: "none" | "present" | "unverified" = "none";
+  let unverified = false;
+  for (const value of apps) {
+    const app = asObject(value);
+    if (!app) { unverified = true; continue; }
+    if (!Array.isArray(app.destinations)) {
+      const legacyDomains = [firstString(app.domain), ...(Array.isArray(app.self_hosted_domains)
+        ? app.self_hosted_domains.map((item) => firstString(asObject(item)?.hostname ?? item)) : [])];
+      if (legacyDomains.some((domain) => domain?.toLowerCase().includes("workers.dev") &&
+          candidateVersionHostMatches(domain, worker, subdomain) !== false)) unverified = true;
+      continue;
+    }
+    let relevant = false;
+    const appId = safeProviderId(firstString(app.id));
+    const appType = firstString(app.type);
+    for (const item of app.destinations) {
+      const destination = asObject(item);
+      if (!destination) { unverified = true; continue; }
+      const type = destination.type;
+      if ((type === "preview_worker" || type === "worker") && typeof destination.worker_id !== "string") {
+        unverified = true;
+        continue;
+      }
+      const targetsPreviewWorker = type === "preview_worker" && destination.worker_id === workerId;
+      const targetsWorker = type === "worker" && destination.worker_id === workerId;
+      const targetsPreviewSet = type === "all_preview_workers" || type === "all_workers";
+      const publicHostMatches = destination.type === "public"
+        ? candidateVersionHostMatches(firstString(destination.uri), worker, subdomain)
+        : false;
+      if (publicHostMatches === null) { unverified = true; continue; }
+      if (!targetsPreviewWorker && !targetsWorker && !targetsPreviewSet && !publicHostMatches) continue;
+      relevant = true;
+      if (targetsPreviewWorker && appId && appType) targetPreviewApplications.set(appId, { id: appId, type: appType });
+      if (destination.overrides !== undefined && !Array.isArray(destination.overrides)) {
+        publicDestinationOverrides = "unverified";
+        continue;
+      }
+      for (const overrideItem of (Array.isArray(destination.overrides) ? destination.overrides : [])) {
+        const override = asObject(overrideItem);
+        if (!override || typeof override.behavior !== "string" || typeof override.path_pattern !== "string") {
+          publicDestinationOverrides = "unverified";
+          continue;
+        }
+        if (override.behavior === "public") publicDestinationOverrides = "present";
+        else publicDestinationOverrides = "unverified";
+      }
+    }
+    if (relevant) {
+      if (!appId || !appType || appType !== "self_hosted") unverified = true;
+      else relevantApplications.set(appId, { id: appId, type: appType });
+    }
+  }
+  return {
+    relevantApplications: [...relevantApplications.values()],
+    targetPreviewApplications: [...targetPreviewApplications.values()],
+    publicDestinationOverrides,
+    unverified,
+  };
+}
+
+async function inspectCandidateAccessProtection(
+  account: string,
+  worker: string,
+  token: string,
+  fetcher: ProviderFetcher,
+): Promise<{
+  protection: NonNullable<ProviderResource["candidateAccessProtection"]>;
+  runtimeId?: string;
+}> {
+  let previewUrlsEnabled: boolean | null = null;
+  let workerScopedPolicy: "verified" | "missing" | "unsafe" | "unverified" = "unverified";
+  let publicDestinationOverrides: "none" | "present" | "unverified" = "unverified";
+  try {
+    const workers = await cloudflarePages((page) => {
+      const query = new URLSearchParams({ page: String(page), per_page: String(routesPerPage) });
+      return "https://api.cloudflare.com/client/v4/accounts/" + encodeURIComponent(account) + "/workers/workers?" + query;
+    }, token, fetcher, "WORKER_ID_INVENTORY_INVALID");
+    const matchingWorkers = workers.map(asObject).filter((item) => item?.name === worker);
+    const runtimeId = matchingWorkers.length === 1 ? safeProviderId(firstString(matchingWorkers[0]?.id)) : undefined;
+    if (!runtimeId) throw new Error("cloudflare:WORKER_ID_UNVERIFIED");
+
+    const subdomainResponse = asObject(await getProviderJson(fetcher,
+      "https://api.cloudflare.com/client/v4/accounts/" + encodeURIComponent(account) +
+      "/workers/scripts/" + encodeURIComponent(worker) + "/subdomain", token, "cloudflare"));
+    const subdomainSettings = asObject(subdomainResponse?.result);
+    if (!subdomainResponse?.success || typeof subdomainSettings?.enabled !== "boolean" ||
+        typeof subdomainSettings.previews_enabled !== "boolean") {
+      throw new Error("cloudflare:PREVIEW_URL_SETTINGS_UNVERIFIED");
+    }
+    previewUrlsEnabled = subdomainSettings.previews_enabled;
+    const accountSubdomainResponse = asObject(await getProviderJson(fetcher,
+      "https://api.cloudflare.com/client/v4/accounts/" + encodeURIComponent(account) + "/workers/subdomain", token, "cloudflare"));
+    const accountSubdomain = asObject(accountSubdomainResponse?.result);
+    if (!accountSubdomainResponse?.success) throw new Error("cloudflare:WORKERS_DEV_SUBDOMAIN_UNVERIFIED");
+    const subdomain = firstString(accountSubdomain?.subdomain);
+    if (!subdomain || !safeHostname(worker + "." + subdomain + ".workers.dev")) {
+      throw new Error("cloudflare:WORKERS_DEV_SUBDOMAIN_UNVERIFIED");
+    }
+
+    const apps = await cloudflarePages((page) => {
+      const query = new URLSearchParams({ page: String(page), per_page: String(routesPerPage) });
+      return "https://api.cloudflare.com/client/v4/accounts/" + encodeURIComponent(account) + "/access/apps?" + query;
+    }, token, fetcher, "ACCESS_APPLICATION_INVENTORY_INVALID");
+    const accessApps = inspectCandidateAccessApplications(apps, runtimeId, worker, subdomain);
+    if (accessApps.unverified) throw new Error("cloudflare:ACCESS_APPLICATION_SCOPE_UNVERIFIED");
+    if (accessApps.targetPreviewApplications.length === 1 && accessApps.relevantApplications.length > 0) {
+      const policiesByApplication = await Promise.all(accessApps.relevantApplications.map(async ({ id }) => {
+        const applicationId = safeProviderId(id);
+        if (!applicationId) throw new Error("cloudflare:ACCESS_APPLICATION_ID_UNVERIFIED");
+        return cloudflarePages((page) => {
+          const query = new URLSearchParams({ page: String(page), per_page: String(routesPerPage) });
+          return "https://api.cloudflare.com/client/v4/accounts/" + encodeURIComponent(account) +
+            "/access/apps/" + encodeURIComponent(applicationId) + "/policies?" + query;
+        }, token, fetcher, "ACCESS_POLICY_INVENTORY_INVALID");
+      }));
+      workerScopedPolicy = policiesByApplication.every(restrictedAccessPolicySet) ? "verified" : "unsafe";
+    } else {
+      workerScopedPolicy = accessApps.targetPreviewApplications.length === 0 ? "missing" : "unverified";
+    }
+    publicDestinationOverrides = accessApps.publicDestinationOverrides;
+    const state = previewUrlsEnabled && workerScopedPolicy === "verified" && publicDestinationOverrides === "none"
+      ? "verified" : "unavailable";
+    return { protection: { state, previewUrlsEnabled, workerScopedPolicy, publicDestinationOverrides }, runtimeId };
+  } catch (error) {
+    return {
+      protection: {
+        state: "unavailable",
+        previewUrlsEnabled,
+        workerScopedPolicy,
+        publicDestinationOverrides,
+        detail: providerFailure("cloudflare", error).detail,
+      },
+    };
+  }
+}
+
 export async function inspectCloudflare(
   environment: Readonly<Record<string, string>>,
   fetcher: ProviderFetcher,
@@ -300,7 +507,7 @@ export async function inspectCloudflare(
     const envelope = asObject(await getProviderJson(fetcher, base, token, "cloudflare"));
     const script = asObject(envelope?.result);
     if (!envelope?.success || !script) throw new Error("cloudflare:RESPONSE_INVALID");
-    const [schedulerInventory, settings, domainRoutes] = await Promise.all([
+    const [schedulerInventory, settings, domainRoutes, candidateAccess] = await Promise.all([
       (async (): Promise<SchedulerTriggerInventory> => {
         try {
           const response = asObject(await getProviderJson(fetcher, `${base}/schedules`, token, "cloudflare"));
@@ -341,13 +548,16 @@ export async function inspectCloudflare(
         }
       })(),
       workerDomains(account, worker, token, fetcher),
+      inspectCandidateAccessProtection(account, worker, token, fetcher),
     ]);
     const revision = safeProviderId(firstString(script.etag, script.modified_on));
     return {
       provider: "cloudflare", state: "identified", target: `${account}/${worker}`, runtime: "cloudflare",
       ...(revision ? { revision } : {}),
+      ...(candidateAccess.runtimeId ? { runtimeId: candidateAccess.runtimeId } : {}),
       schedulerInventory,
       runtimeBindings: settings,
+      candidateAccessProtection: candidateAccess.protection,
       domainRoutes,
       ...(firstString(script.modified_on) ? { detail: `SCRIPT_MODIFIED_${script.modified_on}` } : {}),
     };

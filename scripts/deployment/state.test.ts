@@ -55,6 +55,12 @@ test("plans persist outside the checkout with a random ID and private file mode"
       target: "account/worker",
       revision: "worker-etag-123",
       runtimeId: "01234567-89ab-4cde-8fab-0123456789ab",
+      candidateAccessProtection: {
+        state: "verified" as const,
+        previewUrlsEnabled: true,
+        workerScopedPolicy: "verified" as const,
+        publicDestinationOverrides: "none" as const,
+      },
       runtimeBindings: {
         state: "verified" as const,
         completeness: "selected-runtime" as const,
@@ -140,6 +146,15 @@ test("plans persist outside the checkout with a random ID and private file mode"
   await writeFile(persistedPath, JSON.stringify(editedPlan));
   await expect(loadDeploymentPlan(repo, stored.id)).rejects.toThrow("DEPLOYMENT_PLAN_CORRUPT");
   domains[0]!.enabled = true;
+  const access = cloudflare.candidateAccessProtection as Record<string, unknown>;
+  access.publicDestinationOverrides = "present";
+  await writeFile(persistedPath, JSON.stringify(editedPlan));
+  await expect(loadDeploymentPlan(repo, stored.id)).rejects.toThrow("DEPLOYMENT_PLAN_CORRUPT");
+  access.publicDestinationOverrides = "none";
+  access.operatorEmail = "operator@example.test";
+  await writeFile(persistedPath, JSON.stringify(editedPlan));
+  await expect(loadDeploymentPlan(repo, stored.id)).rejects.toThrow("DEPLOYMENT_PLAN_CORRUPT");
+  delete access.operatorEmail;
   const runtimeBindings = cloudflare.runtimeBindings as { bindings: Array<Record<string, unknown>> };
   runtimeBindings.bindings[0]!.value = "must-not-enter-plan-state";
   await writeFile(persistedPath, JSON.stringify(editedPlan));

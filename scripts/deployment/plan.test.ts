@@ -141,7 +141,7 @@ test("remote planning binds provider inventory and blocks an unverified runtime 
   expect(preview.blockers).not.toContain("DATABASE_PROVIDER_NOT_VERIFIED");
 });
 
-test("Cloudflare runtime plans block candidate upload until worker-scoped Access protection is inventoried", () => {
+test("Cloudflare runtime plans require verified Access protection and a deploy executor", () => {
   const providers = [
     {
       provider: "cloudflare" as const, state: "identified" as const, target: "account/worker", revision: "worker-revision",
@@ -155,7 +155,24 @@ test("Cloudflare runtime plans block candidate upload until worker-scoped Access
   }, providers, true);
   expect(preview.blockers).toContain("TARGET_CLOUDFLARE_CANDIDATE_ACCESS_POLICY_NOT_INVENTORIED");
   expect(preview.actions.find(({ id }) => id === "deploy-candidate")?.reason)
-    .toContain("worker-scoped Access policy");
+    .toContain("journaled provider executor");
+
+  const verifiedPreview = buildDeploymentPreview(inventory, {
+    runtime: "cloudflare", database: "keep", scheduler: "keep",
+  }, providers.map((resource) => resource.provider === "cloudflare" ? {
+    ...resource,
+    runtimeId: "worker-immutable-id",
+    candidateAccessProtection: {
+      state: "verified" as const,
+      previewUrlsEnabled: true,
+      workerScopedPolicy: "verified" as const,
+      publicDestinationOverrides: "none" as const,
+    },
+  } : resource), true);
+  expect(verifiedPreview.blockers).not.toContain("TARGET_CLOUDFLARE_CANDIDATE_ACCESS_POLICY_NOT_INVENTORIED");
+  expect(verifiedPreview.blockers).not.toContain("TARGET_CLOUDFLARE_WORKER_PREVIEW_ACCESS_NOT_RESTRICTED");
+  expect(verifiedPreview.blockers).not.toContain("TARGET_CLOUDFLARE_PUBLIC_ACCESS_OVERRIDE_PRESENT");
+  expect(verifiedPreview.actions.find(({ id }) => id === "deploy-candidate")?.execution).toBe("not-implemented");
 
   const netlify = buildDeploymentPreview(inventory, {
     runtime: "netlify", database: "keep", scheduler: "keep",

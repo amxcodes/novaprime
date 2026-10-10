@@ -255,9 +255,24 @@ export function buildDeploymentPreview(
       const expectedScheduler = request.scheduler === "keep" ? currentScheduler : request.scheduler;
       blockers.push(...runtimeConfigurationBlockers(request.runtime, expectedScheduler, runtimeState.runtimeBindings));
       if (request.runtime === "cloudflare") {
-        // Version URLs execute with the selected Worker's configured bindings. Until
-        // Access protection is inventoried for this exact Worker, fail closed.
-        blockers.push("TARGET_CLOUDFLARE_CANDIDATE_ACCESS_POLICY_NOT_INVENTORIED");
+        // Version URLs execute with the selected Worker's configured bindings.
+        const access = runtimeState.candidateAccessProtection;
+        if (!access || access.previewUrlsEnabled === null ||
+            access.workerScopedPolicy === "unverified" ||
+            access.publicDestinationOverrides === "unverified") {
+          blockers.push("TARGET_CLOUDFLARE_CANDIDATE_ACCESS_POLICY_NOT_INVENTORIED");
+        }
+        if (access?.previewUrlsEnabled === false) blockers.push("TARGET_CLOUDFLARE_PREVIEW_URLS_DISABLED");
+        if (access && access.workerScopedPolicy !== "verified") {
+          blockers.push("TARGET_CLOUDFLARE_WORKER_PREVIEW_ACCESS_NOT_RESTRICTED");
+        }
+        if (access?.publicDestinationOverrides === "present") {
+          blockers.push("TARGET_CLOUDFLARE_PUBLIC_ACCESS_OVERRIDE_PRESENT");
+        }
+        if (access?.state !== "verified" && access?.previewUrlsEnabled === true &&
+            access.workerScopedPolicy === "verified" && access.publicDestinationOverrides === "none") {
+          blockers.push("TARGET_CLOUDFLARE_CANDIDATE_ACCESS_POLICY_NOT_INVENTORIED");
+        }
         const hyperdrive = runtimeState.runtimeBindings?.hyperdrive;
         if (!hyperdrive || hyperdrive.databaseTarget === "unverified") blockers.push("TARGET_CLOUDFLARE_HYPERDRIVE_DATABASE_UNVERIFIED");
         else if (hyperdrive.databaseTarget === "mismatch") blockers.push("TARGET_CLOUDFLARE_HYPERDRIVE_DATABASE_MISMATCH");
@@ -374,7 +389,7 @@ export function buildDeploymentPreview(
         operation: "deploy " + request.runtime + " candidate and verify identity",
         execution: "not-implemented",
         ...(request.runtime === "cloudflare" ? {
-          reason: "Cloudflare Version URLs use this Worker's configured bindings. The manager does not yet verify a worker-scoped Access policy or check higher-priority public destination overrides, so candidate upload stays blocked until both are inventoried.",
+          reason: "Cloudflare candidate upload, readiness checks, and promotion still require a journaled provider executor and a rehearsed recovery path.",
         } : {}),
       },
     );

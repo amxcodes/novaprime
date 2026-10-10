@@ -96,7 +96,7 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
       }) || !Array.isArray(preview.blockers) || !preview.blockers.every((item) => typeof item === "string") ||
       (providerInventory !== undefined && (!Array.isArray(providerInventory) || !providerInventory.every((item) => {
         const provider = typeof item === "object" && item !== null && !Array.isArray(item) ? item as Record<string, unknown> : null;
-        return provider !== null && hasOnly(provider, ["provider", "state", "target", "revision", "runtime", "runtimeId", "release", "origin", "databaseVersion", "databaseFingerprint", "schemaReady", "migrationLedgerPresent", "publicReadiness", "configuredScheduler", "schedulerInventory", "migrationInventory", "runtimeBindings", "domainRoutes", "detail"]) &&
+        return provider !== null && hasOnly(provider, ["provider", "state", "target", "revision", "runtime", "runtimeId", "release", "origin", "databaseVersion", "databaseFingerprint", "schemaReady", "migrationLedgerPresent", "publicReadiness", "configuredScheduler", "schedulerInventory", "migrationInventory", "runtimeBindings", "candidateAccessProtection", "domainRoutes", "detail"]) &&
           ["netlify", "cloudflare", "vercel", "supabase", "nova"].includes(String(provider.provider)) &&
           ["identified", "target-required", "not-configured", "unavailable"].includes(String(provider.state)) &&
           ["target", "revision", "runtime", "runtimeId", "release", "origin", "databaseVersion", "detail"].every((key) => provider[key] === undefined || typeof provider[key] === "string") &&
@@ -165,6 +165,18 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
                     return binding?.name === "HYPERDRIVE" && binding.type === "hyperdrive" && binding.resourceId === hyperdrive.configurationId;
                   });
               })());
+          })()) &&
+          (provider.candidateAccessProtection === undefined || (() => {
+            const access = typeof provider.candidateAccessProtection === "object" && provider.candidateAccessProtection !== null && !Array.isArray(provider.candidateAccessProtection)
+              ? provider.candidateAccessProtection as Record<string, unknown> : null;
+            return access !== null && hasOnly(access, ["state", "previewUrlsEnabled", "workerScopedPolicy", "publicDestinationOverrides", "detail"]) &&
+              ["verified", "unavailable"].includes(String(access.state)) &&
+              (access.previewUrlsEnabled === null || typeof access.previewUrlsEnabled === "boolean") &&
+              ["verified", "missing", "unsafe", "unverified"].includes(String(access.workerScopedPolicy)) &&
+              ["none", "present", "unverified"].includes(String(access.publicDestinationOverrides)) &&
+              (access.detail === undefined || typeof access.detail === "string") &&
+              (access.state !== "verified" || (access.previewUrlsEnabled === true &&
+                access.workerScopedPolicy === "verified" && access.publicDestinationOverrides === "none"));
           })()) &&
           (provider.domainRoutes === undefined || (() => {
             const domains = typeof provider.domainRoutes === "object" && provider.domainRoutes !== null && !Array.isArray(provider.domainRoutes)
