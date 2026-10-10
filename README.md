@@ -7,7 +7,9 @@ and self-hosted Docker + PostgreSQL behind Nginx. See the
 [customer deployment and update roadmap](docs/deployment-roadmap.md) for the
 combined decisions, implementation status, and release gates, and
 [`docs/deployment-profiles.md`](docs/deployment-profiles.md) for profile
-details.
+details. For a shorter plain-language explanation of what is verified, what
+is live, and what still blocks the full vision, see the
+[`product status and completion guide`](docs/product-status-and-completion-guide.md).
 
 ## Local first run
 
