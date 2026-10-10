@@ -136,7 +136,7 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
           (provider.runtimeBindings === undefined || (() => {
             const runtime = typeof provider.runtimeBindings === "object" && provider.runtimeBindings !== null && !Array.isArray(provider.runtimeBindings)
               ? provider.runtimeBindings as Record<string, unknown> : null;
-            return runtime !== null && hasOnly(runtime, ["state", "completeness", "bindings", "configuredScheduler", "buildSchedulerAvailable", "configuredBuildScheduler", "detail"]) &&
+            return runtime !== null && hasOnly(runtime, ["state", "completeness", "bindings", "hyperdrive", "configuredScheduler", "buildSchedulerAvailable", "configuredBuildScheduler", "detail"]) &&
               ["verified", "unavailable", "not-inspected"].includes(String(runtime.state)) &&
               ["selected-runtime", "partial", "not-inspected"].includes(String(runtime.completeness)) &&
               (runtime.configuredScheduler === undefined || ["cloudflare", "netlify", "vercel", "supabase", "vps"].includes(String(runtime.configuredScheduler))) &&
@@ -145,13 +145,26 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
               (runtime.detail === undefined || typeof runtime.detail === "string") && Array.isArray(runtime.bindings) &&
               runtime.bindings.length <= 500 && runtime.bindings.every((value) => {
                 const binding = typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
-                return binding !== null && hasOnly(binding, ["name", "type", "scopes", "contexts", "secret"]) &&
+                return binding !== null && hasOnly(binding, ["name", "type", "resourceId", "scopes", "contexts", "secret"]) &&
                   typeof binding.name === "string" && /^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(binding.name) &&
                   typeof binding.type === "string" && /^[a-z][a-z0-9_-]{0,63}$/.test(binding.type) &&
+                  (binding.resourceId === undefined || (binding.name === "HYPERDRIVE" && binding.type === "hyperdrive" && typeof binding.resourceId === "string" && /^[A-Za-z0-9._:-]{1,160}$/.test(binding.resourceId))) &&
                   Array.isArray(binding.scopes) && binding.scopes.length <= 8 && binding.scopes.every((scope) => typeof scope === "string" && scope.length <= 40) &&
                   Array.isArray(binding.contexts) && binding.contexts.length <= 8 && binding.contexts.every((context) => typeof context === "string" && context.length <= 40) &&
                   typeof binding.secret === "boolean";
-              });
+              }) &&
+              (runtime.hyperdrive === undefined || (() => {
+                const hyperdrive = typeof runtime.hyperdrive === "object" && runtime.hyperdrive !== null && !Array.isArray(runtime.hyperdrive)
+                  ? runtime.hyperdrive as Record<string, unknown> : null;
+                return hyperdrive !== null && hasOnly(hyperdrive, ["configurationId", "databaseTarget", "runtimeRole"]) &&
+                  typeof hyperdrive.configurationId === "string" && /^[A-Za-z0-9._:-]{1,160}$/.test(hyperdrive.configurationId) &&
+                  ["verified", "mismatch", "unverified"].includes(String(hyperdrive.databaseTarget)) &&
+                  ["verified", "invalid", "unverified"].includes(String(hyperdrive.runtimeRole)) &&
+                  runtime.bindings.some((value) => {
+                    const binding = typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
+                    return binding?.name === "HYPERDRIVE" && binding.type === "hyperdrive" && binding.resourceId === hyperdrive.configurationId;
+                  });
+              })());
           })()) &&
           (provider.domainRoutes === undefined || (() => {
             const domains = typeof provider.domainRoutes === "object" && provider.domainRoutes !== null && !Array.isArray(provider.domainRoutes)

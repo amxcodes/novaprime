@@ -41,11 +41,17 @@ function providerSnapshot(resources: readonly ProviderResource[]): unknown[] {
         .map((binding) => ({
           name: binding.name,
           type: binding.type,
+          resourceId: binding.resourceId ?? null,
           scopes: [...binding.scopes].sort(),
           contexts: [...binding.contexts].sort(),
           secret: binding.secret,
         }))
         .sort((left, right) => left.name.localeCompare(right.name)),
+      hyperdrive: resource.runtimeBindings.hyperdrive ? {
+        configurationId: resource.runtimeBindings.hyperdrive.configurationId,
+        databaseTarget: resource.runtimeBindings.hyperdrive.databaseTarget,
+        runtimeRole: resource.runtimeBindings.hyperdrive.runtimeRole,
+      } : null,
       configuredScheduler: resource.runtimeBindings.configuredScheduler ?? null,
       buildSchedulerAvailable: resource.runtimeBindings.buildSchedulerAvailable ?? null,
       configuredBuildScheduler: resource.runtimeBindings.configuredBuildScheduler ?? null,

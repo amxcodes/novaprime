@@ -3,7 +3,7 @@ import { buildDeploymentPreview } from "./plan.ts";
 import type { LocalDeploymentInventory } from "./inventory.ts";
 
 const cloudflareBindings = [
-  { name: "HYPERDRIVE", type: "hyperdrive", scopes: ["worker"], contexts: ["production"], secret: false },
+  { name: "HYPERDRIVE", type: "hyperdrive", resourceId: "hyperdrive-id", scopes: ["worker"], contexts: ["production"], secret: false },
   { name: "CF_VERSION_METADATA", type: "version_metadata", scopes: ["worker"], contexts: ["production"], secret: false },
   { name: "BETTER_AUTH_SECRET", type: "secret_text", scopes: ["worker"], contexts: ["production"], secret: true },
   { name: "BETTER_AUTH_URL", type: "plain_text", scopes: ["worker"], contexts: ["production"], secret: false },
@@ -145,7 +145,7 @@ test("runtime move requires target production bindings, secret classification, a
   const providers = [
     {
       provider: "cloudflare" as const, state: "identified" as const, target: "account/worker", revision: "worker-revision",
-      runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings: cloudflareBindings, configuredScheduler: "supabase" },
+      runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings: cloudflareBindings, hyperdrive: { configurationId: "hyperdrive-id", databaseTarget: "verified" as const, runtimeRole: "verified" as const }, configuredScheduler: "supabase" },
       domainRoutes: cloudflareDomainRoutes,
       schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "resource-only" as const, triggers: [] },
     },
@@ -236,6 +236,43 @@ test("runtime move requires target production bindings, secret classification, a
     { ...providers.at(-1)!, origin: undefined },
   ], true);
   expect(currentHostnameUnknown.blockers).toContain("CURRENT_PUBLIC_HOSTNAME_UNVERIFIED");
+});
+
+test("Cloudflare runtime moves verify the Hyperdrive project and restricted app role", () => {
+  const providers = [
+    {
+      provider: "cloudflare" as const, state: "identified" as const, target: "account/worker", revision: "worker-revision",
+      runtimeBindings: {
+        state: "verified" as const, completeness: "selected-runtime" as const,
+        bindings: cloudflareBindings,
+        hyperdrive: { configurationId: "hyperdrive-id", databaseTarget: "verified" as const, runtimeRole: "verified" as const },
+        configuredScheduler: "supabase",
+      },
+      domainRoutes: cloudflareDomainRoutes,
+      schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "resource-only" as const, triggers: [] },
+    },
+    { provider: "netlify" as const, state: "identified" as const, target: "site-id", schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [] } },
+    { provider: "supabase" as const, state: "identified" as const, target: "abcdefghijklmnopqrst", migrationInventory: { state: "current" as const, appliedCount: 4, migrationHead: "0004_schema.sql", expectedHead: "0004_schema.sql", checksumsVerified: true }, schedulerInventory: { scope: "database-project" as const, state: "verified" as const, completeness: "project-scoped" as const, triggers: [{ id: "cron-1", name: "nova-background-tick", schedule: "*/5 * * * *", active: true }] } },
+    { provider: "nova" as const, state: "identified" as const, runtime: "netlify", origin: "https://nova.example.test", configuredScheduler: "supabase", databaseFingerprint: "b".repeat(64), publicReadiness: "ready" as const },
+  ];
+  const request = { runtime: "cloudflare" as const, database: "keep" as const, scheduler: "keep" as const };
+  const valid = buildDeploymentPreview(inventory, request, providers, true);
+  expect(valid.blockers).not.toContain("TARGET_CLOUDFLARE_HYPERDRIVE_DATABASE_UNVERIFIED");
+  expect(valid.blockers).not.toContain("TARGET_CLOUDFLARE_HYPERDRIVE_RUNTIME_ROLE_UNVERIFIED");
+
+  const mismatch = buildDeploymentPreview(inventory, request, [
+    { ...providers[0]!, runtimeBindings: { ...providers[0]!.runtimeBindings, hyperdrive: { configurationId: "hyperdrive-id", databaseTarget: "mismatch" as const, runtimeRole: "invalid" as const } } },
+    ...providers.slice(1),
+  ], true);
+  expect(mismatch.blockers).toContain("TARGET_CLOUDFLARE_HYPERDRIVE_DATABASE_MISMATCH");
+  expect(mismatch.blockers).toContain("TARGET_CLOUDFLARE_HYPERDRIVE_RUNTIME_ROLE_INVALID");
+
+  const unknown = buildDeploymentPreview(inventory, request, [
+    { ...providers[0]!, runtimeBindings: { ...providers[0]!.runtimeBindings, hyperdrive: undefined } },
+    ...providers.slice(1),
+  ], true);
+  expect(unknown.blockers).toContain("TARGET_CLOUDFLARE_HYPERDRIVE_DATABASE_UNVERIFIED");
+  expect(unknown.blockers).toContain("TARGET_CLOUDFLARE_HYPERDRIVE_RUNTIME_ROLE_UNVERIFIED");
 });
 
 test("Netlify target bindings must be Functions-scoped and available in production", () => {
@@ -513,7 +550,7 @@ test("the curated hosted footprint does not require unrelated Vercel credentials
     {
       provider: "cloudflare" as const, state: "identified" as const, target: "account/worker",
       schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "resource-only" as const, triggers: [] },
-      runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings: cloudflareBindings, configuredScheduler: "supabase" },
+      runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings: cloudflareBindings, hyperdrive: { configurationId: "hyperdrive-id", databaseTarget: "verified" as const, runtimeRole: "verified" as const }, configuredScheduler: "supabase" },
       domainRoutes: { state: "verified" as const, completeness: "selected-runtime" as const, domains: [{ hostname: "nova.example.test", source: "custom-domain" as const, enabled: true }] },
       revision: "worker-revision",
     },
@@ -537,7 +574,7 @@ test("scheduler handover requires the target scheduler to be inactive before pro
       provider: "cloudflare" as const, state: "identified" as const, target: "account/worker", revision: "worker-revision",
       schedulerInventory: { scope: "target-runtime" as const, state: "verified" as const, completeness: "resource-only" as const,
         triggers: [{ id: "worker/schedule-1", name: "cloudflare-cron-trigger", schedule: "*/5 * * * *", active: true }] },
-      runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings: cloudflareBindings, configuredScheduler: "cloudflare" },
+      runtimeBindings: { state: "verified" as const, completeness: "selected-runtime" as const, bindings: cloudflareBindings, hyperdrive: { configurationId: "hyperdrive-id", databaseTarget: "verified" as const, runtimeRole: "verified" as const }, configuredScheduler: "cloudflare" },
       domainRoutes: { state: "verified" as const, completeness: "selected-runtime" as const, domains: [{ hostname: "nova.example.test", source: "custom-domain" as const }] },
     },
     { provider: "netlify" as const, state: "identified" as const, target: "site-id", schedulerInventory: { scope: "target-runtime" as const, state: "not-installed" as const, completeness: "project-scoped" as const, triggers: [] } },

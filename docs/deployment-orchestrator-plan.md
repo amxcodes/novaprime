@@ -39,7 +39,7 @@ application feature permissions.
 | PostgreSQL | Supabase Cloud bootstrap and direct PostgreSQL setup apply migrations and create/check the restricted runtime role. The update manager migrates an existing pinned target. | There is no automated database provisioning or cross-database data-copy/cutover workflow. A new target is not a schema migration. |
 | Scheduler | Cloudflare, Netlify, Vercel, Supabase Cron, and VPS use the shared protected tick contract. The Supabase command creates/removes its schedule. Provider build configuration selects the other hosted schedules. `nova:deployment status --remote` reads the selected Netlify site's latest published production deploy schedule list, selected Cloudflare Worker schedules, and project-pinned Supabase Cron rows when the owner URL is available. | Vercel Cron can be declared in deployment config and disabled in project settings, but Vercel's documented REST API does not provide a Cron inventory endpoint; code/config alone cannot confirm whether a listed job is disabled. VPS schedule inventory remains unverified. A single selected Worker/site does not prove account-wide completeness. There is no complete inventory across every account, runtime, and external trigger, nor a scheduler handover executor. A selector does not discover every duplicate schedule targeting the database. |
 | Source and release | `nova:update` prepares a pinned source candidate, applies approved migrations, and can offer a Git push. | A successful push is not proof that a host built, deployed, or serves that candidate. |
-| Diagnosis | `deployment:preflight` checks the configured database/schema; `deployment:doctor` adds safe repair guidance and optional public health/readiness probes. `nova:deployment status --remote` reads explicitly targeted provider metadata, selected runtime binding metadata, provider hostnames, and—when the owner URL is selected—Supabase migration and Cron inventory. For an attached Cloudflare Worker domain, it also reads only that domain's zone routes and exact-host DNS record metadata. | The manager does not inventory every provider account or external trigger. It does not yet prove the public TLS handshake, final origin behavior, or that unselected resources do not exist. |
+| Diagnosis | `deployment:preflight` checks the configured database/schema; `deployment:doctor` adds safe repair guidance and optional public health/readiness probes. `nova:deployment status --remote` reads explicitly targeted provider metadata, selected runtime binding metadata, provider hostnames, and—when the owner URL is selected—Supabase migration and Cron inventory. For Cloudflare, it reads the selected Worker's Hyperdrive ID and only the declared PostgreSQL host/database/user fields needed to verify the configured Supabase project and restricted `nova_app` role; only the ID and verification states are retained. For an attached Cloudflare Worker domain, it also reads only that domain's zone routes and exact-host DNS record metadata. | The manager does not inventory every provider account or external trigger. Hyperdrive configuration inspection does not prove network connectivity or candidate runtime readiness. It does not yet prove the public TLS handshake, final origin behavior, or that unselected resources do not exist. |
 | First install | The public deployment assistant describes supported combinations and the operator actions. | It is a guide, not a control plane; selecting a path does not change an account. |
 
 The supported topology vocabulary today is narrower than “any platform”: runtime
@@ -182,8 +182,13 @@ read-only inventory. Matching provider tokens and `NOVA_PUBLIC_ORIGIN` +
 `NOVA_BACKGROUND_JOB_SECRET` must come from the same explicitly selected
 environment file or operator process.
 
-For Cloudflare domain readiness, the read-only token also needs Workers Routes
-Read and DNS Read on the zones attached to the selected Worker domains. NOVA
+For Cloudflare runtime identity, the read-only token also needs Hyperdrive Read
+to inspect the exact configuration ID bound as `HYPERDRIVE`. The adapter compares
+the declared Supabase project/database and restricted `nova_app` role with the
+explicitly selected `DATABASE_URL`; it records no connection host, username,
+or password. Missing Hyperdrive Read leaves the identity unverified and blocks
+a Cloudflare runtime move. For domain readiness, the token also needs Workers
+Routes Read and DNS Read on the zones attached to the selected Worker domains. NOVA
 queries only those zone IDs and exact hostnames; it does not list unrelated
 zones or retain DNS record targets. An absent permission makes the selected
 route/DNS inventory incomplete and keeps the runtime move blocked.
@@ -198,8 +203,16 @@ Provider API contracts used by this inventory:
   variables API](https://open-api.netlify.com/) and its [API
   guide](https://docs.netlify.com/api-and-cli-guides/api-guides/get-started-with-api/).
 - Cloudflare `GET /accounts/{account_id}/workers/scripts/{script_name}/settings`
-  returns Worker bindings; the adapter stores binding metadata only. See the
+  returns Worker bindings; the adapter stores binding metadata only and retains
+  the non-secret Hyperdrive configuration ID. It then reads that exact
+  configuration through `GET /accounts/{account_id}/hyperdrive/configs/{hyperdrive_id}`.
+  Only a matching Supabase project/database plus the `nova_app` runtime role
+  satisfies a target runtime plan; API errors, absent fields, or an unknown
+  project stop the plan. Neither response proves the candidate can connect to
+  PostgreSQL from Cloudflare. See the
   [Cloudflare Workers Scripts API](https://developers.cloudflare.com/api/operations/worker-script-list-workers).
+  The Hyperdrive API documents the [read-only configuration endpoint and its
+  Hyperdrive Read permission](https://developers.cloudflare.com/api/resources/hyperdrive/subresources/configs/methods/get/).
 - Cloudflare `GET /accounts/{account_id}/workers/domains`, filtered by
   `service`, enumerates Worker custom domains. NOVA uses those records' zone IDs
   to read only those zones' Worker Routes and exact-host DNS records. It stores
@@ -773,9 +786,11 @@ plan's documented phase bounds and observed provider behavior.
      implementing the deploy executor. Runtime moves must also prove that the exact
      current public hostname is attached to the selected target; an empty or
      unrelated custom-domain list is not enough. If the current hostname or
-     target attachment cannot be verified, block the move. Current binding
-     inventory records names and secret flags only;
-     it never persists values. Verify API token permissions before
+     target attachment cannot be verified, block the move. Runtime binding
+     inventory records non-secret names, types, scopes, contexts and resource
+     IDs; Hyperdrive target checks persist only its ID and match/role states.
+     Secret values, database hosts, usernames and passwords are never stored.
+     Verify API token permissions before
      implementing writes, with 401/403 stopping the plan.
    - Bind a saved plan to the exact source commit, provider resource IDs,
      database fingerprint and migration head/checksums, scheduler IDs,

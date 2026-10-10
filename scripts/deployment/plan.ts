@@ -254,6 +254,13 @@ export function buildDeploymentPreview(
       if (liveIdentity?.publicReadiness !== "ready") blockers.push("LIVE_PUBLIC_API_READINESS_NOT_VERIFIED");
       const expectedScheduler = request.scheduler === "keep" ? currentScheduler : request.scheduler;
       blockers.push(...runtimeConfigurationBlockers(request.runtime, expectedScheduler, runtimeState.runtimeBindings));
+      if (request.runtime === "cloudflare") {
+        const hyperdrive = runtimeState.runtimeBindings?.hyperdrive;
+        if (!hyperdrive || hyperdrive.databaseTarget === "unverified") blockers.push("TARGET_CLOUDFLARE_HYPERDRIVE_DATABASE_UNVERIFIED");
+        else if (hyperdrive.databaseTarget === "mismatch") blockers.push("TARGET_CLOUDFLARE_HYPERDRIVE_DATABASE_MISMATCH");
+        if (!hyperdrive || hyperdrive.runtimeRole === "unverified") blockers.push("TARGET_CLOUDFLARE_HYPERDRIVE_RUNTIME_ROLE_UNVERIFIED");
+        else if (hyperdrive.runtimeRole === "invalid") blockers.push("TARGET_CLOUDFLARE_HYPERDRIVE_RUNTIME_ROLE_INVALID");
+      }
       if (runtimeState.domainRoutes?.state !== "verified" || runtimeState.domainRoutes.completeness !== "selected-runtime") {
         blockers.push("TARGET_RUNTIME_CUSTOM_DOMAIN_INVENTORY_INCOMPLETE");
       } else {

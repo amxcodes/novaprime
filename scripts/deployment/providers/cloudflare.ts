@@ -1,5 +1,6 @@
 import type { DomainRouteInventory, ProviderFetcher, ProviderResource, RuntimeBindingInventory, SchedulerTriggerInventory } from "./types.ts";
 import { asObject, firstString, getProviderJson, providerFailure, safeHostname, safeProviderId, safeSchedulerSelector } from "./shared.ts";
+import { databaseIdentityFingerprint } from "../../../server/src/deployment-identity.ts";
 
 const domainsPerPage = 100;
 const maxDomainPages = 20;
@@ -115,12 +116,91 @@ function cloudflareBindings(value: unknown): RuntimeBindingInventory {
     }
     names.add(name);
     if (name === "NOVA_BACKGROUND_SCHEDULER") configuredScheduler = safeSchedulerSelector(binding?.text ?? binding?.value);
-    bindings.push({ name, type, scopes: ["worker"], contexts: ["production"], secret: type.startsWith("secret") });
+    const resourceId = name === "HYPERDRIVE" && type === "hyperdrive"
+      ? safeProviderId(firstString(binding?.id))
+      : undefined;
+    if (name === "HYPERDRIVE" && type === "hyperdrive" && !resourceId) {
+      return { state: "unavailable", completeness: "partial", bindings: [], detail: "CLOUDFLARE_HYPERDRIVE_ID_UNAVAILABLE" };
+    }
+    bindings.push({ name, type, ...(resourceId ? { resourceId } : {}), scopes: ["worker"], contexts: ["production"], secret: type.startsWith("secret") });
   }
   return {
     state: "verified", completeness: "selected-runtime", bindings: bindings.sort((left, right) => left.name.localeCompare(right.name)),
     ...(configuredScheduler ? { configuredScheduler } : {}),
   };
+}
+
+function supabaseProjectRef(connection: URL): string | undefined {
+  const directRef = /^db\.([a-z0-9]{20})\.supabase\.co$/i.exec(connection.hostname)?.[1]?.toLowerCase();
+  const poolerRef = connection.hostname.toLowerCase().endsWith(".pooler.supabase.com")
+    ? decodeURIComponent(connection.username).toLowerCase().split(".").at(-1)
+    : undefined;
+  const projectRef = directRef ?? poolerRef;
+  return projectRef && /^[a-z0-9]{20}$/.test(projectRef) ? projectRef : undefined;
+}
+
+function cloudflareHyperdriveTarget(
+  configuration: unknown,
+  configurationId: string,
+  environment: Readonly<Record<string, string>>,
+): NonNullable<RuntimeBindingInventory["hyperdrive"]> {
+  const unverified = { configurationId, databaseTarget: "unverified" as const, runtimeRole: "unverified" as const };
+  try {
+    const result = asObject(configuration);
+    const origin = asObject(result?.origin);
+    if (result?.id !== configurationId || !origin) return unverified;
+
+    const expectedConnection = new URL(environment.DATABASE_URL ?? "");
+    const targetHost = safeHostname(origin.host);
+    const targetUser = firstString(origin.user);
+    const targetDatabase = firstString(origin.database);
+    const targetScheme = firstString(origin.scheme);
+    const targetPort = origin.port === undefined ? 5432 : origin.port;
+    if ((expectedConnection.protocol !== "postgres:" && expectedConnection.protocol !== "postgresql:") ||
+        !targetHost || !targetUser || !targetDatabase || !["postgres", "postgresql"].includes(targetScheme ?? "") || !Number.isInteger(targetPort) ||
+        (targetPort as number) < 1 || (targetPort as number) > 65535) return unverified;
+
+    const projectRef = supabaseProjectRef(expectedConnection);
+    const configuredRef = environment.NOVA_SUPABASE_PROJECT_REF;
+    if (configuredRef && projectRef && configuredRef.toLowerCase() !== projectRef) return unverified;
+    const targetConnection = new URL(`postgresql://${encodeURIComponent(targetUser)}@${targetHost}:${targetPort}/${encodeURIComponent(targetDatabase)}`);
+    const expectedFingerprint = databaseIdentityFingerprint(expectedConnection.toString(), configuredRef);
+    const targetProjectRef = supabaseProjectRef(targetConnection);
+    const targetFingerprint = databaseIdentityFingerprint(targetConnection.toString(), targetProjectRef ?? configuredRef);
+    const expectedUser = decodeURIComponent(expectedConnection.username).toLowerCase().split(".", 1)[0];
+    const actualUser = decodeURIComponent(targetConnection.username).toLowerCase().split(".", 1)[0];
+    return {
+      configurationId,
+      databaseTarget: expectedFingerprint && targetFingerprint
+        ? expectedFingerprint === targetFingerprint ? "verified" : "mismatch"
+        : "unverified",
+      runtimeRole: expectedUser === "nova_app" && actualUser === "nova_app"
+        ? "verified"
+        : expectedUser && actualUser ? "invalid" : "unverified",
+    };
+  } catch {
+    return unverified;
+  }
+}
+
+async function inspectHyperdrive(
+  account: string,
+  binding: RuntimeBindingInventory["bindings"][number] | undefined,
+  token: string,
+  fetcher: ProviderFetcher,
+  environment: Readonly<Record<string, string>>,
+): Promise<RuntimeBindingInventory["hyperdrive"]> {
+  if (!binding || binding.name !== "HYPERDRIVE" || binding.type !== "hyperdrive" || !binding.resourceId) return undefined;
+  try {
+    const response = await getProviderJson(fetcher,
+      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/hyperdrive/configs/${encodeURIComponent(binding.resourceId)}`,
+      token, "cloudflare");
+    const envelope = asObject(response);
+    if (!envelope?.success) return { configurationId: binding.resourceId, databaseTarget: "unverified", runtimeRole: "unverified" };
+    return cloudflareHyperdriveTarget(envelope.result, binding.resourceId, environment);
+  } catch {
+    return { configurationId: binding.resourceId, databaseTarget: "unverified", runtimeRole: "unverified" };
+  }
 }
 
 async function workerDomains(
@@ -252,7 +332,10 @@ export async function inspectCloudflare(
           if (!response?.success || !result || !Array.isArray(result.bindings)) {
             return { state: "unavailable", completeness: "partial", bindings: [], detail: "CLOUDFLARE_RUNTIME_BINDING_INVENTORY_INVALID" };
           }
-          return cloudflareBindings(result.bindings);
+          const inventory = cloudflareBindings(result.bindings);
+          if (inventory.state !== "verified") return inventory;
+          const hyperdrive = await inspectHyperdrive(account, inventory.bindings.find(({ name }) => name === "HYPERDRIVE"), token, fetcher, environment);
+          return { ...inventory, ...(hyperdrive ? { hyperdrive } : {}) };
         } catch (error) {
           return { state: "unavailable", completeness: "partial", bindings: [], detail: providerFailure("cloudflare", error).detail };
         }

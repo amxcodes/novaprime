@@ -182,7 +182,7 @@ function reportStatus(
         ? `Migrations ${provider.migrationInventory.state} (${provider.migrationInventory.appliedCount ?? "?"} applied; head ${provider.migrationInventory.migrationHead ?? "none"}; expected ${provider.migrationInventory.expectedHead ?? "unknown"})`
         : undefined;
       const runtimeBindings = provider.runtimeBindings
-        ? `Runtime bindings ${provider.runtimeBindings.state}/${provider.runtimeBindings.completeness} (${provider.runtimeBindings.bindings.length} names${provider.runtimeBindings.configuredScheduler ? `; selector ${provider.runtimeBindings.configuredScheduler}` : ""})`
+        ? `Runtime bindings ${provider.runtimeBindings.state}/${provider.runtimeBindings.completeness} (${provider.runtimeBindings.bindings.length} names${provider.runtimeBindings.configuredScheduler ? `; selector ${provider.runtimeBindings.configuredScheduler}` : ""}${provider.runtimeBindings.hyperdrive ? `; Hyperdrive ${provider.runtimeBindings.hyperdrive.configurationId} targets ${provider.runtimeBindings.hyperdrive.databaseTarget}, app role ${provider.runtimeBindings.hyperdrive.runtimeRole}` : ""})`
         : undefined;
       const domains = provider.domainRoutes
         ? `Custom domains ${provider.domainRoutes.state}/${provider.domainRoutes.completeness} (${provider.domainRoutes.domains.map(({ hostname }) => hostname).join(", ") || "none observed"})`

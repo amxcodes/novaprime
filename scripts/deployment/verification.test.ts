@@ -94,6 +94,38 @@ test("plan verification detects runtime binding and custom-domain changes", () =
   expect(verifyDeploymentPlanSnapshot(plan, local, changed).issues).toEqual(["REMOTE_INVENTORY_CHANGED"]);
 });
 
+test("plan verification detects a changed Hyperdrive attachment or database identity", () => {
+  const cloudflare: ProviderResource = {
+    provider: "cloudflare",
+    state: "identified",
+    target: "account/worker",
+    runtime: "cloudflare",
+    runtimeBindings: {
+      state: "verified",
+      completeness: "selected-runtime",
+      bindings: [{ name: "HYPERDRIVE", type: "hyperdrive", resourceId: "hyperdrive-1", scopes: ["worker"], contexts: ["production"], secret: false }],
+      hyperdrive: { configurationId: "hyperdrive-1", databaseTarget: "verified", runtimeRole: "verified" },
+    },
+  };
+  const boundPlan = { preview: { ...plan.preview, providerInventory: [cloudflare] } } as StoredDeploymentPlan;
+  const changedBinding = [{
+    ...cloudflare,
+    runtimeBindings: {
+      ...cloudflare.runtimeBindings!,
+      bindings: [{ ...cloudflare.runtimeBindings!.bindings[0]!, resourceId: "hyperdrive-2" }],
+    },
+  }];
+  const changedTarget = [{
+    ...cloudflare,
+    runtimeBindings: {
+      ...cloudflare.runtimeBindings!,
+      hyperdrive: { ...cloudflare.runtimeBindings!.hyperdrive!, databaseTarget: "mismatch" as const },
+    },
+  }];
+  expect(verifyDeploymentPlanSnapshot(boundPlan, local, changedBinding).issues).toEqual(["REMOTE_INVENTORY_CHANGED"]);
+  expect(verifyDeploymentPlanSnapshot(boundPlan, local, changedTarget).issues).toEqual(["REMOTE_INVENTORY_CHANGED"]);
+});
+
 test("plan verification detects changed Netlify build-time scheduler selection", () => {
   const changed = [{
     ...remote[0]!,

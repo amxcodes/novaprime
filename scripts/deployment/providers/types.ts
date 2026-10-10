@@ -23,10 +23,18 @@ export interface RuntimeBindingInventory {
   bindings: Array<{
     name: string;
     type: string;
+    /** Non-secret provider resource identifier, present only for Hyperdrive bindings. */
+    resourceId?: string;
     scopes: string[];
     contexts: string[];
     secret: boolean;
   }>;
+  /** Read-only evidence for the selected HYPERDRIVE binding; never includes host, username, or password. */
+  hyperdrive?: {
+    configurationId: string;
+    databaseTarget: "verified" | "mismatch" | "unverified";
+    runtimeRole: "verified" | "invalid" | "unverified";
+  };
   /** This is retained only for the allowlisted non-secret scheduler selector. */
   configuredScheduler?: string;
   /** Netlify build-time selector is read separately because it controls the bundled function set. */

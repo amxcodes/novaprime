@@ -204,6 +204,13 @@ test("Cloudflare inventory distinguishes one Worker's Cron triggers from global 
       { name: "BETTER_AUTH_SECRET", type: "secret_text", text: "never-retain-secret-value" },
       { name: "NOVA_BACKGROUND_SCHEDULER", type: "plain_text", text: "supabase" },
     ] } });
+    if (parsed.pathname.endsWith("/hyperdrive/configs/hyperdrive-id")) return Response.json({
+      success: true,
+      result: {
+        id: "hyperdrive-id",
+        origin: { host: "db.abcdefghijklmnopqrst.supabase.co", database: "postgres", scheme: "postgresql", user: "nova_app", password: "never-retain-hyperdrive-password" },
+      },
+    });
     if (parsed.pathname.endsWith("/workers/domains")) {
       const page = Number(parsed.searchParams.get("page"));
       return Response.json({ success: true, result: [{
@@ -226,6 +233,8 @@ test("Cloudflare inventory distinguishes one Worker's Cron triggers from global 
     CLOUDFLARE_API_TOKEN: "cloudflare-token",
     CLOUDFLARE_ACCOUNT_ID: "a".repeat(32),
     CLOUDFLARE_WORKER_NAME: "nova-api",
+    DATABASE_URL: "postgresql://nova_app.abcdefghijklmnopqrst:runtime-password@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require",
+    NOVA_SUPABASE_PROJECT_REF: "abcdefghijklmnopqrst",
   }, fetcher);
   expect(resources.find(({ provider }) => provider === "cloudflare")?.schedulerInventory).toEqual({
     scope: "target-runtime",
@@ -236,6 +245,7 @@ test("Cloudflare inventory distinguishes one Worker's Cron triggers from global 
   const cloudflare = resources.find(({ provider }) => provider === "cloudflare")!;
   expect(cloudflare.runtimeBindings).toMatchObject({
     state: "verified", completeness: "selected-runtime", configuredScheduler: "supabase",
+    hyperdrive: { configurationId: "hyperdrive-id", databaseTarget: "verified", runtimeRole: "verified" },
     bindings: [
       { name: "BETTER_AUTH_SECRET", type: "secret_text", secret: true },
       { name: "CF_VERSION_METADATA", type: "version_metadata", secret: false },
@@ -260,6 +270,10 @@ test("Cloudflare inventory distinguishes one Worker's Cron triggers from global 
     },
   });
   expect(JSON.stringify(cloudflare)).not.toContain("never-retain-secret-value");
+  expect(JSON.stringify(cloudflare)).not.toContain("never-retain-hyperdrive-password");
+  expect(JSON.stringify(cloudflare)).not.toContain("db.abcdefghijklmnopqrst.supabase.co");
+  expect(JSON.stringify(cloudflare)).not.toContain("nova_app.abcdefghijklmnopqrst");
+  expect(JSON.stringify(cloudflare)).not.toContain("runtime-password");
   expect(JSON.stringify(cloudflare)).not.toContain("omit-me");
   expect(JSON.stringify(cloudflare)).not.toContain("never-retain-dns-target");
   expect(requested.filter(({ pathname }) => pathname.endsWith("/workers/routes")).map(({ pathname, searchParams }) => ({
@@ -267,6 +281,59 @@ test("Cloudflare inventory distinguishes one Worker's Cron triggers from global 
   }))).toEqual([{ pathname: `/client/v4/zones/${"c".repeat(32)}/workers/routes`, page: "1", zoneId: "c".repeat(32) }]);
   expect(requested.filter(({ pathname }) => pathname.endsWith("/dns_records")).map(({ searchParams }) => searchParams.get("name")).sort())
     .toEqual(["app1.example.test", "app2.example.test"]);
+});
+
+test("Cloudflare inventory verifies the Hyperdrive database and app role without retaining connection data", async () => {
+  const projectRef = "abcdefghijklmnopqrst";
+  const commonEnvironment = {
+    CLOUDFLARE_API_TOKEN: "cloudflare-token",
+    CLOUDFLARE_ACCOUNT_ID: "a".repeat(32),
+    CLOUDFLARE_WORKER_NAME: "nova-api",
+    DATABASE_URL: `postgresql://nova_app.${projectRef}:runtime-password@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require`,
+    NOVA_SUPABASE_PROJECT_REF: projectRef,
+  };
+  const cases = [
+    { name: "wrong project", origin: { host: `db.${"z".repeat(20)}.supabase.co`, database: "postgres", scheme: "postgres", port: 5432, user: "nova_app", password: "do-not-retain" }, expected: { databaseTarget: "mismatch", runtimeRole: "verified" } },
+    { name: "owner role", origin: { host: `db.${projectRef}.supabase.co`, database: "postgres", scheme: "postgres", port: 5432, user: "postgres", password: "do-not-retain" }, expected: { databaseTarget: "verified", runtimeRole: "invalid" } },
+    { name: "same direct PostgreSQL database", origin: { host: "db.example.test", database: "customer_private_db", scheme: "postgres", port: 5432, user: "nova_app", password: "do-not-retain" }, databaseUrl: "postgresql://nova_app:runtime-password@db.example.test:5432/customer_private_db", noProjectRef: true, expected: { databaseTarget: "verified", runtimeRole: "verified" } },
+    { name: "missing selected database", origin: { host: `db.${projectRef}.supabase.co`, database: "postgres", scheme: "postgres", port: 5432, user: "nova_app", password: "do-not-retain" }, missingDatabaseUrl: true, expected: { databaseTarget: "unverified", runtimeRole: "unverified" } },
+    { name: "missing Hyperdrive read permission", forbidden: true, expected: { databaseTarget: "unverified", runtimeRole: "unverified" } },
+  ] as const;
+
+  for (const scenario of cases) {
+    const fetcher: ProviderFetcher = async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/schedules")) return Response.json({ success: true, result: { schedules: [] } });
+      if (url.pathname.endsWith("/settings")) return Response.json({ success: true, result: { bindings: [
+        { name: "HYPERDRIVE", type: "hyperdrive", id: "hyperdrive-id" },
+        { name: "NOVA_BACKGROUND_SCHEDULER", type: "plain_text", text: "supabase" },
+      ] } });
+      if (url.pathname.endsWith("/hyperdrive/configs/hyperdrive-id")) {
+        if ("forbidden" in scenario) return new Response("private provider response", { status: 403 });
+        return Response.json({ success: true, result: { id: "hyperdrive-id", origin: scenario.origin } });
+      }
+      if (url.pathname.endsWith("/workers/domains")) return Response.json({ success: true, result: [], result_info: { page: 1, total_pages: 0 } });
+      return Response.json({ success: true, result: { id: "nova-api", modified_on: "2026-10-07T00:00:00Z" } });
+    };
+    const environment: Record<string, string> = { ...commonEnvironment };
+    if ("databaseUrl" in scenario) environment.DATABASE_URL = scenario.databaseUrl;
+    if ("missingDatabaseUrl" in scenario) delete environment.DATABASE_URL;
+    if ("noProjectRef" in scenario) delete environment.NOVA_SUPABASE_PROJECT_REF;
+    const cloudflare = (await discoverProviderResources(environment, fetcher))
+      .find(({ provider }) => provider === "cloudflare");
+    expect(cloudflare?.runtimeBindings?.hyperdrive).toMatchObject({
+      configurationId: "hyperdrive-id",
+      ...scenario.expected,
+    }, scenario.name);
+    expect(JSON.stringify(cloudflare)).not.toContain("do-not-retain");
+    expect(JSON.stringify(cloudflare)).not.toContain("runtime-password");
+    expect(JSON.stringify(cloudflare)).not.toContain("private provider response");
+    if ("origin" in scenario) {
+      for (const value of [scenario.origin.host, scenario.origin.user, scenario.origin.database, scenario.origin.password]) {
+        expect(JSON.stringify(cloudflare)).not.toContain(value);
+      }
+    }
+  }
 });
 
 test("Cloudflare domain inventory fails closed when routability is omitted", async () => {

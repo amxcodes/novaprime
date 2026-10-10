@@ -60,8 +60,9 @@ test("plans persist outside the checkout with a random ID and private file mode"
         completeness: "selected-runtime" as const,
         bindings: [
           { name: "CF_VERSION_METADATA", type: "version_metadata", scopes: ["worker"], contexts: ["production"], secret: false },
-          { name: "HYPERDRIVE", type: "hyperdrive", scopes: ["worker"], contexts: ["production"], secret: false },
+          { name: "HYPERDRIVE", type: "hyperdrive", resourceId: "hyperdrive-id", scopes: ["worker"], contexts: ["production"], secret: false },
         ],
+        hyperdrive: { configurationId: "hyperdrive-id", databaseTarget: "verified" as const, runtimeRole: "verified" as const },
         configuredScheduler: "supabase",
       },
       domainRoutes: {
@@ -141,6 +142,15 @@ test("plans persist outside the checkout with a random ID and private file mode"
   domains[0]!.enabled = true;
   const runtimeBindings = cloudflare.runtimeBindings as { bindings: Array<Record<string, unknown>> };
   runtimeBindings.bindings[0]!.value = "must-not-enter-plan-state";
+  await writeFile(persistedPath, JSON.stringify(editedPlan));
+  await expect(loadDeploymentPlan(repo, stored.id)).rejects.toThrow("DEPLOYMENT_PLAN_CORRUPT");
+  delete runtimeBindings.bindings[0]!.value;
+  runtimeBindings.bindings[0]!.resourceId = "unrelated-provider-resource";
+  await writeFile(persistedPath, JSON.stringify(editedPlan));
+  await expect(loadDeploymentPlan(repo, stored.id)).rejects.toThrow("DEPLOYMENT_PLAN_CORRUPT");
+  delete runtimeBindings.bindings[0]!.resourceId;
+  const runtimeEvidence = cloudflare.runtimeBindings as { hyperdrive: Record<string, unknown> };
+  runtimeEvidence.hyperdrive.configurationId = "different-from-binding";
   await writeFile(persistedPath, JSON.stringify(editedPlan));
   await expect(loadDeploymentPlan(repo, stored.id)).rejects.toThrow("DEPLOYMENT_PLAN_CORRUPT");
   if (process.platform !== "win32") {
