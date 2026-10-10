@@ -1,7 +1,7 @@
 # NOVA customer deployment and update roadmap
 
 - **Status:** decision record and implementation roadmap
-- **Reviewed against:** `main` at `321e99788af8a58df41d4067d82680b81226c5ff` (9 October 2026)
+- **Reviewed against:** `main` at `1ad2dbc531903c35a60839cdcfc1190a1c723875` (10 October 2026)
 - **Repository delivery rule:** work on `main`; push only to `origin/main`.
 
 This is the single customer-facing deployment decision and sequencing document.
@@ -52,7 +52,7 @@ or database update.
 | --- | --- | --- | --- | --- |
 | Netlify + Supabase | Netlify Functions | Supabase PostgreSQL | Supabase Cron | Existing Netlify/native scheduler support stays for legacy installs; guide new installs toward Supabase Cron. Confirm the customer's plan supports the required Build and Functions variable scopes; Netlify's API documentation currently describes granular scopes as Pro and above. |
 | Cloudflare + Supabase | Cloudflare Worker with Hyperdrive | Supabase PostgreSQL | Supabase Cron | Do not register Cloudflare Cron for this profile. |
-| Self-hosted Docker + PostgreSQL | Docker services behind customer-managed Nginx/TLS | PostgreSQL 17 in Compose by default | One Compose maintenance worker | Local setup is supported; remote host inspection and automated Nginx orchestration are not implemented. |
+| Self-hosted Docker + PostgreSQL | Docker services behind customer-managed Nginx/TLS | PostgreSQL 17 in Compose by default | One Compose maintenance worker | The production image now builds and serves the generated Vite bundle, and dependent services wait for database-backed `/api/ready`; a fresh first-tick run passed. Remote host inspection and automated Nginx orchestration are not implemented. |
 
 Vercel and native Netlify/Cloudflare schedules remain compatibility adapters
 for existing deployments, not additional new-customer profiles. Other
@@ -68,7 +68,7 @@ are in [deployment profiles](deployment-profiles.md).
 | Initial setup | Local Docker setup, Supabase bootstrap, direct PostgreSQL setup, migrations, and scheduler commands exist. | The deployment guide is secret-free. The operator creates/configures provider resources and enters secrets in the provider's private settings. |
 | Database schema upgrades | Append-only migrations and a 79-file release manifest are present at this reviewed revision. | Migration checksum and target protections exist; populated-database moves are a different, higher-risk operation. |
 | Customer updater | `nova:update` stages a pinned release in an isolated candidate, preserves committed fork changes through merge-based staging, validates a target migration ledger, asks for a backup attestation, migrates, and can separately offer an explicit non-force push. | A push can trigger the customer's configured host build, but does not prove deployment readiness. First adoption by an older clone requires a reviewed baseline merge. |
-| Deployment manager | `nova:deployment` has local status/doctor, optional scoped read-only provider inventory, protected runtime identity, migration-ledger comparison, immutable plans, re-verification, and a plan-bound journal library. | Plans and diagnostics work; `apply`, operation resume/rollback, project provisioning, and provider mutations are not implemented. |
+| Deployment manager | `nova:deployment` has local status/doctor, optional scoped read-only provider inventory, protected runtime identity, migration-ledger comparison, immutable plans, re-verification, and a plan-bound journal library. New plans offer only Netlify, Cloudflare, and self-hosted Docker; Vercel remains a legacy adapter. | Plans and diagnostics work; `apply`, operation resume/rollback, project provisioning, and provider mutations are not implemented. |
 | Provider inventory | Netlify site/deploy, selected Cloudflare Worker/domains/routes/DNS metadata, selected Supabase database jobs/migrations, and partial Vercel data can be inspected when correctly scoped credentials are selected. | It covers selected resources, not an entire customer account or every trigger that could call the database. Missing permissions or incomplete scope must block a transition. |
 | Release availability | This checkout is version `0.1.2`; no stable GitHub release or version tag was found at the review point. | The updater code is not yet customer-operational. A baseline GitHub Release and a later stable release are required before customer rollout. |
 | Cleanup | The isolated Select proof-of-concept files were removed in `321e997`. No other tracked artifact was proven unused in this review. | Keep migration history, tests, compatibility adapters, provider examples, and operational scripts; do not delete them merely to shrink the repository. |
