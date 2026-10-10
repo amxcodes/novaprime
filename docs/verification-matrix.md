@@ -24,6 +24,14 @@ attempted. No hosted Netlify/Cloudflare rollout or real Hyperdrive pooling
 load test is claimed. Detailed commands and evidence are recorded in
 [`runtime-smoke.md`](runtime-smoke.md).
 
+The latest isolated PostgreSQL QA also exercised the updater's direct database
+adapter end to end: after establishing a synthetic trusted 72-migration
+baseline, it planned and applied the seven canonical migrations through 0079,
+verified a zero-pending rerun and the resulting 79-entry ledger, checked the
+legacy billing audit, and passed application-role preflight. QA PostgreSQL used
+a generated SAN-matched certificate with `sslmode=verify-full`; the isolated
+database, TLS volume and run-scoped credentials were removed after success.
+
 Evidence snapshot: 2026-09-27. The latest end-to-end PostgreSQL 17 QA command
 passed twice in WSL Docker using fresh generated databases and private,
 unpublished QA services: migrations 0001–0074, all 53 rollback/RLS fixtures,

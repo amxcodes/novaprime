@@ -25,9 +25,36 @@ services:
     <<: *postgres-base
     profiles: ["qa"]
     restart: "no"
+    entrypoint: ["/bin/sh", "/usr/local/bin/nova-qa-postgres-entrypoint.sh"]
     volumes:
       - nova_qa_postgres_data:/var/lib/postgresql/data
+      - nova_qa_postgres_tls:/run/nova-qa-tls:ro
+      - ./postgres/qa-entrypoint.sh:/usr/local/bin/nova-qa-postgres-entrypoint.sh:ro
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    depends_on:
+      qa-postgres-tls:
+        condition: service_completed_successfully
+
+  qa-postgres-tls:
+    image: alpine:3.24.2
+    profiles: ["qa"]
+    restart: "no"
+    volumes:
+      - nova_qa_postgres_tls:/run/nova-qa-tls
+    command:
+      - /bin/sh
+      - -ec
+      - >-
+        umask 077;
+        apk add --no-cache openssl >/dev/null;
+        openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 2
+        -keyout /run/nova-qa-tls/server.key
+        -out /run/nova-qa-tls/server.crt
+        -subj /CN=postgres-qa
+        -addext subjectAltName=DNS:postgres-qa
+        -addext basicConstraints=critical,CA:TRUE >/dev/null 2>&1;
+        chmod 0644 /run/nova-qa-tls/server.crt;
+        chmod 0600 /run/nova-qa-tls/server.key
 
   migrate:
     build:
@@ -120,7 +147,7 @@ services:
       dockerfile: docker/Dockerfile
       target: migrate
     environment:
-      MIGRATOR_DATABASE_URL: "postgresql://nova_migrator:${NOVA_MIGRATOR_PASSWORD:?Set NOVA_MIGRATOR_PASSWORD in .env}@postgres-qa:5432/postgres"
+      MIGRATOR_DATABASE_URL: "postgresql://nova_migrator:${NOVA_MIGRATOR_PASSWORD:?Set NOVA_MIGRATOR_PASSWORD in .env}@postgres-qa:5432/postgres?sslmode=verify-full&sslrootcert=/run/nova-qa-tls/server.crt"
       NOVA_APP_PASSWORD: ${NOVA_APP_PASSWORD:?Set NOVA_APP_PASSWORD in .env}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3001}
@@ -135,6 +162,8 @@ services:
       NOVA_QA_REQUEST_SCOPED: ${NOVA_QA_REQUEST_SCOPED:-false}
     volumes:
       - ../scripts:/app/scripts:ro
+      - ../release-manifest.json:/app/release-manifest.json:ro
+      - nova_qa_postgres_tls:/run/nova-qa-tls:ro
     depends_on:
       postgres-qa:
         condition: service_healthy
@@ -143,3 +172,4 @@ services:
 volumes:
   nova_postgres_data:
   nova_qa_postgres_data:
+  nova_qa_postgres_tls:

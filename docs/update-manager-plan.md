@@ -325,7 +325,7 @@ For an update-branch push, the provider may create only a preview build; product
 - Build, typecheck, test, and build the pinned candidate before database writes.
 - `--plan` shows the database plan without applying migrations; abandoned candidates are retained for explicit operator review.
 
-### Phase 3 — Database migration adapters (implemented; provider rehearsal remains)
+### Phase 3 — Database migration adapters (direct PostgreSQL rehearsal passed; Supabase provider rehearsal remains)
 
 - The project-scoped Supabase Management API adapter uses typed project confirmation and transient masked token input.
 - Direct PostgreSQL migrations use `MIGRATOR_DATABASE_URL`; candidate restricted-role preflight is a separate required gate before push.
@@ -339,10 +339,11 @@ For an update-branch push, the provider may create only a preview build; product
 - Keep provider CLI/deploy-hook adapters out of V1 unless customer evidence requires them. A normal Git integration should deploy after the updater's migration-first step.
 - After explicit confirmation, poll the protected host identity endpoint for the exact full commit SHA, then require public `/api/ready` to report `nova-api` ready before reporting hosted verification. This does not test sign-in or a business workflow and does not inspect provider build logs.
 
-### Phase 5 — Rehearsal, documentation, and release (remaining release gate)
+### Phase 5 — Rehearsal, documentation, and release (direct PostgreSQL upgrade path verified; broader release gates remain)
 
-- Rehearse clean install → update, older supported schema → update, local fork customization → update, migration failure → retry, and failed host deployment → retry using disposable Supabase and PostgreSQL targets.
-- Preview updater instructions are now in `README.md` and `docs/update-manager.md`; retain the existing manual procedures until the disposable-database rehearsals pass.
+- The isolated PostgreSQL QA now rehearses a trusted 0072 baseline through the actual updater adapter: it plans and applies migrations 0073–0079, confirms the migration ledger is current on a second plan, preserves the legacy billing audit, and passes the post-update restricted-role preflight. The QA connection uses hostname-verified TLS.
+- Still rehearse clean install → update, customer fork customization → update, migration failure → retry, hosted deployment failure → retry, and the Supabase Management API migration adapter on disposable targets.
+- Preview updater instructions are now in `README.md` and `docs/update-manager.md`; retain the existing manual procedures until the remaining disposable Supabase and hosted-deployment rehearsals pass.
 - Release to the maintainers' own disposable deployment first; then staged customer volunteers; only then call the updater generally supported.
 
 ## Verification and acceptance matrix

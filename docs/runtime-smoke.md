@@ -4,7 +4,14 @@
 
 `bun run qa:postgres` passed against isolated PostgreSQL 17 with 79 migrations,
 rollback/RLS fixtures, specialized attendance/WFH/leave/geofence checks,
-application-role preflight, and the 0072→0074 upgrade rehearsal. Its bounded
+application-role preflight, and a 0072→current upgrade rehearsal through the
+actual direct-PostgreSQL updater adapter. A synthetic trusted 72-migration
+baseline produced the expected seven pending migrations; the updater applied
+them, then a fresh plan confirmed zero pending migrations and the 79-entry
+ledger. The legacy billing audit and post-upgrade `nova_app` preflight passed.
+Both admin and app connections used hostname-verified TLS against a generated
+per-run QA certificate. The run-scoped database, TLS volume, Compose resources
+and random credentials were removed after success. The separately run bounded
 Node-pool profile also passed the 100-employee lifecycle (2,433 assertions):
 work-context p95 1,084.4 ms, task creation/self-assignment 599.7 ms, timer
 start 779.5 ms, timer stop 394.7 ms, and assignment reads 410.0 ms. The burst

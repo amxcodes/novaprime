@@ -1,6 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
+import { applyPostgresUpdate, planPostgresUpdate, postgresTargetLabel } from "./update/database.ts";
+import { loadVerifiedReleaseTreeFromRoot } from "./update/release.ts";
 
 const adminUrl = process.env.MIGRATOR_DATABASE_URL;
 const appPassword = process.env.NOVA_APP_PASSWORD;
@@ -39,6 +41,21 @@ const pg = await import(pgModulePath) as unknown as {
   Pool: new (configuration: { connectionString: string; max: number }) => QueryPool;
 };
 const admin = new pg.Pool({ connectionString: adminUrl, max: 1 });
+let verifiedQaTls = false;
+try {
+  const tlsState = await admin.query<{ ssl: boolean }>(
+    "SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
+  );
+  verifiedQaTls = tlsState.rows[0]?.ssl === true;
+} catch (error) {
+  await admin.end();
+  throw error;
+}
+if (!verifiedQaTls) {
+  await admin.end();
+  throw new Error("LOCAL_POSTGRES_QA_VERIFIED_TLS_REQUIRED");
+}
+console.info("QA PostgreSQL connection verified with hostname-checked TLS.");
 const databaseName = `nova_qa_${Date.now()}_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
 const identifier = `"${databaseName}"`;
 function databaseUrl(name: string): URL {
@@ -253,7 +270,36 @@ async function runBillingPolicyUpgradeRehearsal(): Promise<void> {
       "--through", "0072_workstream_task_billing_rules.sql",
     ], upgradeEnvironment);
     await seedLegacyBillingRules(upgradeUrl.toString());
-    run("billing-upgrade-apply-0073-and-0074", "server/src/migrate.ts", [], upgradeEnvironment);
+    const releaseTree = await loadVerifiedReleaseTreeFromRoot(root);
+    const baselineIndex = releaseTree.manifest.migrations.findIndex(
+      ({ filename }) => filename === "0072_workstream_task_billing_rules.sql",
+    );
+    if (baselineIndex < 0) throw new Error("UPDATER_QA_BASELINE_MIGRATION_NOT_FOUND");
+    const targetManifest = Object.fromEntries(releaseTree.manifest.migrations.map(({ filename, sha256 }) => [filename, sha256]));
+    const baselineManifest = Object.fromEntries(releaseTree.manifest.migrations
+      .slice(0, baselineIndex + 1).map(({ filename, sha256 }) => [filename, sha256]));
+    const updateOptions = {
+      databaseUrl: upgradeUrl.toString(),
+      confirmation: postgresTargetLabel(upgradeUrl.toString()),
+      baselineManifest,
+      targetManifest,
+      migrationDirectory: resolve(root, "database", "migrations"),
+    };
+    const before = await planPostgresUpdate(updateOptions);
+    const expectedPending = releaseTree.manifest.migrations.slice(baselineIndex + 1).map(({ filename }) => filename);
+    if (JSON.stringify(before.pending.map(({ filename }) => filename)) !== JSON.stringify(expectedPending)) {
+      throw new Error("UPDATER_QA_PENDING_MIGRATIONS_MISMATCH");
+    }
+    console.info(`QA updater plan: ${before.applied.length} trusted baseline migrations; ${before.pending.length} pending canonical migrations.`);
+    const applied = await applyPostgresUpdate(updateOptions);
+    if (JSON.stringify(applied.applied) !== JSON.stringify(expectedPending)) {
+      throw new Error("UPDATER_QA_APPLIED_MIGRATIONS_MISMATCH");
+    }
+    const after = await planPostgresUpdate(updateOptions);
+    if (after.pending.length !== 0 || after.applied.length !== releaseTree.manifest.migrations.length) {
+      throw new Error("UPDATER_QA_POST_MIGRATION_LEDGER_NOT_CURRENT");
+    }
+    run("upgraded-application-role-preflight", "scripts/deployment-preflight.ts", [], upgradeEnvironment);
     await verifyLegacyBillingRuleAudit(upgradeUrl.toString());
     const connections = await admin.query<{ count: string }>(
       "SELECT count(*)::text AS count FROM pg_stat_activity WHERE datname = $1",
@@ -264,7 +310,7 @@ async function runBillingPolicyUpgradeRehearsal(): Promise<void> {
     }
     await admin.query(`DROP DATABASE ${upgradeDatabaseIdentifier}`);
     completedUpgrade = true;
-    console.info("Disposable 0072-to-0074 billing-policy upgrade database dropped after verification.");
+    console.info("Disposable updater 0072-to-current PostgreSQL rehearsal database dropped after ledger, legacy data, and application-role verification.");
   } finally {
     if (!completedUpgrade) {
       console.error(`BILLING_UPGRADE_DATABASE_PRESERVED_FOR_DIAGNOSIS_${upgradeDatabaseName}`);

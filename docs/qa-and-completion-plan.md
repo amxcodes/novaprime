@@ -936,6 +936,16 @@ separately.
 
 ## Remaining release gates
 
+2026-10-10 follow-up: the full isolated PostgreSQL 17 QA now proves the direct
+updater adapter's 0072-to-current path. The test pins a synthetic 72-migration
+baseline, applies the seven current canonical migrations through the updater,
+confirms the current 79-migration ledger on a second plan, verifies the legacy
+billing audit and restricted application-role preflight, and requires
+hostname-verified TLS. Its isolated data/TLS volumes and run credentials are
+removed after a successful run. This closes the local direct-PostgreSQL
+upgrade rehearsal only; it does not close the Supabase Management API,
+customer fork/Git conflict, provider deployment, or live hosted runtime gates.
+
 The fresh elevated WSL rerun passed the direct-PostgreSQL gate on 2026-09-26:
   all 74 migrations, 53 rollback/RLS fixtures, 604 authenticated lifecycle
 assertions, specialized WFH/attendance/leave/geofence smoke, app-role preflight,

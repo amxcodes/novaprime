@@ -1,7 +1,7 @@
 # NOVA customer deployment and update roadmap
 
 - **Status:** decision record and implementation roadmap
-- **Reviewed against:** `main` at `1ad2dbc531903c35a60839cdcfc1190a1c723875` (10 October 2026)
+- **Review basis:** `main` at `530097c2ea7d5cc7e1229290fcaf6bf3a96ea4ff` (10 October 2026), plus the verified-TLS updater rehearsal recorded in this update
 - **Repository delivery rule:** work on `main`; push only to `origin/main`.
 
 This is the single customer-facing deployment decision and sequencing document.
