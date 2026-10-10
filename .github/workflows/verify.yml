@@ -13,10 +13,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
+      - name: Smoke Netlify production function packaging
+        shell: bash
+        env:
+          NETLIFY_SITE_ID: "00000000-0000-0000-0000-000000000001"
+        run: |
+          set -euo pipefail
+          supabase_log="$(mktemp)"
+          netlify_log="$(mktemp)"
+          trap 'rm -f "$supabase_log" "$netlify_log"' EXIT
+
+          if ! NOVA_BACKGROUND_SCHEDULER=supabase npx --yes netlify-cli@27.12.0 build --offline --context production >"$supabase_log" 2>&1; then
+            tail -n 80 "$supabase_log"
+            exit 1
+          fi
+          grep -E "Packaging Functions from.*without-native-cron" "$supabase_log"
+          grep -q "nova.mts" "$supabase_log"
+          if grep -q "nova-background-tick.mts" "$supabase_log"; then
+            echo "Supabase Cron profile must not package a Netlify scheduled function"
+            exit 1
+          fi
+
+          if ! NOVA_BACKGROUND_SCHEDULER=netlify npx --yes netlify-cli@27.12.0 build --offline --context production >"$netlify_log" 2>&1; then
+            tail -n 80 "$netlify_log"
+            exit 1
+          fi
+          grep -E "Packaging Functions from.*with-netlify-cron" "$netlify_log"
+          grep -q "nova.mts" "$netlify_log"
+          grep -q "nova-background-tick.mts" "$netlify_log"
+          echo "Netlify production function packaging smoke passed."
       - run: bun run test
       - run: bun run test:updater
       - run: bun run test:deployment-manager
