@@ -305,3 +305,7 @@ test("keeps review planning in app.js and command behavior in the host adapter",
   assert.doesNotMatch(appSource, /onApprove: async \(review\)/);
   assert.doesNotMatch(appSource, /onRequestChanges: async \(review, feedback\)/);
 });
+
+test("keeps attendance setup prerequisites out of the generic Work retry notice", () => {
+  assert.match(appSource, /readPlan\.attendance && !hasReviewRoute && attendanceResult\?\.readError !== "OFFICE_ASSIGNMENT_REQUIRED"/);
+});

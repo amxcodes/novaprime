@@ -138,6 +138,19 @@ test("timeline and attendance failures remain source-specific and do not erase t
   assert.doesNotMatch(denied, /Timeline service unavailable/);
 });
 
+test("missing office assignment renders setup guidance without a retry action", () => {
+  const html = render({
+    attendanceToday: {
+      status: "setup-required",
+      message: "Set up an office and assign it to this person before attendance is available.",
+    },
+  });
+
+  assert.match(html, /Attendance setup required/);
+  assert.match(html, /Set up an office and assign it to this person before attendance is available\./);
+  assert.doesNotMatch(html, /Retry attendance/);
+});
+
 test("an unrequested attendance projection is omitted instead of guessed from timeline data", () => {
   const html = render({ attendanceToday: { status: "not-requested" } });
   assert.doesNotMatch(html, /Attendance today/);

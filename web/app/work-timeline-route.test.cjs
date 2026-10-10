@@ -159,6 +159,20 @@ test("timeline denial and attendance failure retain separate source states and r
   assert.match(attendanceFailed.attendanceToday.message, /attendance summary could not load/i);
 });
 
+test("missing office assignment is a setup state rather than a retryable attendance failure", async () => {
+  const { projectWorkTimelineProps } = await routeModule;
+  const props = projectWorkTimelineProps({
+    readPlan: { timeline: false, attendance: true },
+    attendanceResult: { readError: "OFFICE_ASSIGNMENT_REQUIRED" },
+    onRetryAttendance() {},
+  });
+
+  assert.deepEqual(props.attendanceToday, {
+    status: "setup-required",
+    message: "Set up an office and assign it to this person before attendance is available.",
+  });
+});
+
 test("each planned read maps its own permission denial or transport failure", async () => {
   const { projectWorkTimelineProps } = await routeModule;
   const timelineDenied = projectWorkTimelineProps({

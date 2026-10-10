@@ -394,6 +394,12 @@ function AttendanceToday({ read }: { read: AttendanceTodayReadState }) {
       <StateMessage kind="loading">Loading today’s attendance summary.</StateMessage>
     </section>;
   }
+  if (read.status === "setup-required") {
+    return <section className={styles.attendance} aria-labelledby={titleId}>
+      <h3 id={titleId}>Attendance today</h3>
+      <StateMessage kind="info" title="Attendance setup required">{read.message}</StateMessage>
+    </section>;
+  }
   if (read.status === "denied" || read.status === "error") {
     const denied = read.status === "denied";
     return <section className={styles.attendance} aria-labelledby={titleId}>

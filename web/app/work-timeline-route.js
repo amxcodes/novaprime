@@ -160,11 +160,15 @@ function sourceReadFailure(result, source, onRetry) {
   }
 
   if (result.readError === "OFFICE_ASSIGNMENT_REQUIRED") {
+    if (source === "attendance") {
+      return {
+        status: "setup-required",
+        message: "Set up an office and assign it to this person before attendance is available.",
+      };
+    }
     return {
       status: "error",
-      message: source === "timeline"
-        ? "An office assignment is required before the timeline can load."
-        : "An office assignment is required before the attendance summary can load.",
+      message: "An office assignment is required before the timeline can load.",
       ...retry(onRetry),
     };
   }

@@ -2444,7 +2444,9 @@ async function renderWork(date, lifetime) {
     const timelineReadFailure = adminReadFailure(timeline, "the daily timeline");
     const timelineDate = timeline.readError ? undefined : timeline.date;
     const workPageNotices = [];
-    const attendanceReadFailure = readPlan.attendance && !hasReviewRoute ? adminReadFailure(attendanceResult, "today’s attendance status") : undefined;
+    const attendanceReadFailure = readPlan.attendance && !hasReviewRoute && attendanceResult?.readError !== "OFFICE_ASSIGNMENT_REQUIRED"
+      ? adminReadFailure(attendanceResult, "today’s attendance status")
+      : undefined;
     if (attendanceReadFailure) {
       workPageNotices.push({ id: "attendance-read", kind: "warning", message: attendanceReadFailure.textContent || "Today’s attendance status could not be read." });
     }

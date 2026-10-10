@@ -78,6 +78,7 @@ export type AttendanceTodayReadState =
   | { status: "not-requested" }
   | { status: "loading" }
   | { status: "denied"; message?: string }
+  | { status: "setup-required"; message: string }
   | { status: "error"; message: string; onRetry?: () => void }
   | { status: "ready"; data: AttendanceTodayProjection };
 
