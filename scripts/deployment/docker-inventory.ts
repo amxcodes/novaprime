@@ -28,6 +28,21 @@ export interface DockerComposeInventory {
   detail?: "DOCKER_CLI_NOT_FOUND" | "DOCKER_STATUS_TIMEOUT" | "DOCKER_COMPOSE_UNAVAILABLE" | "DOCKER_COMPOSE_OUTPUT_INVALID";
 }
 
+export interface DockerComposeInspectionOptions {
+  /** Use the explicitly selected operator config, replacing Compose's implicit root .env. */
+  environmentFilePath?: string;
+  run?: (root: string, environmentFilePath?: string) => Promise<string>;
+}
+
+export function dockerComposeStatusArgs(repoRoot: string, environmentFilePath?: string): string[] {
+  const root = resolve(repoRoot);
+  return [
+    "compose", "--project-directory", root, "--file", resolve(root, "docker", "compose.yaml"),
+    ...(environmentFilePath ? ["--env-file", resolve(environmentFilePath)] : []),
+    "ps", "--all", "--format", "json",
+  ];
+}
+
 function outputRows(output: string): unknown[] {
   const trimmed = output.trim();
   if (!trimmed) return [];
@@ -68,14 +83,11 @@ export function parseDockerComposePsOutput(output: string): DockerComposeService
   }).sort((left, right) => left.service.localeCompare(right.service));
 }
 
-async function runComposeStatus(repoRoot: string): Promise<string> {
+async function runComposeStatus(repoRoot: string, environmentFilePath?: string): Promise<string> {
   const root = resolve(repoRoot);
   const environment = Object.fromEntries(Object.entries(process.env)
     .filter(([key, value]) => value !== undefined && dockerEnvironmentKeys.has(key)));
-  const { stdout } = await execFileAsync("docker", [
-    "compose", "--project-directory", root, "--file", resolve(root, "docker", "compose.yaml"),
-    "ps", "--all", "--format", "json",
-  ], {
+  const { stdout } = await execFileAsync("docker", dockerComposeStatusArgs(root, environmentFilePath), {
     cwd: root,
     env: environment,
     encoding: "utf8",
@@ -88,10 +100,18 @@ async function runComposeStatus(repoRoot: string): Promise<string> {
 
 export async function inspectDockerCompose(
   repoRoot: string,
-  run: (root: string) => Promise<string> = runComposeStatus,
+  options: DockerComposeInspectionOptions = {},
 ): Promise<DockerComposeInventory> {
   try {
-    return { state: "verified", services: parseDockerComposePsOutput(await run(resolve(repoRoot))) };
+    const root = resolve(repoRoot);
+    const run = options.run ?? runComposeStatus;
+    const environmentFilePath = options.environmentFilePath
+      ? resolve(options.environmentFilePath)
+      : undefined;
+    return {
+      state: "verified",
+      services: parseDockerComposePsOutput(await run(root, environmentFilePath)),
+    };
   } catch (error) {
     const code = typeof error === "object" && error !== null && "code" in error
       ? String((error as { code?: unknown }).code)

@@ -137,10 +137,10 @@ export function parseDeploymentManagerArguments(args: readonly string[]): Option
 async function loadSelectedEnvironment(
   options: Options,
   base: NodeJS.ProcessEnv,
-): Promise<{ values: Record<string, string>; label: string; isolated: boolean }> {
+): Promise<{ values: Record<string, string>; label: string; isolated: boolean; path?: string }> {
   if (options.environmentFile) {
     const file = await readDeploymentEnvironmentFile(repoRoot, options.environmentFile);
-    return { values: file.values, label: "explicit --env-file", isolated: true };
+    return { values: file.values, label: "explicit --env-file", isolated: true, path: file.path };
   }
   const values = Object.fromEntries(
     Object.entries(base).filter((entry): entry is [string, string] => entry[1] !== undefined),
@@ -251,6 +251,7 @@ export async function runDeploymentManager(
     environment?: NodeJS.ProcessEnv;
     write?: (value: string) => void;
     runDoctor?: typeof runDeploymentDoctor;
+    inspectDeployment?: typeof inspectLocalDeployment;
   } = {},
 ): Promise<number> {
   const write = dependencies.write ?? console.info;
@@ -273,8 +274,10 @@ export async function runDeploymentManager(
 
     const baseEnvironment = dependencies.environment ?? process.env;
     const selected = await loadSelectedEnvironment(options, baseEnvironment);
+    const inspectDeployment = dependencies.inspectDeployment ?? inspectLocalDeployment;
+    const inspectionOptions = { environmentFilePath: selected.path };
     if (options.command === "status") {
-      const inventory = await inspectLocalDeployment(repoRoot, selected.values, selected.label);
+      const inventory = await inspectDeployment(repoRoot, selected.values, selected.label, inspectionOptions);
       const remote = options.remote ? await discoverProviderResources(selected.values) : undefined;
       reportStatus(inventory, options.json, write, remote);
       return 0;
@@ -299,7 +302,7 @@ export async function runDeploymentManager(
 
     if (options.command === "verify") {
       const plan = await loadDeploymentPlan(repoRoot, options.planId!);
-      const inventory = await inspectLocalDeployment(repoRoot, selected.values, selected.label);
+      const inventory = await inspectDeployment(repoRoot, selected.values, selected.label, inspectionOptions);
       const remote = options.remote ? await discoverProviderResources(selected.values, fetch, { probePublicReadiness: true }) : undefined;
       const verification = verifyDeploymentPlanSnapshot(plan, inventory, remote);
       const result = {
@@ -323,7 +326,7 @@ export async function runDeploymentManager(
       return 2;
     }
 
-    const inventory = await inspectLocalDeployment(repoRoot, selected.values, selected.label);
+    const inventory = await inspectDeployment(repoRoot, selected.values, selected.label, inspectionOptions);
     const providerInventory = options.remote ? await discoverProviderResources(selected.values, fetch, { probePublicReadiness: true }) : undefined;
     const preview = buildDeploymentPreview(inventory, {
       runtime: options.runtime!,

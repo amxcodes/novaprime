@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test";
+import { resolve } from "node:path";
 import {
   formatDockerComposeStatus,
   parseDeploymentManagerArguments,
   runDeploymentManager,
 } from "./deployment-manager.ts";
+import type { LocalDeploymentInventory } from "./deployment/inventory.ts";
 
 test("command parsing requires a target runtime and keeps apply as an explicit unavailable boundary", () => {
   expect(parseDeploymentManagerArguments(["--help"]).command).toBe("help");
@@ -64,6 +66,30 @@ test("status only prints credential presence and never values", async () => {
   expect(output.join("\n")).not.toContain(token);
   expect(output.join("\n")).toContain('"configured": true');
   expect(output.join("\n")).toContain('"schedulerHint": "supabase"');
+});
+
+test("status passes the selected env file to local deployment inspection", async () => {
+  const output: string[] = [];
+  let selectedEnvironmentFile: string | undefined;
+  const code = await runDeploymentManager(["status", "--env-file", ".env.example", "--json"], {
+    environment: {},
+    write: (line) => output.push(line),
+    inspectDeployment: async (_root, _environment, _source, options) => {
+      selectedEnvironmentFile = options.environmentFilePath;
+      return {
+        environmentSource: "explicit --env-file",
+        source: { branch: "main", commit: "a".repeat(40), clean: true, dirtyPathCount: 0, packageVersion: "1.0.0" },
+        runtimeHint: null,
+        database: { configured: false, providerHint: "unknown" },
+        schedulerHint: "vps",
+        dockerCompose: { state: "verified", services: [] },
+        secretPresence: {},
+        providerCredentialPresence: {},
+      } satisfies LocalDeploymentInventory;
+    },
+  });
+  expect(code).toBe(0);
+  expect(selectedEnvironmentFile).toBe(resolve(import.meta.dir, "..", ".env.example"));
 });
 
 test("human-readable local Compose status explains unknown scope and includes safe exit codes", () => {

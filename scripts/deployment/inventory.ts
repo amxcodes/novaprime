@@ -39,6 +39,12 @@ export interface LocalDeploymentInventory {
   providerCredentialPresence: Readonly<Record<string, boolean>>;
 }
 
+export interface LocalDeploymentInspectionOptions {
+  /** Use the selected configuration file when identifying the local Compose project. */
+  environmentFilePath?: string;
+  composeInspector?: typeof inspectDockerCompose;
+}
+
 function safeRuntime(value: string | undefined): RuntimeAdapter | null {
   if (value === "netlify" || value === "cloudflare" || value === "vercel" || value === "vps") return value;
   return null;
@@ -68,7 +74,7 @@ export async function inspectLocalDeployment(
   repoRoot: string,
   environment: Readonly<Record<string, string>>,
   environmentSource: string,
-  composeInspector: typeof inspectDockerCompose = inspectDockerCompose,
+  options: LocalDeploymentInspectionOptions = {},
 ): Promise<LocalDeploymentInventory> {
   const root = resolve(repoRoot);
   const [reportedRoot, commit, branch, status] = await Promise.all([
@@ -137,8 +143,9 @@ export async function inspectLocalDeployment(
   const providerKeys = ["NETLIFY_AUTH_TOKEN", "CLOUDFLARE_API_TOKEN", "VERCEL_TOKEN", "SUPABASE_ACCESS_TOKEN"] as const;
   const runtimeHint = safeRuntime(environment.NOVA_RUNTIME_ADAPTER);
   const schedulerHint = safeScheduler(environment.NOVA_BACKGROUND_SCHEDULER);
+  const composeInspector = options.composeInspector ?? inspectDockerCompose;
   const dockerCompose = runtimeHint === "vps" || schedulerHint === "vps"
-    ? await composeInspector(root)
+    ? await composeInspector(root, { environmentFilePath: options.environmentFilePath })
     : undefined;
   return {
     environmentSource,
