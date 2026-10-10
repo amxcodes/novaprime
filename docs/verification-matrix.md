@@ -16,9 +16,9 @@ migration `0080`, RLS enabled on the lease table, no direct `nova_app` table
 privileges, and execute-only lease RPC access. The latest recorded query
 observed one active `nova-background-tick`, a successful 18:10 UTC tick after
 the earlier `1f14e3e` deploy, and five lease-acquisition calls. That scheduler
-evidence predates `2099ad0`; a post-latest-deploy tick still needs a fresh
-read. This verifies the selected project and named job only; it cannot
-inventory every external trigger.
+evidence predates the later `2099ad0` and `fd1e520` deployments; a post-latest-
+deploy tick still needs a fresh read. This verifies the selected project and
+named job only; it cannot inventory every external trigger.
 
 WSL/Docker QA applied all 80 migrations to isolated PostgreSQL 17, passed the
 SQL/RLS fixtures and least-privilege app-role checks, exercised the protected
@@ -58,10 +58,12 @@ Customer release discovery is still unavailable: there are no published
 stable GitHub releases/tags, and the current release workflow creates drafts
 only. The 200-employee local burst and Docker restore do not prove fresh
 Netlify+Supabase or Cloudflare+Supabase customer installs. No live Cloudflare
-Worker/Hyperdrive runtime or same-database move is verified. The latest
-refreshed Netlify function window showed 343 invocations, zero errors, average
-2,651 ms, p50 1,864 ms, p95 4,677 ms and p99 4,804 ms; API/page speed remains
-open. Public readiness and protected runtime/database identity for the exact
+Worker/Hyperdrive runtime or same-database move is verified. At 00:20 IST on
+11 October, the rolling Netlify Function Metrics window showed 599 total
+invocations and zero function errors. The `nova` function accounted for 591
+calls: average 3,035 ms, p50 2,670 ms, p95 6,203 ms, and p99 6,916 ms. This
+window spans deployments and is not route-level; API/page speed remains open.
+Public readiness and protected runtime/database identity for the exact
 current build have not been rechecked, and no post-latest-deploy scheduler tick
 is recorded. Detailed local commands and evidence remain in
 [`runtime-smoke.md`](runtime-smoke.md).
@@ -123,24 +125,23 @@ The subsequent baseline commit `e4351562b060450840376a3b0c1238d5a35120f7`
 also passed the full GitHub Actions checks and PostgreSQL lifecycle gate
 ([run 37522254064](https://github.com/amxcodes/novaprime/actions/runs/37522254064)).
 
-The hosted app is still not ready: the live readiness/session checks remain
-503/500. The Production URL subsequently supplied by the user contains a
-project-qualified pooler username for `hrlvietbqvkdovulzcie`, while the
-confirmed NOVA target is `owfgvojdaxafayutbcuf`; Netlify is pointed at the wrong
-Supabase project. Set Functions `DATABASE_URL` to the matching `nova_app`
-credential and transaction-pooler endpoint for the confirmed project, deploy,
-and repeat readiness/auth smoke before accepting healthy-route latency or
-Super Admin workflows. The observed migration sequence has no pending schema
-change for this incident.
+### Historical sign-in incident — recovered on 7 October 2026
 
-Later Netlify logs at 11:30 IST still report `28P01` for requests and the
-background tick; failed API request durations remain about 3 seconds. The
-target database screenshot shows Seoul (`ap-northeast-2`), but the shared
-pooler host's cluster index cannot be inferred from the region. Copy the exact
-host from the target project's Connect → Transaction pooler dialog. The
-supplied Production URL points by username suffix at a different project. No
-live setting change or successful hosted auth check is evidenced by these
-logs.
+The initial Netlify logs showed `28P01` password-authentication failures. The
+Production database URL visible during diagnosis had a project-qualified
+username for another Supabase project, while NOVA's intended disposable test
+project was `owfgvojdaxafayutbcuf`. After the database URL was corrected and
+Netlify redeployed, read-only checks returned `/api/ready` 200 and
+`/api/auth/get-session` 200 with a signed-out session; the user then confirmed
+normal sign-in succeeded. These logs explain the earlier outage and must not be
+read as the current status. No schema migration was needed to resolve it.
+
+The target database was shown in Seoul (`ap-northeast-2`); use the exact host
+from that project's Transaction Pooler connection dialog because the shared
+pooler hostname's index cannot be inferred from region. The successful sign-in
+did not verify runtime/database identity for the later `fd1e520` application
+deploy. A fresh readiness and protected identity check for that build remain
+open.
 
 The supplied detailed Supabase export confirms migrations 0075–0078 completed
 and `ALTER ROLE nova_app ... PASSWORD` succeeded at 18:44 UTC; the earlier
@@ -188,11 +189,11 @@ at 13:07:34 IST. Live read-only requests then returned `/api/ready` 200 with
 `null` while signed out. The user retried the normal sign-in and confirmed it
 succeeded. The new function log showed no `28P01`; it did show Better Auth
 falling back to one shared per-path rate-limit bucket because its client IP was
-missing. A local follow-up now passes only Netlify's trusted Function
-`context.ip` through an overwritten private header; caller-supplied values are
-rejected. Focused tests and typechecks pass, but this code is not deployed yet.
-After deployment, verify that the fallback warning disappears from function
-logs.
+missing. The current Netlify adapter forwards only the provider-trusted
+Function `context.ip` through an overwritten private header, with
+caller-supplied values rejected; this code is included in the published
+application source. Production logs have not been rechecked to confirm the
+fallback warning is gone.
 
 Healthy-path latency is still a release concern. Netlify reports the function
 region as CMH (Ohio, US East), while the selected Supabase project's primary
@@ -303,14 +304,14 @@ history; use newer evidence above when results differ.
 
 | Gate | Current result | What's still needed |
 | --- | --- | --- |
-| Actual deployed baseline | **Latest main source is published and required CI passed.** Netlify published `main @ fd1e520` as deploy `6aca86da31a9180009230764`; verification [run #109](https://github.com/amxcodes/novaprime/actions/runs/38076798924) passed `checks` and `postgres`. Live signed-in Super Admin checks confirm Work, People/access, and Organisation render. Work displays the explicit no-office setup state. The selected disposable Supabase project's ledger is checksum-verified through `0080`; the lease table has RLS, `nova_app` has no direct table access and can execute the lease RPCs. The latest recorded scheduler tick was 18:10 UTC after `1f14e3e`, before the current build. | Re-read public readiness and protected runtime/database identity after this deploy, record a fresh scheduler tick, and extend scheduler inventory beyond the selected project. This does not establish any customer install. |
+| Actual deployed baseline | **Application code from `fd1e520` is published and required CI passed.** Netlify published that application bundle as deploy `6aca86da31a9180009230764`; subsequent `main` publications update documentation only and preserve the same app code. Verification [run #109](https://github.com/amxcodes/novaprime/actions/runs/38076798924) passed `checks` and `postgres`. Live signed-in Super Admin checks confirm Work, People/access, and Organisation render. Work displays the explicit no-office setup state. The selected disposable Supabase project's ledger is checksum-verified through `0080`; the lease table has RLS, `nova_app` has no direct table access and can execute the lease RPCs. The latest recorded scheduler tick was 18:10 UTC after `1f14e3e`, before the current app build. | Re-read public readiness and protected runtime/database identity for the live app code, record a fresh scheduler tick, and extend scheduler inventory beyond the selected project. This does not establish any customer install. |
 | Customer releases and updates | **Updater code and local migration/restore evidence exist; customer release discovery is unavailable.** Version `0.1.3` has 80 manifest hashes. Fresh install, SQL/RLS fixtures, restricted-role preflight, and PostgreSQL 17 dump/restore pass. The updater's direct PostgreSQL upgrade rehearsal and zero-pending rerun pass. There are no published stable GitHub releases/tags. | Publish the updater-bearing baseline and the newer tested stable release, then prove clean-clone adoption, fork conflict handling, wrong-project refusal, failed migration/retry, declined push, and host-build failure after schema migration. |
 | Advertised first installs | **Local Docker/PostgreSQL lifecycle and archive restore pass; hosted first installs remain unproven.** The local PostgreSQL 17 install applied all 80 migrations, passed protected maintenance and authenticated workflow suites, and restored counts, RLS, sequence, auth/session, encryption, and role boundaries. The founder setup through loopback Nginx was rerun successfully after fixing non-default-port forwarding. The published Netlify + Supabase site is test infrastructure, not a clean customer project. Cloudflare packaging passes CI but no live Hyperdrive connection exists. | Complete isolated Netlify + Supabase and Cloudflare + Supabase first-install checks. Prove internet-facing Docker only after the exact public exposure is confirmed and external TLS/firewall checks are ready. |
 | Same-database runtime move | **Planner and safety constraints pass; real cutover is not implemented.** Netlify→Cloudflare planning preserves database identity, scheduler ownership and public origin and disables Worker Cron when Supabase owns the schedule. | Complete and rehearse a journaled Worker candidate upload, exact readback, health/auth/workflow validation, traffic promotion and recovery in a disposable Cloudflare account. This requires an available scoped Cloudflare account/token and must keep the existing database and scheduler unchanged. |
-| Scheduler ownership | **The selected Supabase scheduler and lease-backed runtime path are observed working.** One active named Cron row exists; the latest successful run is 18:10 UTC and the lease acquire RPC has five calls. Migration `0080` has local overlap, expiration, renewal, stale-owner fencing and execute-only app-role checks. | Extend verification to duplicate triggers outside this project and exercise missed runs, retries, secret rotation and recovery on each live supported profile. The current inventory cannot prove every trigger account-wide. |
+| Scheduler ownership | **A selected Supabase scheduler and lease-backed run were observed before the current deploy.** One active named Cron row existed; its latest verified success was 18:10 UTC after `1f14e3e` and before `fd1e520`, with five lease-acquire calls. Migration `0080` has local overlap, expiration, renewal, stale-owner fencing and execute-only app-role checks. | Record a fresh tick after the current deploy; extend verification to duplicate triggers outside this project and exercise missed runs, retries, secret rotation and recovery on each live supported profile. The current inventory cannot prove every trigger account-wide. |
 | Database moves | **Separately gated by design; no transfer was attempted.** Runtime plans preserve database identity. | Treat database copy/cutover as its own future project with write freeze/drain, verified backup/restore, object/data/sequence/RLS/auth comparison and rehearsed recovery. Payroll execution remains future work; retain its schema/permission base. |
 | User-facing quality | **The Super Admin Work and People/access routes render in the signed-in production test session.** Work no longer fails while mounting reviews; the People/access screen lists the protected Super Admin role and scoped people directory. Attendance now explains that an office and assignment are required instead of showing the generic API error/retry state. Admin Organisation confirms zero offices and departments. No records were changed. Employee/reviewer workflows, restricted-role journeys, phone/tablet layouts, keyboard and screen-reader review remain open. | Complete representative employee, reviewer, and restricted-role journeys plus narrow/tablet, keyboard, and screen-reader review. Payroll execution remains future implementation; keep only its current permission/schema foundation. |
-| Speed and capacity | **200×10 local burst passes; production is still slow.** With 25 concurrent requests, local work-context p95 was 418 ms, create/self-assign 241 ms, timer start 138 ms, timer stop 77 ms and assignment read 537 ms. These are in-process PostgreSQL measurements, not hosted SLA evidence. Live Netlify `nova` invocation p95 remains 4.68 s / p99 4.80 s over the last measured day, with zero function errors. | Measure interleaved authenticated route/page waterfalls, sustained capacity and pool headroom; test same-code regional/runtime candidates against the same DB before choosing a move. Do not claim the speed issue is fixed from local load alone. |
+| Speed and capacity | **200×10 local burst passes; production is still slow.** With 25 concurrent requests, local work-context p95 was 418 ms, create/self-assign 241 ms, timer start 138 ms, timer stop 77 ms and assignment read 537 ms. These are in-process PostgreSQL measurements, not hosted SLA evidence. Netlify's rolling 24-hour metrics viewed at 00:20 IST on 11 October showed 591 `nova` invocations, zero function errors, average 3.04 s, p50 2.67 s, p95 6.20 s and p99 6.92 s. Metrics span deployments and are not route-level. | Measure interleaved authenticated route/page waterfalls, per-route server timing, sustained capacity and pool headroom; compare the same code and database across regions/runtimes before choosing a move. Do not claim the speed issue is fixed from local load alone. |
 
 ## Not verified / release gates
 
