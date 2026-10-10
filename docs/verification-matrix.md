@@ -1,16 +1,24 @@
 # NOVA verification matrix
 
-## Latest deployment profile follow-up — 2026-10-10
+## Latest deployment profile follow-up — 2026-10-11
 
-The current source baseline is `main` / Netlify `1f14e3e`. GitHub verification
-[run #106](https://github.com/amxcodes/novaprime/actions/runs/38074561165)
-passed both required `checks` and `postgres` jobs, and Netlify lists that SHA as
-the published deploy. The disposable Supabase project `owfgvojdaxafayutbcuf`
-has the checksummed migration `0080`, RLS enabled on the lease table, no direct
-`nova_app` table privileges, and execute-only lease RPC access. The latest
-query observed one active `nova-background-tick`, a successful 18:10 UTC tick
-after deploy, and five lease-acquisition calls. This verifies the selected
-project and named job only; it cannot inventory every external trigger.
+The current application source baseline is `main` / Netlify `fd1e520`. Netlify
+published deploy `6aca86da31a9180009230764` from that commit. GitHub verification
+[run #109](https://github.com/amxcodes/novaprime/actions/runs/38076798924)
+passed both required `checks` and `postgres` jobs. The earlier run #107 failed
+because its Docker profile test still expected Nginx to drop a non-default
+port; `c025824` aligned that assertion with the intended `$http_host`
+forwarding behavior. `2099ad0` fixed the Work review-action import and origin
+port forwarding. `fd1e520` makes the no-office attendance condition explicit.
+
+The disposable Supabase project `owfgvojdaxafayutbcuf` has checksummed
+migration `0080`, RLS enabled on the lease table, no direct `nova_app` table
+privileges, and execute-only lease RPC access. The latest recorded query
+observed one active `nova-background-tick`, a successful 18:10 UTC tick after
+the earlier `1f14e3e` deploy, and five lease-acquisition calls. That scheduler
+evidence predates `2099ad0`; a post-latest-deploy tick still needs a fresh
+read. This verifies the selected project and named job only; it cannot
+inventory every external trigger.
 
 WSL/Docker QA applied all 80 migrations to isolated PostgreSQL 17, passed the
 SQL/RLS fixtures and least-privilege app-role checks, exercised the protected
@@ -34,12 +42,17 @@ containers, volume, network, images, temporary `.env`, and directory were
 removed afterward. Focused request-security tests passed 7/7 and the server
 image built successfully.
 
-The signed-in production Work page also reproduced a separate UI failure.
-Its browser diagnostic was `stage=mount-reviews`, `name=ReferenceError`.
-Inspection found `web/app.js` references `canRenderRequestReviewActions` while
-mounting the review projection but had not imported it. The local fix adds the
-missing import and a regression assertion. It is not yet included in the
-published deploy; recheck the signed-in Work page after CI and deployment.
+The signed-in production Work page previously failed while mounting reviews:
+`canRenderRequestReviewActions` was referenced but not imported. After that fix,
+the Super Admin Work route rendered assignments, visible tasks, reviews,
+collaboration and handovers, reviewer management, sessions, timeline,
+attendance, and server-side work-context search. The latest live page shows
+“Attendance setup required” with guidance to configure an office and assignment;
+the generic attendance error and retry action are absent. This is the correct
+setup state for the disposable organisation, which has zero offices and
+departments, as confirmed in Organisation settings. People/access also loaded
+with the protected Super Admin role and scoped people directory. No records
+were changed.
 
 Customer release discovery is still unavailable: there are no published
 stable GitHub releases/tags, and the current release workflow creates drafts
@@ -48,9 +61,9 @@ Netlify+Supabase or Cloudflare+Supabase customer installs. No live Cloudflare
 Worker/Hyperdrive runtime or same-database move is verified. The latest
 refreshed Netlify function window showed 343 invocations, zero errors, average
 2,651 ms, p50 1,864 ms, p95 4,677 ms and p99 4,804 ms; API/page speed remains
-open. Earlier short public health/readiness samples are not refreshed
-post-`1f14e3e` measurements, and direct readiness for that exact deploy remains
-unverified. Detailed local commands and evidence remain in
+open. Public readiness and protected runtime/database identity for the exact
+current build have not been rechecked, and no post-latest-deploy scheduler tick
+is recorded. Detailed local commands and evidence remain in
 [`runtime-smoke.md`](runtime-smoke.md).
 
 Evidence snapshot: 2026-09-27. The latest end-to-end PostgreSQL 17 QA command
@@ -283,20 +296,20 @@ browser gate remains partial.
   editing. Employee-originated task creation, timer/submission/review, correction
   creation, handover and broad Work/HR browser journeys remain unverified.
 
-## Current readiness status — 2026-10-10 (latest evidence)
+## Current readiness status — 2026-10-11 (latest evidence)
 
 This table is the current summary. Older date-stamped results below are kept as
 history; use newer evidence above when results differ.
 
 | Gate | Current result | What's still needed |
 | --- | --- | --- |
-| Actual deployed baseline | **Latest main source is published and CI passes.** Netlify lists `main @ 1f14e3e`; verification [run #106](https://github.com/amxcodes/novaprime/actions/runs/38074561165) passed both `checks` and `postgres`. The selected disposable Supabase project's ledger is checksum-verified through `0080`; the lease table has RLS, the `nova_app` role has no direct table access and can execute the lease RPCs. The latest scheduler query found exactly one active named job, a successful 18:10 UTC tick, and five lease-acquire calls. | Re-read public readiness and protected runtime/database identity after this deploy, and extend the scheduler inventory boundary beyond the selected project. This does not establish any customer install. |
+| Actual deployed baseline | **Latest main source is published and required CI passed.** Netlify published `main @ fd1e520` as deploy `6aca86da31a9180009230764`; verification [run #109](https://github.com/amxcodes/novaprime/actions/runs/38076798924) passed `checks` and `postgres`. Live signed-in Super Admin checks confirm Work, People/access, and Organisation render. Work displays the explicit no-office setup state. The selected disposable Supabase project's ledger is checksum-verified through `0080`; the lease table has RLS, `nova_app` has no direct table access and can execute the lease RPCs. The latest recorded scheduler tick was 18:10 UTC after `1f14e3e`, before the current build. | Re-read public readiness and protected runtime/database identity after this deploy, record a fresh scheduler tick, and extend scheduler inventory beyond the selected project. This does not establish any customer install. |
 | Customer releases and updates | **Updater code and local migration/restore evidence exist; customer release discovery is unavailable.** Version `0.1.3` has 80 manifest hashes. Fresh install, SQL/RLS fixtures, restricted-role preflight, and PostgreSQL 17 dump/restore pass. The updater's direct PostgreSQL upgrade rehearsal and zero-pending rerun pass. There are no published stable GitHub releases/tags. | Publish the updater-bearing baseline and the newer tested stable release, then prove clean-clone adoption, fork conflict handling, wrong-project refusal, failed migration/retry, declined push, and host-build failure after schema migration. |
-| Advertised first installs | **Local Docker/PostgreSQL lifecycle and archive restore pass, but its customer founder setup exposed an origin-forwarding bug; hosted first installs remain unproven.** The local PostgreSQL 17 install applied all 80 migrations, passed protected maintenance and authenticated workflow suites, and restored counts, RLS, sequence, auth/session, encryption, and role boundaries. The published Netlify + Supabase site is test infrastructure, not a clean customer project. Cloudflare packaging passes CI but no live Hyperdrive connection exists. | Fix and re-run the documented founder registration through loopback Nginx, then complete isolated Netlify + Supabase and Cloudflare + Supabase fresh install checks. Prove internet-facing Docker only after the exact public exposure is approved and external TLS/firewall checks are ready. |
+| Advertised first installs | **Local Docker/PostgreSQL lifecycle and archive restore pass; hosted first installs remain unproven.** The local PostgreSQL 17 install applied all 80 migrations, passed protected maintenance and authenticated workflow suites, and restored counts, RLS, sequence, auth/session, encryption, and role boundaries. The founder setup through loopback Nginx was rerun successfully after fixing non-default-port forwarding. The published Netlify + Supabase site is test infrastructure, not a clean customer project. Cloudflare packaging passes CI but no live Hyperdrive connection exists. | Complete isolated Netlify + Supabase and Cloudflare + Supabase first-install checks. Prove internet-facing Docker only after the exact public exposure is confirmed and external TLS/firewall checks are ready. |
 | Same-database runtime move | **Planner and safety constraints pass; real cutover is not implemented.** Netlify→Cloudflare planning preserves database identity, scheduler ownership and public origin and disables Worker Cron when Supabase owns the schedule. | Complete and rehearse a journaled Worker candidate upload, exact readback, health/auth/workflow validation, traffic promotion and recovery in a disposable Cloudflare account. This requires an available scoped Cloudflare account/token and must keep the existing database and scheduler unchanged. |
 | Scheduler ownership | **The selected Supabase scheduler and lease-backed runtime path are observed working.** One active named Cron row exists; the latest successful run is 18:10 UTC and the lease acquire RPC has five calls. Migration `0080` has local overlap, expiration, renewal, stale-owner fencing and execute-only app-role checks. | Extend verification to duplicate triggers outside this project and exercise missed runs, retries, secret rotation and recovery on each live supported profile. The current inventory cannot prove every trigger account-wide. |
 | Database moves | **Separately gated by design; no transfer was attempted.** Runtime plans preserve database identity. | Treat database copy/cutover as its own future project with write freeze/drain, verified backup/restore, object/data/sequence/RLS/auth comparison and rehearsed recovery. Payroll execution remains future work; retain its schema/permission base. |
-| User-facing quality | **Required automated checks now pass on main, but authenticated browser journeys and responsive/accessibility review remain open.** CI #106 passes both required jobs. A live Work route still displays its generic unavailable error under the current browser session; the deployed safe phase diagnostic has not yet isolated the failing render. No full restricted-role/employee/reviewer journey or phone/tablet browser and screen-reader review is complete. | Reproduce with the Super Admin signed in and inspect the privacy-safe phase diagnostic, then fix the exact failing renderer. Complete role-specific workflows, narrow and tablet layouts, keyboard and screen-reader review. Payroll execution remains future implementation; keep only its current permission/schema foundation. |
+| User-facing quality | **The Super Admin Work and People/access routes render in the signed-in production test session.** Work no longer fails while mounting reviews; the People/access screen lists the protected Super Admin role and scoped people directory. Attendance now explains that an office and assignment are required instead of showing the generic API error/retry state. Admin Organisation confirms zero offices and departments. No records were changed. Employee/reviewer workflows, restricted-role journeys, phone/tablet layouts, keyboard and screen-reader review remain open. | Complete representative employee, reviewer, and restricted-role journeys plus narrow/tablet, keyboard, and screen-reader review. Payroll execution remains future implementation; keep only its current permission/schema foundation. |
 | Speed and capacity | **200×10 local burst passes; production is still slow.** With 25 concurrent requests, local work-context p95 was 418 ms, create/self-assign 241 ms, timer start 138 ms, timer stop 77 ms and assignment read 537 ms. These are in-process PostgreSQL measurements, not hosted SLA evidence. Live Netlify `nova` invocation p95 remains 4.68 s / p99 4.80 s over the last measured day, with zero function errors. | Measure interleaved authenticated route/page waterfalls, sustained capacity and pool headroom; test same-code regional/runtime candidates against the same DB before choosing a move. Do not claim the speed issue is fixed from local load alone. |
 
 ## Not verified / release gates
