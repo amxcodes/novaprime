@@ -16,7 +16,9 @@ bun run update:manifest --write --class online-compatible --impact "Describe the
 bun run update:manifest --check
 ```
 
-The GitHub verification workflow checks the manifest against the migration files. Publishing a GitHub release and tag remains a maintainer action; this command does not publish releases or run migrations from GitHub Actions.
+The [GitHub verification workflow](../.github/workflows/verify.yml) checks the manifest against the migration files. Pushing a `vMAJOR.MINOR.PATCH` tag starts the [stable-release workflow](../.github/workflows/stable-release-draft.yml): it reruns the full verification workflow on that tag, requires the tag, package version, and release manifest to agree, confirms the exact tagged commit is on `main`, and creates a **draft** GitHub Release with the manifest's migration class and impact. A maintainer must review and publish the draft; draft releases are not available to customer updater discovery. The release workflow never applies migrations or deploys customer infrastructure.
+
+The maintainer release gate is intentionally two-step: tests and metadata validation prepare a draft, then a maintainer publishes the reviewed draft in GitHub. For the first customer rollout, publish the updater-bearing `v0.1.2` baseline and a later stable release only after the disposable Supabase and direct PostgreSQL rehearsals in [the deployment roadmap](deployment-roadmap.md#phase-a--make-customer-release-updates-real) pass.
 
 Migration SHA-256 values are calculated from UTF-8 SQL with CRLF/CR line endings normalized to LF, so the same release verifies on Windows, macOS, and Linux checkouts.
 
