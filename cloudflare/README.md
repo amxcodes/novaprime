@@ -49,11 +49,13 @@ the uploaded version's existing bindings, including production Hyperdrive and
 secrets. Cloudflare preview/version URLs are public by default when enabled.
 Zero Trust Access was not configured because its setup required payment/card
 details. Do not upload a version with production secrets and leave a public
-preview enabled. For a no-public-route test, use `wrangler dev --remote` with
-the Supabase-Cron config and an already-configured Hyperdrive ID. Wrangler
-serves the local request entry point while the Worker executes on Cloudflare
-with Hyperdrive; omit `--tunnel`, keep `crons = []`, and run only bounded
-read-only probes against the selected disposable database. This tests the
+preview enabled. `wrangler dev --remote` can serve a local request entry point
+while the Worker executes on Cloudflare with Hyperdrive, but Cloudflare does
+not document that its temporary remote environment has no public route.
+Omitting `--tunnel` only avoids the documented tunnel; it does not prove
+privacy. Keep this test gated until the candidate route and access boundary are
+independently verified. Any approved isolated test must keep `crons = []` and
+use bounded read-only probes against a disposable database. This tests the
 Cloudflare Worker/Hyperdrive execution path, but not a public domain, signed-in
 browser session, traffic promotion, or rollback. A future permanent candidate
 still needs a reviewed access boundary and the journaled executor/recovery

@@ -28,12 +28,12 @@ region is therefore a paid-plan experiment, not a free setting we can apply
 in code ([Netlify Functions configuration](https://docs.netlify.com/build/functions/configuration/)).
 The user reports Cloudflare Zero Trust onboarding requires payment/card details
 and declined that setup. No Cloudflare application, policy, Worker, Hyperdrive,
-or production route was created. A private remote-development test is a viable
-next step: `wrangler dev --remote` can run the Worker on Cloudflare against an
-existing Hyperdrive while requests remain local. It does not require a public
-preview or Access policy. Production database credentials still require
-read-only test cases and careful secret handling; permanent public previews
-remain gated on an independent, verified access boundary.
+or production route was created. Although `wrangler dev --remote` serves local
+requests while executing remotely, Cloudflare does not document that its
+temporary remote environment has no public route. Omitting `--tunnel` is not
+proof of privacy. Do not connect a production database or credentials until the
+candidate route and access boundary are independently verified; otherwise keep
+the Hyperdrive comparison unrun.
 
 Netlify published this runtime change as deploy
 `6acb52834f8e250008b6e15e` (`68d2631`) in 29 seconds. Its first live logs at
@@ -124,13 +124,14 @@ for NOVA. Zero Trust setup led to a checkout/card requirement, so the user
 declined it; no Access application or policy was created. No Worker, domain,
 or scheduler was created. Cloudflare documents `workers.dev` preview URLs as
 public by default, so do not put production database credentials on an
-unrestricted preview. A no-public-route test is available with
-`wrangler dev --remote`: it serves requests locally while running the Worker
-on Cloudflare against a configured Hyperdrive. This still executes in
-Cloudflare's production runtime and can change remote data, so use only
-read-only probes against the selected disposable database and keep Cron
-disabled. The production Netlify route, Supabase database, and Supabase Cron
-remain as they were.
+unrestricted preview. `wrangler dev --remote` serves requests locally while
+running the Worker in a temporary Cloudflare environment, but Cloudflare does
+not guarantee in its docs that the temporary environment has no public route.
+Omitting `--tunnel` is not proof of isolation. Do not connect production
+credentials or a live database until a candidate route can be verified
+private; otherwise leave the remote Hyperdrive comparison unrun. The
+production Netlify route, Supabase database, and Supabase Cron remain as they
+were.
 
 ## Earlier live and code-level evidence — 11 October 2026
 
