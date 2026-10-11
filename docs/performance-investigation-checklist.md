@@ -2,35 +2,47 @@
 
 Date: 2026-10-11
 
-## Fresh hosted serial sample — 11 October 2026
+## Live Cloudflare Hyperdrive smoke and paired readiness sample — 11 October 2026
 
-From the same Windows client, ten sequential `fetch` requests were sent to
-each live read-only endpoint over one reused HTTP client connection. All
-requests returned HTTP 200. The nine follow-up responses were:
+Cloudflare currently lists `nova-runtime-candidate` as Ready at version
+`6d50dd5c`, with only its public `workers.dev` hostname. It has no customer
+domain or Cron. Its `HYPERDRIVE` binding targets the disposable Supabase
+project through configuration `nova-runtime-candidate-owfg-test`:
+`db.owfgvojdaxafayutbcuf.supabase.co:5432/postgres`, restricted role
+`nova_app`, query caching disabled, and a soft origin connection limit of 20.
+The password is held by Hyperdrive and is not displayed. This must stay an
+isolated test target because the candidate hostname is public.
 
-| Endpoint | Total response p50 / p95 | `nova-app` handler p50 / p95 |
-| --- | ---: | ---: |
-| Netlify `/api/ready` | 518 / 543 ms | 163 / 163 ms |
-| Cloudflare candidate `/api/ready` through Hyperdrive | 421 / 437 ms | 200 / 201 ms |
-| Netlify `/api/auth/get-session` with no cookie | 525 / 536 ms | 166 / 167 ms |
+Fresh anonymous probes returned HTTP 200 from `/api/health`, database-backed
+`/api/ready` (`status=ready`, `scheduler=supabase`), and
+`/api/auth/get-session` (empty session). The app shell and its referenced
+471,207-byte JavaScript asset also returned 200. Cloudflare's dashboard
+snapshot showed 90 Hyperdrive queries, 419 kB of uncached results, 26 ms
+reported query latency, 26.5 ms connection latency, zero errors, five open
+connections, no waiting clients, and the configured ceiling of 20. All 90
+queries were recorded as cache-disabled. This verifies a live Worker →
+Hyperdrive → Supabase PostgreSQL path; it does not verify authenticated
+business workflows, customer provisioning, or a runtime cutover.
 
-The first request in each sequence was slower: 2,605 ms for Netlify readiness
-(1,137 ms in the app handler), 1,015 ms for Cloudflare readiness (216 ms in
-the handler), and 1,055 ms for the empty Netlify session lookup (340 ms in the
-handler). A separate earlier session request took 1,350 ms in its handler.
-This is consistent with a variable first-request/connection penalty, but does
-not prove a function cold start. The small sample does not identify a stable
-cause, and p95 with only nine follow-up requests is just the largest observed
-value. It includes this client's internet route and does not represent a
-browser session distribution, signed-in workflow, or load test. The observed
-Cloudflare readiness advantage was about 97 ms at warm p50 even though its
-handler p50 was about 37 ms slower; these measurements alone do not isolate
-which platform, network, or database component accounts for the difference.
+A same-machine paired readiness sample used one reused HTTP client per host,
+one excluded warm-up, and ten serial follow-up `GET /api/ready` requests to
+each. All twenty measured responses returned 200. Total-response p50 and
+largest observed response (the p95 for ten samples) were 308/316 ms for
+Cloudflare and 510/543 ms for Netlify. The `nova-app` server-timing p50 / max
+was 40/45 ms for Cloudflare and 163/164 ms for Netlify. The Cloudflare sample
+resolved at `NRT`; another isolated response during the same session resolved
+at `SIN`, so the edge route varied. This is a small, anonymous readiness
+comparison, not an authenticated page benchmark or capacity test. Cloudflare's
+candidate JavaScript and Netlify's served JavaScript have different SHA-256
+hashes despite equal byte lengths, and the candidate's source commit is not
+verified; therefore this is directional runtime evidence, not a controlled
+same-build comparison or proof that Hyperdrive alone caused the difference.
 
-These endpoints exercise health/readiness and an empty Better Auth session;
-they do not read or write business records. The candidate Worker is public,
-has no customer hostname or Cron, and remains connected only to disposable
-Supabase data. No production route, scheduler, or schema was changed.
+The measurements include this client's network path. They do not identify a
+stable cold-start cause or represent signed-in product routes, browser
+waterfalls, sustained concurrency, or 100/200-employee capacity. No production
+route, scheduler, or schema was changed. The Supabase Edge Functions option is
+not part of this test and remains a separate future adapter evaluation.
 
 ## Latest latency work and provider constraints — 11 October 2026
 
