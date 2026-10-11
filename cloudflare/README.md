@@ -11,8 +11,10 @@ background scheduler calls `/api/internal/background/tick` every five minutes.
    pooler URL written to `DATABASE_URL`; Hyperdrive connects to the database
    directly and provides its own connection pooling. Keep the `nova_app`
    password in Hyperdrive, then copy only the configuration ID into the
-   selected Wrangler file (`cloudflare/wrangler.toml` or
-   `cloudflare/wrangler.supabase-cron.toml`). The ID is a binding reference,
+   selected Wrangler file (`cloudflare/wrangler.toml`,
+   `cloudflare/wrangler.supabase-cron.toml`, or the separate
+   `cloudflare/wrangler.runtime-candidate.toml` for an isolated smoke test).
+   The ID is a binding reference,
    not a password. Netlify/Vercel Node runtimes use the generated transaction-
    pooler `DATABASE_URL` instead. Each Worker request creates short-lived
    `pg` clients for NOVA and Better Auth; Hyperdrive owns connection reuse

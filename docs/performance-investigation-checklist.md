@@ -84,14 +84,34 @@ official configuration guide limits custom regions to Pro and Enterprise;
 its self-serve Asia Pacific options include `nrt` (Tokyo). A closer Netlify
 region is therefore a paid-plan experiment, not a free setting we can apply
 in code ([Netlify Functions configuration](https://docs.netlify.com/build/functions/configuration/)).
-The user reports Cloudflare Zero Trust onboarding requires payment/card details
-and declined that setup. No Cloudflare application, policy, Worker, Hyperdrive,
-or production route was created. Although `wrangler dev --remote` serves local
-requests while executing remotely, Cloudflare does not document that its
-temporary remote environment has no public route. Omitting `--tunnel` is not
-proof of privacy. Do not connect a production database or credentials until the
-candidate route and access boundary are independently verified; otherwise keep
-the Hyperdrive comparison unrun.
+The user declined Cloudflare Zero Trust because the checkout asks for payment
+details. On 11 October, we instead deployed the repository's separate
+`nova-runtime-candidate` Worker to its public `workers.dev` hostname, with
+preview URLs disabled, no custom domain or Cron, fresh candidate-only secrets,
+and only a disposable Supabase project plus its restricted `nova_app` role.
+Hyperdrive used the database's direct TLS endpoint on port 5432, allowed up to
+20 origin connections, and had query caching disabled. The production Worker,
+database route, and Supabase Cron were not changed. Because the candidate is
+public, its endpoint is only suitable for disposable data and NOVA's normal
+authentication; it is not an Access-protected production-move candidate.
+
+Remote checks returned `/api/health` 200, `/api/ready` 200 with
+`scheduler=supabase`, and `/api/auth/get-session` 200 with an empty session.
+Readiness executed its schema query against PostgreSQL. The session request had
+no authentication cookie, so it verified the Better Auth handler response but
+did not test a database-backed signed-in session. Together the health and
+schema-readiness responses prove the deployed Worker-to-Hyperdrive-to-Supabase
+path is connected; they do not prove sign-in, authenticated business
+workflows, a customer first install, or a runtime cutover.
+
+One small serial latency sample from this machine showed warm Cloudflare
+readiness at about 0.33 s and its empty-session response at 0.34 s, compared
+with about 0.52 s and 0.52 s on the Netlify test deployment. The first request
+after each host was contacted was slower. These are four or five GET samples
+per endpoint, without a signed-in browser or controlled regional/load
+conditions; the session requests had no cookie, and the difference cannot be
+attributed to Hyperdrive alone. Treat them as directional observations, not
+p95s. The 100/200-employee hosted load gate remains open.
 
 Zero Trust is not needed for a local Worker smoke test. The repository now has
 `cloudflare/wrangler.local.toml` and instructions in `cloudflare/README.md` to
@@ -242,19 +262,11 @@ and 22 ms query-total p95. Pool defaults stay unchanged until the hosted
 request mix and the database's shared connection budget justify a different
 value.
 
-The signed-in Cloudflare account has no Worker project or Hyperdrive binding
-for NOVA. Zero Trust setup led to a checkout/card requirement, so the user
-declined it; no Access application or policy was created. No Worker, domain,
-or scheduler was created. Cloudflare documents `workers.dev` preview URLs as
-public by default, so do not put production database credentials on an
-unrestricted preview. `wrangler dev --remote` serves requests locally while
-running the Worker in a temporary Cloudflare environment, but Cloudflare does
-not guarantee in its docs that the temporary environment has no public route.
-Omitting `--tunnel` is not proof of isolation. Do not connect production
-credentials or a live database until a candidate route can be verified
-private; otherwise leave the remote Hyperdrive comparison unrun. The
-production Netlify route, Supabase database, and Supabase Cron remain as they
-were.
+At the time of this earlier note, no candidate Worker or Hyperdrive existed.
+The separate disposable candidate smoke is now recorded above. Cloudflare
+documents `workers.dev` preview URLs as public by default; the candidate uses
+only test data and must not be repointed at production. The production Netlify
+route, database, and Supabase Cron remain unchanged.
 
 ## Earlier live and code-level evidence — 11 October 2026
 
