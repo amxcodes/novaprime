@@ -15,7 +15,6 @@ const emptyPlan = () => ({
   workContext: false,
   workContextView: false,
   taskDetail: false,
-  tasks: false,
   taskCollection: false,
   taskCatalog: false,
   attendance: false,
@@ -82,7 +81,7 @@ test("group-only task creation loads only its authorized context and catalog cho
   const result = await readWorkRouteData({ readPlan, canCreateTasks: true, lifetime: host.lifetime, pageApi: host.pageApi });
 
   assert.deepEqual(host.calls.map(({ path }) => path), ["/api/work-context", "/api/task-catalog"]);
-  assert.deepEqual(result.tasksResult, { tasks: [] });
+  assert.equal(Object.hasOwn(result, "tasksResult"), false);
   assert.deepEqual(result.visibleTasksResult, { tasks: [] });
   assert.deepEqual(result.assignmentsResult, { assignments: [] });
   assert.deepEqual(result.workContext, { path: "/api/work-context", allowed: true });
@@ -92,7 +91,7 @@ test("each Work area dispatches only its own authorized reads", async () => {
   const { readWorkRouteData } = await loadRoute();
   const readPlan = Object.fromEntries(Object.keys(emptyPlan()).map((key) => [key, true]));
   const expected = {
-    tasks: ["/api/task-catalog", "/api/work-context", "/api/tasks", "/api/work/tasks/visible?limit=30&status=blocked&q=handoff"],
+    tasks: ["/api/task-catalog", "/api/work-context", "/api/work/tasks/visible?limit=30&status=blocked&q=handoff"],
     reviews: ["/api/reviews/pending"],
     requests: ["/api/task-handover-requests", "/api/task-reviewer-requests"],
     "reviewer-management": ["/api/task-assignments/reviewer-management?limit=25"],

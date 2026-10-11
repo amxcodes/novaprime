@@ -35,6 +35,29 @@ signed-in browser waterfall. The 200-employee local PostgreSQL run on 11
 October passed at concurrency 25; its results and limitations are recorded in
 `docs/runtime-smoke.md`.
 
+A later authenticated Tasks-page sample at 12:17 IST returned HTTP 200 for
+`POST /api/work` in 4,829 ms and `GET /api/tasks` in 4,506 ms inside NOVA
+(6,073 ms total Netlify duration for the latter invocation). The `api.tasks`
+diagnostic counted six NOVA acquisitions and nine query round trips
+(3,062 ms and 1,736 ms summed), plus five auth acquisitions and eight auth
+query round trips (3,037 ms and 2,444 ms summed). Query maxima were 349 ms
+and 540 ms respectively. Acquisition and query subtotals overlap and are not
+elapsed time; these counters cannot separate database execution from network
+round trips. The invocation's extra ~1.57 seconds outside the NOVA handler
+also shows that platform overhead matters on this sample. Source inspection
+found that Work did not consume the `/api/tasks` full-roster response at all;
+the rendered task list uses the separately permission-filtered,
+server-paginated `/api/work/tasks/visible` endpoint. A Work-only removal of
+that redundant request is under verification. The `/api/tasks` endpoint
+remains in place for Admin and Operations.
+
+At 12:30 IST, a read-only Supabase query confirmed the single
+`nova-background-tick` job is active on `*/5 * * * *`; its latest recorded run
+started at 07:00:00.066Z and finished successfully at 07:00:00.085Z. The
+latest `net._http_response` row was recorded at 07:00:00.086Z with HTTP 200.
+This verifies scheduler ownership and delivery at that point in time; it does
+not prove uninterrupted month-long scheduling.
+
 The Work page now sends up to nine allow-listed, permission-selected reads in
 one bounded `POST /api/work/page-read`. The server resolves the actor once for
 that explicit batch, dispatches only the existing read handlers, and preserves
@@ -330,6 +353,16 @@ hosting change.
 - [ ] After deployment, compare Task Catalog query count and handler time with
   the previous 14-query, roughly 5.3-second cold sample; collect warm samples
   before judging the end-to-end effect.
+- [x] Remove the unused Work-page `GET /api/tasks` request. The Work Tasks
+  screen renders the bounded `/api/work/tasks/visible` result; no Work
+  component consumes `tasksResult`. The extra endpoint loaded the full
+  task-and-assignment roster and repeated actor/session resolution. Keep
+  `/api/tasks` in place for its Admin and Operations consumers. Focused route
+  and grant-plan tests pass, and the web typecheck passes.
+- [ ] After the optimization deploys, verify that navigating to Work Tasks no
+  longer emits the `api.tasks` diagnostic and compare the same authenticated
+  browser navigation and `api.work`/`api.work-context` timings. This removes a
+  proven unused read; it is not yet a measured production latency improvement.
 - [ ] Use browser traces to count API requests per page and identify true
   dependencies. Preserve server permission checks; optimize only requests
   proven to be redundant or independent.
@@ -447,3 +480,4 @@ complexity.
 - [PostgreSQL `pg_stat_statements` reference](https://www.postgresql.org/docs/current/pgstatstatements.html)
 - [Supabase database functions](https://supabase.com/docs/guides/database/functions)
 - [Better Auth installation and request-handler integration](https://better-auth.com/docs/installation)
+- [Cloudflare Workers placement near a database or backend](https://developers.cloudflare.com/workers/configuration/placement/)

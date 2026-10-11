@@ -12,7 +12,6 @@ const EMPTY = {
   workContext: false,
   workContextView: false,
   taskDetail: false,
-  tasks: false,
   taskCollection: false,
   taskCatalog: false,
   attendance: false,
@@ -62,10 +61,9 @@ describe("Work feature read capabilities", () => {
       taskDetail: true,
     });
     expect(plan.taskCollection).toBe(false);
-    expect(plan.tasks).toBe(false);
   });
 
-  it("requires a broad collection grant before enabling the roster endpoint", () => {
+  it("requires a broad collection grant before enabling visible task reads", () => {
     const plan = planWorkReads({ grants: [
       { permissionKey: "tasks.create", scope: "client" },
       { permissionKey: "tasks.view", scope: "group" },
@@ -76,7 +74,6 @@ describe("Work feature read capabilities", () => {
       workContext: true,
       taskDetail: true,
       taskCollection: true,
-      tasks: true,
       taskCatalog: true,
     });
   });

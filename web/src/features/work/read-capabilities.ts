@@ -15,7 +15,6 @@ export interface WorkReadPlan {
   workContext: boolean;
   workContextView: boolean;
   taskDetail: boolean;
-  tasks: boolean;
   taskCollection: boolean;
   taskCatalog: boolean;
   attendance: boolean;
@@ -44,7 +43,6 @@ function emptyWorkReadPlan(): WorkReadPlan {
     workContext: false,
     workContextView: false,
     taskDetail: false,
-    tasks: false,
     taskCollection: false,
     taskCatalog: false,
     attendance: false,
@@ -78,9 +76,6 @@ export function planWorkReads(
   const taskView = hasAnyPermissionGrant(read, ["tasks.view"], WORK_SCOPES);
   const taskCollectionView = hasAnyPermissionGrant(read, ["tasks.view"], TASK_COLLECTION_SCOPES);
   const canCreateTasks = hasAnyPermissionGrant(read, ["tasks.create"], TASK_CREATE_SCOPES);
-  // /api/tasks returns task details and the full assignment roster. Assigned-work
-  // users use the purpose-limited Mine projection instead.
-  const canCreateAndViewTasks = canCreateTasks && taskCollectionView;
   const canActOnOwnAssignments = hasAnyPermissionGrant(read, [
     "tasks.edit", "tasks.start", "tasks.submit", "tasks.reviewer_request", "tasks.handover_request",
   ], WORK_SCOPES);
@@ -103,7 +98,6 @@ export function planWorkReads(
     workContext: workContextView || canCreateTasks,
     workContextView,
     taskDetail: taskView,
-    tasks: canCreateAndViewTasks,
     taskCollection: taskCollectionView,
     // Catalog data is read only for the task composer; catalog management is
     // exposed separately through Work Setup.

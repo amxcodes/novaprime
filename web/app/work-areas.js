@@ -45,7 +45,7 @@ const WORK_AREA_DEFINITIONS = Object.freeze([
 
 const WORK_AREA_READS = Object.freeze({
   "my-work": Object.freeze(["assignmentsResult", "sessionsResult", "timeline", "attendanceResult"]),
-  tasks: Object.freeze(["tasksResult", "visibleTasksResult", "taskCatalogResult"]),
+  tasks: Object.freeze(["visibleTasksResult", "taskCatalogResult"]),
   reviews: Object.freeze(["reviewsResult"]),
   requests: Object.freeze(["reviewerRequestsResult", "handoverRequestsResult"]),
   "reviewer-management": Object.freeze(["reviewerManagementResult"]),

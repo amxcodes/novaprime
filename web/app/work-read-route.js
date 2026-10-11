@@ -23,7 +23,7 @@ const emptyContext = () => ({
   taskCreationTargets: [],
   groups: [],
 });
-const emptyTasks = () => ({ tasks: [] });
+const emptyVisibleTasks = () => ({ tasks: [] });
 const emptyCatalog = () => ({ entries: [], proposals: [], permissions: {} });
 const emptyAttendance = () => ({});
 const emptyReviewerManagement = () => ({
@@ -90,8 +90,7 @@ export async function readWorkRouteData({
       fallback: emptyRequests,
     },
     { key: "workContext", enabled: nonFocusedFeatureReads && readPlan.workContext, path: "/api/work-context", fallback: emptyContext, batchable: false },
-    { key: "tasksResult", enabled: nonFocusedFeatureReads && readPlan.tasks, path: "/api/tasks", fallback: emptyTasks, batchable: false },
-    { key: "visibleTasksResult", enabled: nonFocusedFeatureReads && readPlan.taskCollection, path: visibleTaskReadUrl(visibleTaskFilter), fallback: emptyTasks },
+    { key: "visibleTasksResult", enabled: nonFocusedFeatureReads && readPlan.taskCollection, path: visibleTaskReadUrl(visibleTaskFilter), fallback: emptyVisibleTasks },
     { key: "taskCatalogResult", enabled: nonFocusedFeatureReads && readPlan.taskCatalog, path: "/api/task-catalog", fallback: emptyCatalog },
     { key: "attendanceResult", enabled: nonFocusedFeatureReads && readPlan.attendance, path: "/api/attendance/today", fallback: emptyAttendance },
     {
@@ -157,7 +156,6 @@ export async function readWorkRouteData({
     reviewerRequestsResult: results.reviewerRequestsResult,
     handoverRequestsResult: results.handoverRequestsResult,
     workContext: results.workContext,
-    tasksResult: results.tasksResult,
     visibleTasksResult: results.visibleTasksResult,
     taskCatalogResult: results.taskCatalogResult,
     attendanceResult: results.attendanceResult,
