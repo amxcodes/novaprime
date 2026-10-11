@@ -178,7 +178,8 @@ test("the route host keeps reviewer reads gated, paged, and separate from assign
   assert.match(routeContext, /reviewerManagement:\s*canLoadFeature\(readPlan\.reviewerManagement && standardFeatureRoute\)/);
   assert.match(route, /const reviewerManagementUi = loadedWorkRouteFeatures\.reviewerManagement\?\.module \|\| null/);
   assert.match(route, /reviewerManagementScopes = \["organisation", "client_workstream", "group", "assigned_work"\]/);
-  assert.match(readsRoute, /read\(nonFocusedFeatureReads && readPlan\.reviewerManagement,[\s\S]*?"\/api\/task-assignments\/reviewer-management\?limit=25"/);
+  assert.match(readsRoute, /enabled:\s*nonFocusedFeatureReads && readPlan\.reviewerManagement,[\s\S]*?path:\s*"\/api\/task-assignments\/reviewer-management\?limit=25"/);
+  assert.match(readsRoute, /batchReads\.map\(\(read\) => read\.path\)/);
   assert.match(actionsRoute, /"\/api\/task-assignments\/" \+ encodeURIComponent\(assignmentId\) \+ "\/reviewer"[\s\S]*?requestOptions\("PATCH", \{ reviewerPersonId \}\)/);
   assert.match(actionsRoute, /result as Record<string, unknown>\)\.assignmentId !== assignmentId/);
   assert.doesNotMatch(route, /\/api\/people(?:\?|"|`)/);
