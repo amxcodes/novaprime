@@ -12,7 +12,13 @@ function delay(ms: number): Promise<void> {
 
 function promisePool(query: () => Promise<unknown>): Pool {
   const client = { query } as unknown as PoolClient;
-  return { connect: async () => client } as unknown as Pool;
+  return {
+    connect: async () => client,
+    idleCount: 0,
+    totalCount: 0,
+    waitingCount: 0,
+    options: { max: 10 },
+  } as unknown as Pool;
 }
 
 test("measures promise pool acquisition and query round trips without recording SQL", async () => {
@@ -29,6 +35,9 @@ test("measures promise pool acquisition and query round trips without recording 
 
   expect(metrics.nova.poolAcquisitions).toBe(1);
   expect(metrics.nova.poolAcquireMs).toBeGreaterThanOrEqual(0);
+  expect(metrics.nova.poolAcquireCapacityAvailable).toBe(1);
+  expect(metrics.nova.poolAcquireIdleAvailable).toBe(0);
+  expect(metrics.nova.poolAcquireAtCapacity).toBe(0);
   expect(metrics.nova.queries).toBe(1);
   expect(metrics.nova.queryRoundTripMs).toBeGreaterThanOrEqual(5);
   expect(metrics.nova.maxQueryRoundTripMs).toBeGreaterThanOrEqual(5);
@@ -45,6 +54,10 @@ test("measures callback pool acquisition and callback query completion", async (
     connect: (callback: (error: Error | null, connection: PoolClient, release: () => void) => void) => {
       setTimeout(() => callback(null, client, () => undefined), 3);
     },
+    idleCount: 2,
+    totalCount: 4,
+    waitingCount: 0,
+    options: { max: 10 },
     query(
       this: { connect: (callback: (error: Error | null, connection: PoolClient) => void) => void },
       statement: string,
@@ -68,9 +81,30 @@ test("measures callback pool acquisition and callback query completion", async (
   }));
 
   expect(metrics.auth.poolAcquisitions).toBe(1);
+  expect(metrics.auth.poolAcquireIdleAvailable).toBe(1);
   expect(metrics.auth.queries).toBe(1);
   expect(metrics.auth.queryFailures).toBe(0);
   expect(metrics.nova.queries).toBe(0);
+});
+
+test("records likely pool saturation separately from available connection capacity", async () => {
+  const client = { query: async () => ({ rows: [] }) } as unknown as PoolClient;
+  const pool = instrumentDatabasePool({
+    connect: async () => client,
+    idleCount: 0,
+    totalCount: 2,
+    waitingCount: 3,
+    options: { max: 2 },
+  } as unknown as Pool, "nova");
+  const metrics = createDatabaseDiagnostics();
+
+  await withDatabaseDiagnostics(metrics, async () => {
+    await pool.connect();
+  });
+
+  expect(metrics.nova.poolAcquireAtCapacity).toBe(1);
+  expect(metrics.nova.poolAcquireCapacityAvailable).toBe(0);
+  expect(metrics.nova.maxPoolWaitingCountAtAcquire).toBe(3);
 });
 
 test("keeps overlapping request metrics isolated and counts query failures", async () => {

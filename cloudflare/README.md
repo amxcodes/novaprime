@@ -46,20 +46,22 @@ SHA (`wrangler versions upload --tag <commit-sha>`); only a valid Git SHA is
 reported as the release. This makes identity checks detect an unexpected
 version and connect a tested candidate to its source commit. Version URLs use
 the uploaded version's existing bindings, including production Hyperdrive and
-secrets. Cloudflare documents them as public when enabled, so protect candidate
-access with an Access application scoped to this Worker's preview deployments
-and a restrictive operator identity policy. The read-only deployment manager
-inventory checks the immutable Worker ID, preview-URL setting, this
-preview-specific application, policies for overlapping Worker/preview/public
-destinations, and public path overrides. Missing permissions, broad policies,
-or ambiguous wildcard destinations fail closed. A verified Access boundary
-does not enable candidate upload yet: the journaled executor and recovery
-rehearsal are still unimplemented. When enabled, limit candidate checks to
-health, readiness, assets, and the protected read-only identity endpoint. Do
-not run sign-in or writes against production records as a deployment smoke
-test. See
+secrets. Cloudflare preview/version URLs are public by default when enabled.
+Zero Trust Access was not configured because its setup required payment/card
+details. Do not upload a version with production secrets and leave a public
+preview enabled. For a no-public-route test, use `wrangler dev --remote` with
+the Supabase-Cron config and an already-configured Hyperdrive ID. Wrangler
+serves the local request entry point while the Worker executes on Cloudflare
+with Hyperdrive; omit `--tunnel`, keep `crons = []`, and run only bounded
+read-only probes against the selected disposable database. This tests the
+Cloudflare Worker/Hyperdrive execution path, but not a public domain, signed-in
+browser session, traffic promotion, or rollback. A future permanent candidate
+still needs a reviewed access boundary and the journaled executor/recovery
+work. The read-only deployment manager inventory continues to fail closed for
+public previews without verified protection. See
 [Version Metadata](https://developers.cloudflare.com/workers/runtime-apis/bindings/version-metadata/),
 [Version URLs](https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/),
+[Hyperdrive local development](https://developers.cloudflare.com/hyperdrive/configuration/local-development/),
 and [Access application destinations](https://developers.cloudflare.com/api/resources/zero_trust/subresources/access/subresources/applications/methods/list/).
 
 Cloudflare Workers use outbound HTTPS email adapters: Gmail API OAuth2 or

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "0.1.3",
+  "version": "0.1.4",
   "migrations": [
     {
       "filename": "0001_people_identity.sql",
@@ -324,5 +324,6 @@
     }
   ],
   "migrationClass": "online-compatible",
-  "impact": "Adds an RLS-protected database-backed single-flight lease for scheduled maintenance ticks. Runtime roles invoke security-definer lease RPCs without direct table access."
+  "impact": "Adds aggregate pool-state snapshots to slow-request diagnostics so operators can distinguish reusable idle clients, available connection capacity, and likely pool saturation. No schema or migration changes.",
+  "minimumStartingVersion": "0.1.3"
 }

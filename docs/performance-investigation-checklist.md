@@ -28,9 +28,12 @@ region is therefore a paid-plan experiment, not a free setting we can apply
 in code ([Netlify Functions configuration](https://docs.netlify.com/build/functions/configuration/)).
 The user reports Cloudflare Zero Trust onboarding requires payment/card details
 and declined that setup. No Cloudflare application, policy, Worker, Hyperdrive,
-or production route was created. Keep the candidate move gated until a no-card,
-verified owner-only boundary is available and the user approves any secret
-transfer.
+or production route was created. A private remote-development test is a viable
+next step: `wrangler dev --remote` can run the Worker on Cloudflare against an
+existing Hyperdrive while requests remain local. It does not require a public
+preview or Access policy. Production database credentials still require
+read-only test cases and careful secret handling; permanent public previews
+remain gated on an independent, verified access boundary.
 
 Netlify published this runtime change as deploy
 `6acb52834f8e250008b6e15e` (`68d2631`) in 29 seconds. Its first live logs at
@@ -44,8 +47,17 @@ sub-190 ms individual query maxima for these examples. These are a handful of
 live observations, not matched distributions or proof of a broad speedup.
 They confirm the one-round-trip change is deployed, but cold-instance
 connection acquisition and warm multi-query request latency still need work.
-The authenticated browser waterfall remains open because the app tab rendered
-the signed-out shell after reload.
+The app currently renders the Work screen and its empty/setup states, but an
+authenticated browser request waterfall is still not recorded.
+
+The `0.1.4` candidate adds aggregate pool-state counters to slow-request logs:
+whether an idle client was available, whether the pool had room to open a
+client, whether it was already at capacity, and the maximum waiting count seen
+at acquisition start. These are snapshots of the process-local `pg.Pool`, not
+proof of a new TCP/TLS connection or the database proxy's borrow wait. After
+deployment, use them to distinguish likely local-pool saturation from
+connection creation, then correlate with warm/cold samples and provider-side
+metrics before changing pool limits or hosting.
 
 This checklist separates browser time, Netlify execution, database connection
 wait, PostgreSQL round trips, and query execution. It records evidence before
@@ -107,16 +119,18 @@ and 22 ms query-total p95. Pool defaults stay unchanged until the hosted
 request mix and the database's shared connection budget justify a different
 value.
 
-The signed-in Cloudflare account was inspected. It currently has no Worker
-projects, and Cloudflare Access is not configured. The user approved an Access
-policy restricted to `Amanxnu@gmail.com`. The Zero Trust Free plan selector
-opened the Cloudflare checkout page, which remained on a loading state; no
-Access application or policy was created. No Worker, Hyperdrive binding,
-domain, or scheduler was created. A live candidate still needs the existing
-deployment safety gates, a candidate-only Access boundary, and a separately
-approved transfer of the restricted database/runtime secrets to Cloudflare;
-the production Netlify route, Supabase database, and Supabase Cron remain as
-they were.
+The signed-in Cloudflare account has no Worker project or Hyperdrive binding
+for NOVA. Zero Trust setup led to a checkout/card requirement, so the user
+declined it; no Access application or policy was created. No Worker, domain,
+or scheduler was created. Cloudflare documents `workers.dev` preview URLs as
+public by default, so do not put production database credentials on an
+unrestricted preview. A no-public-route test is available with
+`wrangler dev --remote`: it serves requests locally while running the Worker
+on Cloudflare against a configured Hyperdrive. This still executes in
+Cloudflare's production runtime and can change remote data, so use only
+read-only probes against the selected disposable database and keep Cron
+disabled. The production Netlify route, Supabase database, and Supabase Cron
+remain as they were.
 
 ## Earlier live and code-level evidence — 11 October 2026
 
@@ -241,11 +255,12 @@ slow SQL statement or Netlify cold start is the sole cause. The logs contain
 no browser waterfall and are single-session samples, so they cannot be used as
 p50/p95 or as proof that Cloudflare will be faster.
 
-The signed-in Cloudflare account has no Worker projects and no Access
-configuration. Keep the existing Supabase database, Supabase Cron, and
-production origin fixed while preparing a protected Cloudflare candidate;
-compare the same authenticated read paths and record cold/warm distributions
-before considering any traffic promotion.
+The signed-in Cloudflare account has no NOVA Worker or Hyperdrive configuration
+and no Access policy. Keep the existing Supabase database, Supabase Cron, and
+production origin fixed while testing through local Wrangler remote
+development. Begin with bounded read-only requests and compare repeated
+cold/warm distributions; do not enable a public preview or consider traffic
+promotion from this test alone.
 
 The Work Tasks UI rendered, but this browser inspection did not expose a
 network trace. Confirm that Work Tasks omits `/api/tasks` and collect its
@@ -597,12 +612,15 @@ hosting change.
 - [ ] Compare warm p50/p95, cold latency, errors, and function execution costs
   before selecting a region. Since all `/api/*` traffic currently enters the
   same `nova` function, a per-function region affects the whole API.
-- [ ] If regional configuration is unavailable or still too slow, test the
-  existing Cloudflare Worker + Supabase profile as a protected candidate,
-  keeping the database, Supabase Cron owner, and public production route
-  unchanged. Compare the same authenticated read workload before considering
-  promotion. Cloudflare account access is not configured in the workspace, so
-  a live candidate upload remains an external gate.
+- [ ] If regional configuration is unavailable or still too slow, first run
+  the Cloudflare adapter through `wrangler dev --remote` without `--tunnel`.
+  It uses Cloudflare execution and the configured Hyperdrive while keeping the
+  request entry point local. Keep the production route, database, and
+  Supabase Cron owner unchanged, and run only bounded read-only probes. This
+  measures the Worker-to-database path but is not a public candidate-domain or
+  full signed-in browser comparison. A public preview is public by default;
+  do not attach production credentials unless a separately verified access
+  boundary protects every path.
 - [ ] Before moving Better Auth, PostgreSQL access, or all APIs to another
   runtime, verify its dependencies, transaction/isolation behavior, trusted
   origins, session cookies, CSRF protection, CORS, same-origin routing, rate
@@ -635,11 +653,13 @@ Recommended order:
 1. Production diagnostics are published and the first authenticated Work and
    work-context samples are recorded. Collect the missing route distributions
    and browser waterfalls before tuning database plans.
-2. Test the existing Cloudflare Worker + Supabase profile as the next
-   protected candidate, using the same database and Supabase Cron owner while
-   Netlify remains the production route. This isolates runtime location without
-   mixing in a database move or scheduler change. Cloudflare account access is
-   not configured in the workspace, so the live candidate remains a gate.
+2. Test the existing Cloudflare Worker + Supabase profile through
+   `wrangler dev --remote`, without `--tunnel`, using the same database and
+   Supabase Cron owner while Netlify remains the production route. Start with
+   bounded, read-only routes and compare repeated cold/warm samples. This uses
+   Cloudflare execution and Hyperdrive without enabling a public preview. It
+   is not a public-domain or complete authenticated-browser cutover test; a
+   later public candidate needs its own reviewed access boundary.
 3. Compare a Netlify Asia-region deploy only if this project's plan supports
    it without a plan upgrade. Its current settings lock region changes behind
    an upgrade; do not spend money solely on an unmeasured latency hypothesis.

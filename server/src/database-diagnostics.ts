@@ -5,6 +5,10 @@ export type DatabasePoolDiagnostics = Readonly<{
   poolAcquisitions: number;
   poolAcquireMs: number;
   poolAcquireFailures: number;
+  poolAcquireIdleAvailable: number;
+  poolAcquireCapacityAvailable: number;
+  poolAcquireAtCapacity: number;
+  maxPoolWaitingCountAtAcquire: number;
   queries: number;
   queryRoundTripMs: number;
   queryFailures: number;
@@ -20,6 +24,10 @@ type MutableDatabasePoolDiagnostics = {
   poolAcquisitions: number;
   poolAcquireMs: number;
   poolAcquireFailures: number;
+  poolAcquireIdleAvailable: number;
+  poolAcquireCapacityAvailable: number;
+  poolAcquireAtCapacity: number;
+  maxPoolWaitingCountAtAcquire: number;
   queries: number;
   queryRoundTripMs: number;
   queryFailures: number;
@@ -44,6 +52,10 @@ function emptyPoolDiagnostics(): MutableDatabasePoolDiagnostics {
     poolAcquisitions: 0,
     poolAcquireMs: 0,
     poolAcquireFailures: 0,
+    poolAcquireIdleAvailable: 0,
+    poolAcquireCapacityAvailable: 0,
+    poolAcquireAtCapacity: 0,
+    maxPoolWaitingCountAtAcquire: 0,
     queries: 0,
     queryRoundTripMs: 0,
     queryFailures: 0,
@@ -79,6 +91,36 @@ function recordPoolAcquisition(
   metrics.poolAcquisitions += 1;
   metrics.poolAcquireMs += Math.max(0, performance.now() - startedAt);
   if (failed) metrics.poolAcquireFailures += 1;
+}
+
+/**
+ * Snapshot the public pg.Pool counters before acquire. This cannot split the
+ * connection handshake from the pool wait, but it shows whether the pool had
+ * an idle client, room to open one, or was already at its configured limit.
+ */
+function recordPoolAcquireStart(
+  diagnostics: MutableDatabaseDiagnostics | undefined,
+  source: DatabasePoolSource,
+  pool: Pool,
+): void {
+  if (!diagnostics) return;
+  const metrics = diagnostics[source];
+  const idleCount = pool.idleCount;
+  const totalCount = pool.totalCount;
+  const max = pool.options.max;
+  const waitingCount = pool.waitingCount;
+
+  if (idleCount > 0) {
+    metrics.poolAcquireIdleAvailable += 1;
+  } else if (Number.isInteger(max) && max > 0 && totalCount >= max) {
+    metrics.poolAcquireAtCapacity += 1;
+  } else {
+    metrics.poolAcquireCapacityAvailable += 1;
+  }
+  metrics.maxPoolWaitingCountAtAcquire = Math.max(
+    metrics.maxPoolWaitingCountAtAcquire,
+    waitingCount,
+  );
 }
 
 export async function measureDatabasePoolAcquisition<T>(
@@ -183,6 +225,7 @@ export function instrumentDatabasePool(pool: Pool, source: DatabasePoolSource): 
     value: (...args: unknown[]) => {
       const diagnostics = requestDatabaseDiagnostics.getStore();
       const startedAt = diagnostics ? performance.now() : 0;
+      recordPoolAcquireStart(diagnostics, source, pool);
       let callbackIndex = -1;
       for (let index = args.length - 1; index >= 0; index -= 1) {
         if (typeof args[index] === "function") {
