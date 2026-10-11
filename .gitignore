@@ -8,4 +8,5 @@ dist/
 .vercel/
 .wrangler/
 **/.wrangler/
+.dev.vars
 .DS_Store

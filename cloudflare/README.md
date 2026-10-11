@@ -17,6 +17,7 @@ background scheduler calls `/api/internal/background/tick` every five minutes.
    pooler `DATABASE_URL` instead. Each Worker request creates short-lived
    `pg` clients for NOVA and Better Auth; Hyperdrive owns connection reuse
    across requests. Do not retain a process-global `pg.Pool` in the Worker.
+
 2. In Cloudflare → Worker → Settings → Variables & Secrets, set
    `BETTER_AUTH_URL` to the public HTTPS origin and add optional
    `NOVA_ALLOWED_ORIGINS` / `NOVA_PUBLIC_ORIGIN` as plain runtime variables.
@@ -39,7 +40,55 @@ background scheduler calls `/api/internal/background/tick` every five minutes.
    project, then deploy from Workers Builds with
    `npx wrangler@4.141.0 deploy --config cloudflare/wrangler.toml`.
 
-Both configs declare Cloudflare's Version Metadata binding. NOVA reports the
+Hyperdrive is not a Zero Trust feature. Cloudflare documents it as available on
+Workers plans, and recommends it for PostgreSQL because it reuses database
+connections across Worker requests. A Worker can also open native TCP
+connections to PostgreSQL without Hyperdrive, and Supabase recommends its shared
+transaction pooler for serverless or edge runtimes. That route is not a NOVA
+configuration today: `cloudflare/worker.ts` requires the `HYPERDRIVE` binding.
+Do not replace the binding with a transaction-pooler URL until a separate
+adapter mode has passed Cloudflare runtime tests for Better Auth, RLS context,
+transaction-pooler restrictions, and realistic latency. Supabase's HTTP Data
+API is another supported integration, but it does not replace NOVA's current
+Kysely/PostgreSQL and Better Auth PostgreSQL paths without a broader backend
+redesign.
+
+## Test locally without Zero Trust
+
+You can smoke-test the Cloudflare adapter without deploying a Worker or
+creating a Zero Trust account. Start a disposable PostgreSQL database on
+`127.0.0.1`, apply the canonical migrations, and use its restricted `nova_app`
+login. Create `cloudflare/.dev.vars` with fresh local-only values for
+`BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` (`http://127.0.0.1:8787`),
+`NOVA_ALLOWED_ORIGINS` (the same origin), `NOVA_BACKGROUND_JOB_SECRET`,
+`NOVA_BOOTSTRAP_TOKEN`, and `NOVA_SECRETS_ENCRYPTION_KEY`. Do not copy values
+from production. `.dev.vars` is ignored by Git.
+
+In PowerShell, point Wrangler's local Hyperdrive binding at that disposable
+database, then run the Worker bound to loopback only:
+
+```powershell
+$env:CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE = "postgresql://nova_app:<TEST_PASSWORD>@127.0.0.1:5432/nova?sslmode=disable"
+bunx wrangler@4.141.0 dev --config cloudflare/wrangler.local.toml --local --ip 127.0.0.1 --port 8787
+```
+
+Check `/api/health`, `/api/ready`, and `/api/auth/get-session` on that local
+origin. This covers the Worker adapter, request-scoped PostgreSQL wiring, and
+Better Auth's schema access. It does not create a Cloudflare route, run Cron,
+or test Cloudflare's network or Hyperdrive's connection pooling and query
+caching: Cloudflare documents that `localConnectionString` connects directly
+to PostgreSQL. Stop Wrangler and dispose of the scratch database afterward.
+The database host must be reachable from the process running Wrangler. On
+Windows with Docker running inside WSL, a port published only on WSL's
+`127.0.0.1` is not necessarily reachable through Windows `127.0.0.1`; keep the
+test traffic on a loopback or host-only route and remove it when finished.
+
+`wrangler dev --remote` is a different test: Cloudflare uploads and runs a
+temporary Worker remotely, and all bindings use their configured remote
+resources. Do not switch to it casually or point it at production; use the
+separate remote-candidate procedure below only with a disposable database.
+
+The deployable configs declare Cloudflare's Version Metadata binding. NOVA reports the
 immutable Worker version ID through its protected deployment-identity
 endpoint. For a release upload, tag the version with the exact full Git commit
 SHA (`wrangler versions upload --tag <commit-sha>`); only a valid Git SHA is
@@ -47,12 +96,18 @@ reported as the release. This makes identity checks detect an unexpected
 version and connect a tested candidate to its source commit. Version URLs use
 the uploaded version's existing bindings, including production Hyperdrive and
 secrets. Cloudflare preview/version URLs are public by default when enabled.
-Zero Trust Access is optional for NOVA's public runtime and is not needed for a
-candidate test. Use `wrangler.runtime-candidate.toml` for that test: it deploys
-a separate `nova-runtime-candidate` Worker on the account's public
-`workers.dev` hostname, disables version preview URLs, and declares no Cron.
-Do not use `wrangler.supabase-cron.toml` for a candidate; it has the production
-Worker name `nova` and changes that Worker's deployment.
+NOVA's normal public runtime relies on NOVA authentication for protected
+features; Zero Trust is not required to host it. The local smoke test above
+also needs no Cloudflare account or public route. By contrast,
+`wrangler.runtime-candidate.toml` deploys a separate `nova-runtime-candidate`
+Worker to a public `workers.dev` hostname, disables version preview URLs, and
+declares no Cron. If testing that candidate without an access boundary, assume
+the hostname is reachable from the internet: use only a disposable database,
+restricted `nova_app` credentials, separate test secrets and test accounts,
+and no customer data. It cannot pass the deployment manager's verified-access
+gate for a production runtime move. Do not use
+`wrangler.supabase-cron.toml` for a candidate; it has the production Worker
+name `nova` and changes that Worker's deployment.
 
 Because the candidate hostname is public, give it a disposable Supabase/Postgres
 target through a separate Hyperdrive configuration, use the restricted

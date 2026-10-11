@@ -1,0 +1,15 @@
+# Local-only Wrangler smoke-test configuration. Never use this config to deploy.
+name = "nova-local-smoke"
+main = "worker.ts"
+compatibility_date = "2026-09-22"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+[vars]
+NOVA_BACKGROUND_SCHEDULER = "supabase"
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+# Wrangler's localConnectionString environment override supplies the database.
+# This placeholder keeps the local binding shape and is not a deploy target.
+id = "00000000-0000-0000-0000-000000000000"

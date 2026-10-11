@@ -22,6 +22,17 @@ executed in 3.5 ms; all waves had zero database diagnostic failures. These
 local PostgreSQL measurements are not hosted route latency, a sustained soak,
 or a customer capacity guarantee.
 
+A second full isolated PostgreSQL 17 QA run used the request-scoped database
+mode that Cloudflare uses, with the same 200-employee / 10-task / 25-concurrent
+profile. All 80 migrations, authenticated lifecycle checks, restricted-role
+preflight, full dump/restore, and the 0072→0080 updater rehearsal passed. The
+work-context p95 was 415 ms, task creation/self-assignment p95 304 ms across
+2,000 requests, timer-start p95 327 ms across 2,000 requests, timer-stop p95
+246 ms across 2,000 requests, and assignment-read p95 271 ms. Database
+diagnostics reported zero failures. This validates the request-scoped
+PostgreSQL application path against local Docker; it is not a Cloudflare
+Workers network or Hyperdrive benchmark.
+
 ## Live sample after the scoped-transaction JIT fix — 11 October 2026
 
 Netlify's Deploys page confirms `358776b` (`perf(db): disable JIT for scoped
@@ -81,6 +92,34 @@ temporary remote environment has no public route. Omitting `--tunnel` is not
 proof of privacy. Do not connect a production database or credentials until the
 candidate route and access boundary are independently verified; otherwise keep
 the Hyperdrive comparison unrun.
+
+Zero Trust is not needed for a local Worker smoke test. The repository now has
+`cloudflare/wrangler.local.toml` and instructions in `cloudflare/README.md` to
+run Wrangler locally with a loopback-only listener and a disposable PostgreSQL
+database. Wrangler's `localConnectionString` goes directly to PostgreSQL, so
+this checks adapter wiring and Better Auth schema access but not Cloudflare's
+network path, Hyperdrive pooling, or query caching. That smoke test has not yet
+passed. On 11 October, Wrangler's local-only config bundled successfully and
+`/api/health` returned 200, but `/api/ready` and `/api/auth/get-session` were
+canceled by the local Workers runtime after about 2.1 seconds. The database was
+in a throwaway WSL Docker project; the Windows host could connect to it as
+`nova_app`, while the request-scoped QA API passed separately in the Docker
+network. The local Worker failure is unresolved and is not evidence of a
+production or remote Worker failure. Any internet-reachable candidate remains
+a separate, public test and must use only disposable data when no access
+boundary is in place.
+
+Hyperdrive is a Workers database feature, not Cloudflare Zero Trust; Cloudflare
+documents it as available on Workers plans. Cloudflare also supports native
+outbound TCP without Hyperdrive, and Supabase recommends its shared transaction
+pooler for serverless/edge connections. However, NOVA's Cloudflare adapter
+currently requires a Hyperdrive binding. A no-Hyperdrive Supavisor mode would
+need an explicit adapter option and a separate authenticated runtime test
+before it can be called supported. Supabase's HTTP Data API is not a drop-in
+transport for the existing Kysely/`pg` backend or Better Auth's PostgreSQL
+adapter. Keep the supported customer path as Cloudflare + Supabase + Hyperdrive
+while measuring any alternate transport; don't add this low-level choice to
+customer setup before its support and performance are proven.
 
 Netlify published this runtime change as deploy
 `6acb52834f8e250008b6e15e` (`68d2631`) in 29 seconds. Its first live logs at
@@ -700,15 +739,16 @@ hosting change.
 - [ ] Compare warm p50/p95, cold latency, errors, and function execution costs
   before selecting a region. Since all `/api/*` traffic currently enters the
   same `nova` function, a per-function region affects the whole API.
-- [ ] If regional configuration is unavailable or still too slow, first run
-  the Cloudflare adapter through `wrangler dev --remote` without `--tunnel`.
-  It uses Cloudflare execution and the configured Hyperdrive while keeping the
-  request entry point local. Keep the production route, database, and
-  Supabase Cron owner unchanged, and run only bounded read-only probes. This
-  measures the Worker-to-database path but is not a public candidate-domain or
-  full signed-in browser comparison. A public preview is public by default;
-  do not attach production credentials unless a separately verified access
-  boundary protects every path.
+- [ ] Run the local Worker smoke in `cloudflare/README.md` first against an
+  isolated, migrated PostgreSQL database. This needs no Zero Trust account and
+  validates adapter wiring, but it bypasses Hyperdrive pooling and caching.
+- [ ] For a Cloudflare-network and Hyperdrive comparison, use a separate
+  candidate with disposable data and test credentials. Cloudflare's remote
+  development mode uploads code and connects bindings to remote resources; do
+  not assume that omitting `--tunnel` makes a candidate private. Keep the
+  production route, database, and Supabase Cron owner unchanged. Without a
+  verified access boundary, treat any candidate URL as public and do not use it
+  as approval for a production runtime move.
 - [ ] Before moving Better Auth, PostgreSQL access, or all APIs to another
   runtime, verify its dependencies, transaction/isolation behavior, trusted
   origins, session cookies, CSRF protection, CORS, same-origin routing, rate
