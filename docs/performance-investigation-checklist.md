@@ -1,6 +1,6 @@
 # NOVA API and page performance investigation
 
-Date: 2026-10-11
+Date: 2026-10-12
 
 ## Matched readiness sample on the current source — 11 October 2026
 
@@ -1099,3 +1099,15 @@ Netlify, Cloudflare, or a customer-hosted database, and it is not a sustained
 capacity or SLA test. The remaining performance gate is an authenticated,
 same-source hosted comparison with route-level p50/p95/p99 and a controlled
 concurrency profile.
+
+## Live Netlify readiness follow-up — 12 October 2026
+
+After push `94a56f3`, Netlify published the deployment successfully. The
+application bundle is still source `b51edc9`; this setup/documentation commit
+did not change runtime code. From the same Windows client, `/api/health` and
+`/api/ready` both returned HTTP 200. One warm-up was excluded, followed by ten
+serial anonymous `GET /api/ready` requests: all returned 200, p50 was 529.4 ms,
+and p95/max was 543 ms. This includes the full client-to-Netlify-to-database
+path for readiness. It is not a signed-in route/page timing, does not isolate
+the provider or database contribution, and is not comparable to the older
+Cloudflare candidate because that Worker still runs source `9a97dc9`.

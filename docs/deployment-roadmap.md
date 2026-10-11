@@ -4,6 +4,13 @@
 - **Review basis (live check captured 2026-10-11):** Netlify published commit `26785bbefc1dd4ea6a4df45b6f73fd441bf47e99` as deploy `6acbd2ae3484ca00084163b4`; it is documentation-only over application source `b51edc9`. The isolated Cloudflare candidate remains Ready at version `9130324d`, from older application source `9a97dc9`. A signed-in Super Admin loaded My Day, People, Work, and Admin through that candidate’s Hyperdrive connection to disposable Supabase data, without creating records. The candidate is a public `workers.dev` URL, has no customer domain or Cron, and leaves Supabase as scheduler owner. Stable tags `v0.1.3`–`v0.1.5` are published; a full-history `v0.1.3` clone finds `v0.1.5`. The read-only Supabase migration-plan call remains blocked by HTTP 403 for the available token. Current-source local PostgreSQL tests now include 200 employees; hosted first install, safe production promotion/rollback, and hosted 100/200-user capacity remain open. See the [performance checklist](performance-investigation-checklist.md).
 - **Historical matched hosted speed evidence (application source `9a97dc9`):** Ten serial database-backed `/api/ready` requests per host returned 200 after one excluded warm-up. Netlify p50 / largest observed total was 524.1 / 565.6 ms (`nova-app` 170.7 / 170.9 ms); Cloudflare was 319.2 / 402.4 ms (`nova-app` 43.5 / 125.0 ms). This small anonymous readiness sample did not isolate provider/database causes and is not an authenticated route distribution or capacity test. The current Cloudflare candidate no longer matches Netlify’s `b51edc9` source; do not use the older result as a current provider comparison. See the [performance checklist](performance-investigation-checklist.md).
 - **Repository delivery rule:** work on `main`; push only to `origin/main`.
+- **Most recent verification (2026-10-12):** commit `94a56f3` was pushed to
+  `origin/main` and published by Netlify as deploy
+  `6acbdf1c9d2419000711d89a`. `/api/health` and `/api/ready` both returned 200;
+  the warm anonymous readiness sample is recorded in the performance
+  checklist. The root `.env` token returned 403 for the disposable project's
+  read-only Management API request, so updater planning there still needs
+  target-matched access. The pushed application bundle remains `b51edc9`.
 
 This is the single customer-facing deployment decision and sequencing document.
 The detailed operational requirements remain in the linked deployment-manager,
