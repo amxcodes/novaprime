@@ -319,8 +319,9 @@ test("the route host keeps API and capability orchestration while React owns tim
     "the prior-page browser-history behavior remains unchanged");
   assert.match(route, /const workReadDataPromise = !taskDetailRoute && !workRouteUnavailableMessage\s*\?\s*readWorkRouteData\(\{[\s\S]*?workArea: workArea\?\.id,\s*canCreateTasks,\s*lifetime,\s*pageApi,\s*\}\)\s*:\s*null;/,
     "the app starts only permitted Work reads through its authenticated page reader and route lifetime");
-  assert.match(route, /const \[workReadData\] = await Promise\.all\(\[\s*workReadDataPromise,\s*savedTaskViewsRead,/,
-    "Work route data and saved views load concurrently before their shared render path");
+  assert.match(route, /void savedTaskViewsRead[\s\S]*?const workReadData = await workReadDataPromise/,
+    "optional saved-view reads update their widget independently and never gate the Work page");
+  assert.doesNotMatch(route, /Promise\.all\(\[\s*workReadDataPromise,\s*savedTaskViewsRead/);
   assert.match(route, /if \(readPlan\.workContextView && pageSections\.some\(\(section\) => section\.id === "context"\) && !hasReviewRoute && !hasFocusedCollaborationRoute\) \{\s*(?:stage = "mount-work-context";\s*)?const workContextHost = workSlot\("context"\);\s*mountWorkContextRoute\(\{\s*target: workContextHost,\s*result: workContext,\s*ui: workContextUi,\s*uiLoadError: workContextUiLoadError,\s*actorGrants: state\.actorGrants,[\s\S]*?runCommand: createWorkContextDepartmentCommandAction\(\{/,
     "the visible feature receives the host read and current-grant action boundary");
   assert.match(route, /getPermissionData: \(\) => \(\{ actorGrants: state\.actorGrants, workContext \}\)/,

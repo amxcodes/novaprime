@@ -1,10 +1,15 @@
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState, useSyncExternalStore, type FormEvent } from "react";
 import { Button, Field, Input, Select, StateMessage, type SelectOption } from "../../design-system";
 import styles from "./WorkSavedTaskViews.module.css";
 import type {
   SavedTaskView,
+  SavedTaskViewsReadSnapshot,
   WorkSavedTaskViewsProps,
 } from "./saved-task-views-contracts";
+
+const emptyReadSnapshot: SavedTaskViewsReadSnapshot = { views: [], readStatus: "loading" };
+const getEmptyReadSnapshot = () => emptyReadSnapshot;
+const subscribeToNoReadStore = () => () => {};
 
 function collectionLabel(collection: SavedTaskView["collection"]): string {
   return collection === "mine" ? "My assignments" : "All visible tasks";
@@ -21,6 +26,7 @@ export function WorkSavedTaskViews({
   collection,
   filters,
   readStatus,
+  readStore,
   availableCollections,
   atLimit,
   pendingAction,
@@ -32,12 +38,20 @@ export function WorkSavedTaskViews({
   onFailure,
 }: WorkSavedTaskViewsProps) {
   const id = useId();
+  const liveRead = useSyncExternalStore(
+    readStore?.subscribe ?? subscribeToNoReadStore,
+    readStore?.getSnapshot ?? getEmptyReadSnapshot,
+    readStore?.getSnapshot ?? getEmptyReadSnapshot,
+  );
+  const visibleViews = readStore ? liveRead.views : views;
+  const visibleReadStatus = readStore ? liveRead.readStatus : readStatus;
+  const visibleAtLimit = readStore ? visibleViews.length >= 12 : atLimit;
   const [selectedId, setSelectedId] = useState("");
   const [name, setName] = useState("");
   const [localPending, setLocalPending] = useState<WorkPendingAction | null>(null);
   const [feedback, setFeedback] = useState("");
   const available = availableCollections.includes(collection);
-  const collectionViews = views.filter((view) => view.collection === collection);
+  const collectionViews = visibleViews.filter((view) => view.collection === collection);
   const selected = collectionViews.find((view) => view.id === selectedId) ?? collectionViews[0];
   const viewOptions: SelectOption[] = collectionViews.map((view) => ({ value: view.id, label: view.name }));
   const pending = pendingAction ?? localPending;
@@ -65,7 +79,7 @@ export function WorkSavedTaskViews({
   const submitCreate = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const normalized = name.trim();
-    if (!normalized || normalized.length > 40 || atLimit || readStatus !== "ready" || busy) return;
+    if (!normalized || normalized.length > 40 || visibleAtLimit || visibleReadStatus !== "ready" || busy) return;
     const source = event.currentTarget.querySelector<HTMLButtonElement>("[type=submit]");
     if (!source) return;
     void run("create", source, async () => {
@@ -74,7 +88,7 @@ export function WorkSavedTaskViews({
     });
   };
 
-  const canSave = available && readStatus === "ready" && !atLimit;
+  const canSave = available && visibleReadStatus === "ready" && !visibleAtLimit;
 
   return (
     <fieldset className={styles.panel} aria-describedby={id + "-description"}>
@@ -87,9 +101,9 @@ export function WorkSavedTaskViews({
         <StateMessage kind="warning">
           Saved views for this task list are unavailable with your current access.
         </StateMessage>
-      ) : readStatus === "loading" ? (
+      ) : visibleReadStatus === "loading" ? (
         <StateMessage kind="loading">Loading saved views</StateMessage>
-      ) : readStatus === "error" ? (
+      ) : visibleReadStatus === "error" ? (
         <div className={styles.readError}>
           <StateMessage kind="warning">Saved views could not be loaded. Your current filters still work.</StateMessage>
           <Button
@@ -178,8 +192,8 @@ export function WorkSavedTaskViews({
             >
               {pending === "create" ? "Saving…" : "Save current view"}
             </Button>
-            {atLimit ? <span className={styles.limitNote}>Delete a saved view in Settings to make room.</span> : null}
-            {readStatus === "error" ? <span className={styles.limitNote}>Refresh saved views before saving another filter.</span> : null}
+            {visibleAtLimit ? <span className={styles.limitNote}>Delete a saved view in Settings to make room.</span> : null}
+            {visibleReadStatus === "error" ? <span className={styles.limitNote}>Refresh saved views before saving another filter.</span> : null}
           </form>
         </details>
       ) : null}

@@ -1,6 +1,16 @@
 export type SavedTaskViewCollection = "mine" | "visible";
 export type SavedTaskViewsReadStatus = "loading" | "error" | "ready";
 
+export interface SavedTaskViewsReadSnapshot {
+  views: readonly SavedTaskView[];
+  readStatus: SavedTaskViewsReadStatus;
+}
+
+export interface SavedTaskViewsReadStore {
+  getSnapshot: () => SavedTaskViewsReadSnapshot;
+  subscribe: (listener: () => void) => () => void;
+}
+
 export interface SavedTaskView {
   id: string;
   name: string;
@@ -31,6 +41,7 @@ export interface WorkSavedTaskViewsProps extends SavedTaskViewsActionErrorProps 
   collection: SavedTaskViewCollection;
   filters: SavedTaskViewFilters;
   readStatus: SavedTaskViewsReadStatus;
+  readStore?: SavedTaskViewsReadStore;
   availableCollections: readonly SavedTaskViewCollection[];
   atLimit: boolean;
   pendingAction?: SavedTaskViewsPendingAction;

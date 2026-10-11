@@ -60,7 +60,9 @@ test("saved views stay off session readiness and load on the Work or Settings su
 
   assert.doesNotMatch(session, /loadSavedTaskViews|ensureSavedTaskViewsLoaded|\/api\/me\/task-views/);
   assert.match(work, /featureImports\.savedTaskViews && requestedActorId[\s\S]*?ensureSavedTaskViewsLoaded\(requestedActorId, requestIdentityEpoch\)/);
-  assert.match(work, /Promise\.all\(\[[\s\S]*?readWorkRouteData\([\s\S]*?savedTaskViewsRead/);
+  assert.match(work, /void savedTaskViewsRead/);
+  assert.doesNotMatch(work, /Promise\.all\(\[[\s\S]*?workReadDataPromise,[\s\S]*?savedTaskViewsRead/);
+  assert.match(appSource, /readStore: savedTaskViewsReadStore/);
   assert.match(settings, /ensureSavedTaskViewsLoaded\(personId, identityEpoch\)/);
   assert.match(settings, /const personId = state\.identityPersonId \|\| state\.actorGrants\?\.actorPersonId \|\| null/);
   assert.match(settings, /if \(personId && allowedCollections\.length > 0 && !state\.savedTaskViewsLoaded/);

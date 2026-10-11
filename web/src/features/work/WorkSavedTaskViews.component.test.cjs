@@ -80,6 +80,18 @@ test("loading, error, and empty states withhold the saved-view picker", () => {
   assert.doesNotMatch(empty, /aria-haspopup="listbox"/);
 });
 
+test("the Work widget renders the shared read store instead of stale route fallback props", async () => {
+  const { createSavedTaskViewsReadStore } = await import("../../../app/saved-task-views-read-store.js");
+  const store = createSavedTaskViewsReadStore();
+  const loading = render({ readStore: store, readStatus: "loading", views: [] });
+  store.publish({ views: [firstView], readStatus: "ready" });
+  const ready = render({ readStore: store, readStatus: "loading", views: [] });
+
+  assert.match(loading, /Loading saved views/);
+  assert.match(ready, /Overdue design work/);
+  assert.doesNotMatch(ready, /Loading saved views/);
+});
+
 test("pending saved-view actions disable the authored picker and open control", () => {
   const html = render({ pendingAction: "open" });
 

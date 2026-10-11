@@ -65,6 +65,7 @@ import { createMyAssignmentActionsRoute } from "./app/my-assignment-actions-rout
 import { mountWorkTaskComposerRoute } from "./app/work-task-composer-route.js";
 import { readWorkRouteData } from "./app/work-read-route.js";
 import { loadWorkRouteFeatures } from "./app/work-route-features.js";
+import { createSavedTaskViewsReadStore } from "./app/saved-task-views-read-store.js";
 import {
   createWorkTimelineCorrectionAction,
   createWorkTimelineCorrectionAssignmentSearch,
@@ -100,10 +101,12 @@ import {
   createRequestLifecycle,
   isCommandContextCurrent,
   isCommandIdentityCurrent,
+  fetchJsonWithDeadline,
   withPageReadSignal,
 } from "./request-lifecycle.js";
 
 const app = document.querySelector("#app");
+const pageReadDeadlineMs = 12_000;
 const mountPublicFirstRunSetupRoute = createPublicFirstRunSetupRoute();
 let deploymentProbe = null;
 const deploymentProbeLifecycle = createDeploymentProbeLifecycle();
@@ -118,6 +121,7 @@ let savedTaskViewsReadRequest = null;
 // Reviewer notes stay in memory only and are scoped to the actor's current review grants.
 const reviewFeedbackDrafts = createReviewFeedbackDraftStore();
 const pageRequestLifecycle = createRequestLifecycle();
+const savedTaskViewsReadStore = createSavedTaskViewsReadStore();
 let pageRequestLifetime = null;
 let activePeopleWorkspace = null;
 // Keep directory selection reversible inside this document, while allowing a
@@ -190,6 +194,7 @@ restoreDeployment();
 
 const errorMessages = {
   ACCOUNT_NOT_OPERATIONAL: "This account is not currently allowed to perform that action.",
+  READ_TIMEOUT: "This section is taking longer than expected. Check your connection and try again.",
   ATTENDANCE_ALREADY_CLOSED: "Today's attendance is already closed.",
   ATTENDANCE_ALREADY_EXISTS: "Today's attendance has already been started.",
   ATTENDANCE_CALENDAR_REQUIRED: "An active working calendar is not configured for this office.",
@@ -546,8 +551,17 @@ function pageApi(path, lifetime, options = {}) {
 }
 
 async function api(path, options) {
-  const response = await fetch(path, options || requestOptions("GET"));
-  const payload = await response.json().catch(() => ({}));
+  const request = options || requestOptions("GET");
+  const method = String(request.method || "GET").toUpperCase();
+  const isBoundedRead = method === "GET" || (method === "POST" && path === "/api/work/page-read");
+  let response;
+  let payload;
+  if (isBoundedRead) {
+    ({ response, payload } = await fetchJsonWithDeadline(fetch, path, request, pageReadDeadlineMs));
+  } else {
+    response = await fetch(path, request);
+    payload = await response.json().catch(() => ({}));
+  }
   if (!response.ok) {
     // Better Auth reports stable `code`/`message` fields, while NOVA domain
     // routes report `error`. Preserve only the stable code for safe UI copy;
@@ -1195,6 +1209,15 @@ function orderedSavedTaskViews(views) {
     : [];
 }
 
+function publishSavedTaskViewsReadState() {
+  savedTaskViewsReadStore.publish({
+    views: state.savedTaskViews,
+    readStatus: state.savedTaskViewsLoading || !state.savedTaskViewsLoaded
+      ? "loading"
+      : state.savedTaskViewsReadError ? "error" : "ready",
+  });
+}
+
 async function loadSavedTaskViews(expectedPersonId, identityEpoch = state.identityEpoch) {
   const pending = savedTaskViewsReadRequest;
   if (state.savedTaskViewsLoading && pending?.personId === expectedPersonId && pending.identityEpoch === identityEpoch) {
@@ -1204,6 +1227,7 @@ async function loadSavedTaskViews(expectedPersonId, identityEpoch = state.identi
   const isCurrent = () => requestGeneration === state.savedTaskViewsRequestGeneration &&
     identityEpoch === state.identityEpoch && state.identityPersonId === expectedPersonId;
   state.savedTaskViewsLoading = true;
+  publishSavedTaskViewsReadState();
   const promise = (async () => {
     try {
       const result = await api("/api/me/task-views", requestOptions("GET"));
@@ -1230,7 +1254,10 @@ async function loadSavedTaskViews(expectedPersonId, identityEpoch = state.identi
       }
       return false;
     } finally {
-      if (isCurrent()) state.savedTaskViewsLoading = false;
+      if (isCurrent()) {
+        state.savedTaskViewsLoading = false;
+        publishSavedTaskViewsReadState();
+      }
     }
   })();
   savedTaskViewsReadRequest = { personId: expectedPersonId, identityEpoch, promise };
@@ -1267,6 +1294,7 @@ async function saveTaskView(view, expectedRevision) {
     result.view,
   ]);
   state.savedTaskViewsReadError = false;
+  publishSavedTaskViewsReadState();
   return result.view;
 }
 
@@ -1283,6 +1311,7 @@ async function deleteTaskView(view) {
   if (result.personId !== personId || result.deleted !== view.id) throw taskViewIdentityError();
   state.savedTaskViews = state.savedTaskViews.filter((item) => item.id !== view.id);
   state.savedTaskViewsReadError = false;
+  publishSavedTaskViewsReadState();
   return true;
 }
 
@@ -1373,6 +1402,7 @@ function createSavedTaskViewsPanel(SavedTaskViewsPanel, collection, filters, nav
     collection,
     filters,
     readStatus: state.savedTaskViewsLoading ? "loading" : state.savedTaskViewsReadError ? "error" : "ready",
+    readStore: savedTaskViewsReadStore,
     availableCollections,
     atLimit: state.savedTaskViews.length >= 12,
     formatError: errorText,
@@ -1609,6 +1639,7 @@ function clearIdentityScopedState() {
   state.savedTaskViewsLoaded = false;
   state.savedTaskViewsRequestGeneration += 1;
   savedTaskViewsReadRequest = null;
+  publishSavedTaskViewsReadState();
   state.uiPreferenceRevision = 0;
   state.uiPreferencePersonId = null;
   state.identityPersonId = null;
@@ -2405,10 +2436,10 @@ async function renderWork(date, lifetime) {
   }
   let stage = "read-work-data";
   try {
-    const [workReadData] = await Promise.all([
-      workReadDataPromise,
-      savedTaskViewsRead,
-    ]);
+    // Saved views are optional personal workspace data. Their store updates
+    // the embedded widget when complete; Work data can paint immediately.
+    void savedTaskViewsRead;
+    const workReadData = await workReadDataPromise;
     if (!workReadData) return;
     const {
       assignmentsResult,

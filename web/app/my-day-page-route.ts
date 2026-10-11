@@ -153,6 +153,8 @@ export async function mountMyDayPageRoute(services: HostServices): Promise<void>
   const assignmentPromise = myDayPlan.reads.assignments && assignmentsTarget
     ? readOrError(pageApi("/api/work/assignments/mine?limit=4&status=all", lifetime), { assignments: [], hasMore: false })
     : Promise.resolve(undefined);
+  void attendancePromise.catch(() => undefined);
+  void assignmentPromise.catch(() => undefined);
   const timelinePromise = timelineRoutePromise.then((timelineRouteUi) => {
     if (!timelineRouteUi || !timelineTarget) return undefined;
     const route = (timelineRouteUi.createMyDayTimelineRoute as unknown as TimelineRouteFactory)({
@@ -165,81 +167,95 @@ export async function mountMyDayPageRoute(services: HostServices): Promise<void>
     });
     return route.load();
   });
-  const readsPromise = Promise.all([attendancePromise, assignmentPromise, timelinePromise]).then(
-    ([attendanceRead, assignmentsResult]) => ({ ok: true as const, attendanceRead, assignmentsResult }),
-    () => ({ ok: false as const }),
-  );
+  // Attach a rejection observer immediately; the route bundle and the feature
+  // bundle are separate asynchronous loads and either one may fail first.
+  void timelinePromise.catch(() => undefined);
+  const canPublish = (target: Element | null): target is Element =>
+    Boolean(target && target.isConnected && isCurrentPageRequest(lifetime));
+  const showSlotError = (target: Element | null) => {
+    if (canPublish(target)) {
+      target.replaceChildren(noticeElement("This My Day section could not load. Reload the page to try again.", "error"));
+    }
+  };
 
-  try {
-    [attendanceComponents, assignmentComponents] = await Promise.all([
-      attendanceComponentsPromise,
-      assignmentComponentsPromise,
-    ]);
-  } catch {
-    if (!isCurrentPageRequest(lifetime)) return;
-    [attendanceTarget, assignmentsTarget, timelineTarget]
-      .filter((target): target is Element => Boolean(target))
-      .forEach((target) => target.replaceChildren(noticeElement("This My Day section could not load. Reload the page to try again.", "error")));
-    return;
-  }
-  if (!isCurrentPageRequest(lifetime)) return;
+  // Feature bundles and data reads settle independently. A slow timeline or
+  // assignments endpoint must not keep the other My Day sections in loading.
+  const mountAttendanceFeature = async () => {
+    try {
+      attendanceComponents = await attendanceComponentsPromise;
+      if (!attendanceComponents || !isCurrentPageRequest(lifetime)) return;
+      if (attendanceTarget && canPublish(attendanceTarget)) {
+        mountReactIsland(attendanceTarget, attendanceComponents.AttendancePulse, {
+          read: { status: "loading" }, capabilities: attendanceCapabilities, onAction: () => {},
+        });
+      }
+      if (timelineTarget && canPublish(timelineTarget)) {
+        mountReactIsland(timelineTarget, attendanceComponents.WorkdayTimeline, { read: { status: "loading" } });
+      }
+      if (pendingTimelineRead) {
+        mountTimeline(pendingTimelineRead);
+        pendingTimelineRead = null;
+      }
 
-  if (attendanceTarget) {
-    mountReactIsland(attendanceTarget, attendanceComponents!.AttendancePulse, {
-      read: { status: "loading" }, capabilities: attendanceCapabilities, onAction: () => {},
-    });
-  }
-  if (timelineTarget) {
-    mountReactIsland(timelineTarget, attendanceComponents!.WorkdayTimeline, { read: { status: "loading" } });
-  }
-  if (assignmentsTarget) {
-    mountReactIsland(assignmentsTarget, assignmentComponents!.AssignmentList, { read: { status: "loading" } });
-  }
+      if (attendanceTarget) {
+        void attendancePromise.then((attendanceRead) => {
+          if (!canPublish(attendanceTarget)) return;
+          const performAttendanceAction = createMyDayAttendanceActionRoute({
+            isCurrentCommand,
+            requestCommand: (path, body) => api(path, requestOptions("POST", body)),
+            onSuccess: (action: AttendanceAction) => {
+              setMessage(action === "check-out" ? "Attendance checked out." : "Attendance updated.");
+              render();
+            },
+          });
+          mountReactIsland(attendanceTarget, attendanceComponents.AttendancePulse, {
+            // The page plan only mounts Attendance Pulse when one of its attendance
+            // reads is authorized, so the adapter returns a state while this page is current.
+            read: attendanceRead as AttendancePulseProps["read"],
+            capabilities: attendanceCapabilities,
+            onAction: (action: AttendanceAction, source: Element) =>
+              runActionButton(source, (context) => performAttendanceAction(action, context)),
+          });
+        }).catch(() => {
+          showSlotError(attendanceTarget);
+        });
+      }
+      if (timelineTarget) {
+        void timelinePromise.catch(() => {
+          showSlotError(timelineTarget);
+        });
+      }
+    } catch {
+      showSlotError(attendanceTarget);
+      showSlotError(timelineTarget);
+    }
+  };
 
-  if (pendingTimelineRead) {
-    mountTimeline(pendingTimelineRead);
-    pendingTimelineRead = null;
-  }
-  const pageReads = await readsPromise;
-  if (!isCurrentPageRequest(lifetime)) return;
-  if (!pageReads.ok) {
-    [attendanceTarget, assignmentsTarget, timelineTarget]
-      .filter((target): target is Element => Boolean(target))
-      .forEach((target) => target.replaceChildren(noticeElement("This My Day section could not load. Reload the page to try again.", "error")));
-    return;
-  }
-  const { attendanceRead, assignmentsResult } = pageReads;
+  const mountAssignmentsFeature = async () => {
+    if (!assignmentsTarget) return;
+    try {
+      assignmentComponents = await assignmentComponentsPromise;
+      if (!assignmentComponents || !canPublish(assignmentsTarget)) return;
+      mountReactIsland(assignmentsTarget, assignmentComponents.AssignmentList, { read: { status: "loading" } });
+      void assignmentPromise.then((assignmentsResult) => {
+        if (!canPublish(assignmentsTarget)) return;
+        const issue = adminReadIssue(assignmentsResult, "your assignments");
+        const read = assignmentsResult?.readError
+          ? assignmentsResult.readError === "PERMISSION_DENIED"
+            ? { status: "denied" as const, message: issue?.message || "Your current access does not allow this assignment list." }
+            : { status: "error" as const, message: issue?.message || "Your assignments could not be loaded." }
+          : Array.isArray(assignmentsResult?.assignments) && Number.isSafeInteger(assignmentsResult?.limit)
+            ? { status: "ready" as const, data: assignmentsResult }
+            : { status: "error" as const, message: "Your assignment list is unavailable right now." };
+        mountReactIsland(assignmentsTarget, assignmentComponents!.AssignmentList, {
+          read,
+          ...(canAccessWorkspaceDestination("work", getActorGrants()) ? { onOpenWork: () => go("work") } : {}),
+        });
+      }).catch(() => showSlotError(assignmentsTarget));
+    } catch {
+      showSlotError(assignmentsTarget);
+    }
+  };
 
-  if (attendanceTarget) {
-    const performAttendanceAction = createMyDayAttendanceActionRoute({
-      isCurrentCommand,
-      requestCommand: (path, body) => api(path, requestOptions("POST", body)),
-      onSuccess: (action: AttendanceAction) => {
-        setMessage(action === "check-out" ? "Attendance checked out." : "Attendance updated.");
-        render();
-      },
-    });
-    mountReactIsland(attendanceTarget, attendanceComponents!.AttendancePulse, {
-      // The page plan only mounts Attendance Pulse when one of its attendance
-      // reads is authorized, so the adapter returns a state while this page is current.
-      read: attendanceRead as AttendancePulseProps["read"],
-      capabilities: attendanceCapabilities,
-      onAction: (action: AttendanceAction, source: Element) =>
-        runActionButton(source, (context) => performAttendanceAction(action, context)),
-    });
-  }
-  if (assignmentsTarget) {
-    const issue = adminReadIssue(assignmentsResult, "your assignments");
-    const read = assignmentsResult?.readError
-      ? assignmentsResult.readError === "PERMISSION_DENIED"
-        ? { status: "denied" as const, message: issue?.message || "Your current access does not allow this assignment list." }
-        : { status: "error" as const, message: issue?.message || "Your assignments could not be loaded." }
-      : Array.isArray(assignmentsResult?.assignments) && Number.isSafeInteger(assignmentsResult?.limit)
-        ? { status: "ready" as const, data: assignmentsResult }
-        : { status: "error" as const, message: "Your assignment list is unavailable right now." };
-    mountReactIsland(assignmentsTarget, assignmentComponents!.AssignmentList, {
-      read,
-      ...(canAccessWorkspaceDestination("work", getActorGrants()) ? { onOpenWork: () => go("work") } : {}),
-    });
-  }
+  await Promise.all([mountAttendanceFeature(), mountAssignmentsFeature()]);
 }

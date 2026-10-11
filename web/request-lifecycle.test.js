@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   createRequestLifecycle,
+  fetchJsonWithDeadline,
   isCommandContextCurrent,
   isCommandIdentityCurrent,
   withPageReadSignal,
@@ -35,6 +36,34 @@ test("page signals are attached to GET requests but never to commands", () => {
   expect(read.signal).toBe(lifetime.signal);
   expect(withPageReadSignal(command, lifetime)).toBe(command);
   expect(withPageReadSignal({ method: "GET", signal: "explicit" }, lifetime).signal).toBe("explicit");
+});
+
+test("read requests abort on their deadline while consuming the response body", async () => {
+  const pendingFetch = (_input, { signal }) => new Promise((_resolve, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  });
+
+  await expect(fetchJsonWithDeadline(pendingFetch, "/api/test", {}, 5))
+    .rejects.toMatchObject({ code: "READ_TIMEOUT" });
+
+  const pendingBody = async (_input, { signal }) => ({
+    json: () => new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }),
+  });
+  await expect(fetchJsonWithDeadline(pendingBody, "/api/test", {}, 5))
+    .rejects.toMatchObject({ code: "READ_TIMEOUT" });
+});
+
+test("page cancellation remains distinct from a read timeout", async () => {
+  const pageController = new AbortController();
+  const pendingFetch = (_input, { signal }) => new Promise((_resolve, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  });
+  const request = fetchJsonWithDeadline(pendingFetch, "/api/test", { signal: pageController.signal }, 100);
+  pageController.abort();
+
+  await expect(request).rejects.not.toMatchObject({ code: "READ_TIMEOUT" });
 });
 
 test("a command may update only the same actor on the same live page", () => {

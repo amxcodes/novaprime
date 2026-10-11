@@ -30,6 +30,53 @@ export function withPageReadSignal(options, lifetime) {
   return { ...request, signal: lifetime.signal };
 }
 
+/** Bound a read through JSON-body consumption and preserve route cancellation. */
+export async function fetchJsonWithDeadline(fetcher, input, options, timeoutMs) {
+  if (typeof fetcher !== "function") throw new TypeError("A fetch implementation is required");
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new TypeError("A positive request deadline is required");
+
+  const requestOptions = options || {};
+  const sourceSignal = requestOptions.signal;
+  const controller = new AbortController();
+  let timedOut = false;
+  const propagateAbort = () => {
+    if (!controller.signal.aborted) controller.abort(sourceSignal?.reason);
+  };
+  if (sourceSignal?.aborted) propagateAbort();
+  else sourceSignal?.addEventListener("abort", propagateAbort, { once: true });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    if (!controller.signal.aborted) controller.abort();
+  }, timeoutMs);
+
+  try {
+    const response = await fetcher(input, { ...requestOptions, signal: controller.signal });
+    let payload;
+    try {
+      payload = await response.json();
+    } catch (error) {
+      if (timedOut) throw error;
+      payload = {};
+    }
+    if (timedOut && !sourceSignal?.aborted) {
+      const error = new Error("READ_TIMEOUT");
+      error.code = "READ_TIMEOUT";
+      throw error;
+    }
+    return { response, payload };
+  } catch (error) {
+    if (timedOut && !sourceSignal?.aborted) {
+      const timeoutError = new Error("READ_TIMEOUT");
+      timeoutError.code = "READ_TIMEOUT";
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    sourceSignal?.removeEventListener("abort", propagateAbort);
+  }
+}
+
 /** A write may finish after navigation, but only its original actor/page may update UI. */
 export function isCommandIdentityCurrent(context, current) {
   return Boolean(context && current &&

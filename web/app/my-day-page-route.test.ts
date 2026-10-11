@@ -115,15 +115,21 @@ describe("My Day page route", () => {
   it("keeps feature-loader failures local to the planned slots", async () => {
     const state = harness({ loader: async () => { throw new Error("chunk unavailable"); } });
     await state.routePromise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(state.localErrors).toEqual(Array(3).fill("This My Day section could not load. Reload the page to try again."));
+    expect(state.localErrors).toEqual(Array(2).fill("This My Day section could not load. Reload the page to try again."));
     expect(state.targets.attendance?.children).toHaveLength(1);
-    expect(state.targets.assignments?.children).toHaveLength(1);
+    const assignments = state.mounted.filter(({ component }) => component === AssignmentList).at(-1);
+    expect(assignments?.props.read.status).toBe("ready");
     expect(state.targets.timeline?.children).toHaveLength(1);
-    // The independent assignment read starts while its UI chunk is pending.
-    // Its authorized result is discarded because the feature did not load.
-    expect(state.reads).toEqual(["/api/work/assignments/mine?limit=4&status=all"]);
-    expect(state.mounted).toHaveLength(1);
+    // The assignment section retains its own successful UI and read even when
+    // the shared attendance/timeline bundle fails to load.
+    expect(state.reads).toEqual([
+      "/api/work/assignments/mine?limit=4&status=all",
+      "/api/attendance/today",
+      "/api/work/timeline",
+    ]);
+    expect(state.mounted).toHaveLength(3);
   });
 
   it("starts planned reads while the feature UI chunk is still loading", async () => {
@@ -144,6 +150,7 @@ describe("My Day page route", () => {
   it("preserves attendance, assignment, and timeline reads plus the existing attendance action", async () => {
     const state = harness();
     await state.routePromise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(state.reads).toEqual([
       "/api/work/assignments/mine?limit=4&status=all",
@@ -167,13 +174,63 @@ describe("My Day page route", () => {
     expect(state.renderCalls).toBe(1);
   });
 
+  it("publishes attendance and assignments without waiting for the timeline read", async () => {
+    let finishTimeline!: (value: {
+      date: string;
+      events: unknown[];
+      exceptions: unknown[];
+      attendanceSummary: { durationMinutes: number; requiredMinutes: number; requirementSatisfied: boolean };
+      attendancePolicy: null;
+    }) => void;
+    const timelineRead = new Promise<{
+      date: string;
+      events: unknown[];
+      exceptions: unknown[];
+      attendanceSummary: { durationMinutes: number; requiredMinutes: number; requirementSatisfied: boolean };
+      attendancePolicy: null;
+    }>((resolve) => { finishTimeline = resolve; });
+    const state = harness({
+      pageApi: async (path) => {
+        if (path === "/api/attendance/today") {
+          throw Object.assign(new Error("office assignment required"), {
+            code: "OFFICE_ASSIGNMENT_REQUIRED", httpStatus: 409,
+          });
+        }
+        if (path === "/api/work/timeline") return timelineRead;
+        if (path === "/api/work/assignments/mine?limit=4&status=all") {
+          return { assignments: [], hasMore: false, limit: 4 };
+        }
+        throw new Error(`Unexpected read: ${path}`);
+      },
+    });
+
+    await state.routePromise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const attendance = state.mounted.filter(({ component }) => component === AttendancePulse).at(-1);
+    expect(attendance?.props.read.status).toBe("setup-required");
+    const assignments = state.mounted.filter(({ component }) => component === AssignmentList).at(-1);
+    expect(assignments?.props.read.status).toBe("ready");
+    const timelineLoading = state.mounted.filter(({ component }) => component === WorkdayTimeline).at(-1);
+    expect(timelineLoading?.props.read.status).toBe("loading");
+
+    finishTimeline({
+      date: "2026-10-05", events: [], exceptions: [],
+      attendanceSummary: { durationMinutes: 0, requiredMinutes: 480, requirementSatisfied: false },
+      attendancePolicy: null,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const timeline = state.mounted.filter(({ component }) => component === WorkdayTimeline).at(-1);
+    expect(timeline?.props.read.status).toBe("ready");
+  });
+
   it("suppresses feature mounts after the page lifetime expires during loading", async () => {
     let finish!: (value: { AttendancePulse: typeof AttendancePulse; WorkdayTimeline: typeof WorkdayTimeline }) => void;
     const state = harness({ loader: () => new Promise((resolve) => { finish = resolve; }) });
-    await Promise.resolve();
     state.setCurrent(false);
     finish({ AttendancePulse, WorkdayTimeline });
     await state.routePromise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(state.mounted).toHaveLength(1);
     expect(state.reads).toContain("/api/work/assignments/mine?limit=4&status=all");
