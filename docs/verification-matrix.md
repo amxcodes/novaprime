@@ -18,15 +18,18 @@ See the [performance investigation](performance-investigation-checklist.md).
 Tags `v0.1.3`, `v0.1.4`, and `v0.1.5` passed exact-tag verification and their
 stable GitHub releases are published. A full-history customer clone at
 `v0.1.3` discovers `v0.1.5` with `bun run nova:update --check`. Database
-planning remains blocked: the available token received HTTP 403 from both the
-legacy query endpoint and the current read-only ledger endpoint. No SQL was
-written. Verify exact-project access and `database_read` before repeating the
-plan.
+planning remains blocked: the root `.env` token was retried against the exact
+QA project ref from `.env.qa-supabase`, and Supabase returned HTTP 403 from the
+read-only query endpoint. The root `.env` itself points to a different project;
+the QA env has the right ref but no token. No SQL was written. The token needs
+access to the disposable project and database read permission before the
+updater plan can be verified.
 
-Current Netlify function logs after deploy `6acb5d10ece4b700080a203a` show a
-warm Notifications request at 1.20 seconds with no pool-acquisition wait,
-Work at 5.23 seconds, Work sessions at 4.19 seconds, and session lookup at
-3.29 seconds. Supabase's simultaneous connection snapshot showed 19/60
+An earlier Netlify function log sample after deploy `6acb5d10ece4b700080a203a`
+showed a warm Notifications request at 1.20 seconds with no pool-acquisition
+wait, Work at 5.23 seconds, Work sessions at 4.19 seconds, and session lookup
+at 3.29 seconds. A newer sample is recorded in the performance investigation.
+Supabase's simultaneous connection snapshot showed 19/60
 connections, one active query, and no blocked or idle-in-transaction sessions.
 The query report showed a 99.99% cache hit rate; its cumulative dashboard and
 scheduler traffic is not a matched endpoint profile. These observations favor
@@ -34,18 +37,20 @@ investigating inter-region and database round-trip cost, but are too small to
 establish a sole cause or route percentiles. See the
 [performance investigation](performance-investigation-checklist.md#live-telemetry-snapshot-after-c622961-11-october-2026).
 
-The latest `/api/health` and `/api/ready` responses were not verified in this
-environment: the browser blocked the API URL and shell DNS could not resolve
-the Netlify hostname. The isolated local PostgreSQL proof was rerun on
-2026-10-11; details follow below. Hosted health and readiness remain open.
+Hosted `/api/health` and `/api/ready` returned HTTP 200 in the current-source
+smoke recorded above. The isolated local PostgreSQL proof was rerun on
+2026-10-11; details follow below. Authenticated route percentiles and the
+hosted load profile remain open.
 
 Cloudflare Zero Trust setup remains declined. Cloudflare documents
 `wrangler dev --remote` as uploading code to a temporary remote preview, but
 does not document that the temporary route is unreachable publicly. Omitting
 `--tunnel` only avoids the documented tunnel; it does not prove route privacy.
 Do not run that path with production credentials or a live database until the
-actual candidate route is verified private. No Worker or Hyperdrive has been
-created for NOVA.
+actual candidate route is verified private. A separate public `workers.dev`
+candidate is deployed with candidate-only secrets and the disposable Supabase
+project, as recorded above. It has no production custom hostname or Cron and
+is not suitable for production data; Supabase remains the scheduler.
 
 ## Fresh isolated PostgreSQL proof — 2026-10-11
 
@@ -493,7 +498,7 @@ history; use newer evidence above when results differ.
 | Scheduler ownership | **The selected Supabase scheduler and lease-backed run succeeded after application source `9a97dc9` was live.** One active named Cron row was observed; its 15:55 UTC run on 11 October succeeded, and the matching Net HTTP callback returned 200 without timeout or error. The `0080` migration tests overlap, expiration, renewal, stale-owner fencing and execute-only app-role checks. | Extend inventory to duplicate triggers outside this project and exercise missed runs, retries, secret rotation and recovery on each live supported profile. The current inventory cannot prove every trigger account-wide. |
 | Database moves | **Separately gated by design; no transfer was attempted.** Runtime plans preserve database identity. | Treat database copy/cutover as its own future project with write freeze/drain, verified backup/restore, object/data/sequence/RLS/auth comparison and rehearsed recovery. Payroll execution remains future work; retain its schema/permission base. |
 | User-facing quality | **The signed-in Super Admin Work experience is now split into six areas:** My work, Tasks, Reviews, Requests, Reviewer management, and Work context; live smoke rendered their empty/setup states. Existing attendance setup guidance remains. No records were changed. Restricted-role journeys, phone/tablet layouts, keyboard and screen-reader review remain open. | Complete representative employee, reviewer, and restricted-role journeys plus narrow/tablet, keyboard, and screen-reader review. Payroll execution remains future implementation; keep only its current permission/schema foundation. |
-| Speed and capacity | **Local 100×10 and 200×10 PostgreSQL workloads pass; hosted latency and capacity remain open.** Local p95s and pool experiments are detailed in [`runtime-smoke.md`](runtime-smoke.md). A matched same-app-source anonymous `/api/ready` sample returned 200 for all 20 requests; Cloudflare total p50/largest-observed was 319/402 ms (`nova-app` 43.5/125 ms), while Netlify was 524/566 ms (`nova-app` 171/171 ms). This is not authenticated route timing or capacity evidence. | Capture authenticated browser waterfalls and repeated route distributions on both hosts, then run sustained hosted 100/200-employee capacity tests and record database CPU/connection headroom. If Netlify's account moves to Pro/Enterprise, separately compare a Tokyo (`nrt`) function deployment. Keep the speed gate open until controlled results exist. |
+| Speed and capacity | **Local 100×10 and 200×10 PostgreSQL workloads pass; hosted latency and capacity remain open.** Local p95s and pool experiments are detailed in [`runtime-smoke.md`](runtime-smoke.md). A matched same-app-source anonymous `/api/ready` sample returned 200 for all 20 requests; Cloudflare total p50/largest-observed was 319/402 ms (`nova-app` 43.5/125 ms), while Netlify was 524/566 ms (`nova-app` 171/171 ms). Authenticated My Day and Work render through both hosts. Fresh Netlify logs still show multi-second API calls; the Cloudflare 24-hour dashboard percentiles mix routes and versions and are not a matched comparison. | Capture authenticated browser waterfalls and repeated route distributions on both hosts, then run sustained hosted 100/200-employee capacity tests and record database CPU/connection headroom. If Netlify's account moves to Pro/Enterprise, separately compare a Tokyo (`nrt`) function deployment. Keep the speed gate open until controlled results exist. |
 
 ## Not verified / release gates
 

@@ -36,6 +36,41 @@ records or settings were changed. This proves selected read pages resolve on
 the deployed source; it does not yet provide authenticated request percentiles
 or a browser waterfall.
 
+## Authenticated candidate and fresh Netlify timing follow-up — 11 October 2026
+
+The signed-in session was already active on the Cloudflare candidate. My Day
+and Work rendered there through Hyperdrive, and the production Netlify Work
+page also rendered for the same Super Admin. No sign-in or business write was
+needed. The attendance setup message is expected for this disposable
+organisation, which has no active office assignment.
+
+Cloudflare Workers Metrics showed 264 invocations and zero errors across all
+versions in the selected 24-hour view. The current candidate version had 21
+invocations and zero errors. The displayed request-duration p50/p90/p99 was
+198/499/887 ms and CPU was 11/93/167 ms, but those percentiles combine versions
+and routes; they are not authenticated page or API percentiles. Worker
+Observability remained disabled, and no account setting was changed.
+
+Fresh Netlify function logs at 22:26–22:28 IST still show multi-second API
+requests. `GET /api/auth/get-session` took 2.70 s total; two `GET /api/me`
+requests took 1.33 s and 3.25 s; notifications took 1.19 s; and Work's
+`POST /api/work` took 3.15 s with 17 NOVA queries. That Work request spent
+2.815 s in accumulated query time and 1.955 s across five app-pool acquisitions;
+the maximum observed waiter count was two, with no acquisition failures or
+acquire-at-capacity event. A nearby `/api/work-sessions` request took 3.23 s.
+These per-query/per-acquisition subtotals overlap, so they are not elapsed-time
+components that can be added together.
+
+The Netlify Functions region is CMH (Ohio), while the disposable Supabase
+database is in Seoul. The log sample supports investigating database-region
+round trips and connection acquisition together; it does not isolate their
+individual costs. The brief waiter observation also means lowering pool sizes
+without a matched concurrency test could make queuing worse. Next, collect a
+single-tab authenticated browser waterfall with request IDs, then compare
+repeated route p50/p95 and a controlled hosted concurrency profile on both
+runtimes. The Worker dashboard sample is too small and too mixed to declare
+that Hyperdrive fixes the live slowdown or proves employee capacity.
+
 ## Earlier anonymous Cloudflare Hyperdrive smoke and paired readiness sample — 11 October 2026
 
 At this earlier anonymous probe, Cloudflare listed `nova-runtime-candidate`
