@@ -1547,13 +1547,13 @@ async function main(): Promise<void> {
   const visibleCatalogEntry = restrictedCatalog.body?.entries?.find((entry: any) => entry.id === taskCatalogEntryId);
   console.info("restricted_catalog_observation", JSON.stringify({
     permissionKeys: Object.keys(catalogPermissions).sort(),
-    canView: catalogPermissions["tasks.catalog.view"] === true,
+    canView: catalogPermissions.view === true,
     billableGrantExposed: Object.hasOwn(catalogPermissions, "tasks.create.billable"),
     entryCount: Array.isArray(restrictedCatalog.body?.entries) ? restrictedCatalog.body.entries.length : -1,
     expectedEntryVisible: Boolean(visibleCatalogEntry),
     billingClassExposed: Boolean(visibleCatalogEntry && Object.hasOwn(visibleCatalogEntry, "billingClass")),
   }));
-  assert(catalogPermissions["tasks.catalog.view"] === true, "catalog_view_permission_uses_canonical_key");
+  assert(catalogPermissions.view === true, "catalog_view_permission_uses_stable_response_field");
   assert(!Object.hasOwn(catalogPermissions, "tasks.create.billable"), "catalog_read_does_not_expose_billable_grant");
   assert(Boolean(visibleCatalogEntry) && !Object.hasOwn(visibleCatalogEntry, "billingClass"),
     "catalog_entry_has_no_billing_class_field");
@@ -1584,10 +1584,10 @@ async function main(): Promise<void> {
   const hiddenCatalogPermissions = hiddenBillableCatalog.body?.permissions ?? {};
   console.info("restricted_catalog_visibility_observation", JSON.stringify({
     permissionKeys: Object.keys(hiddenCatalogPermissions).sort(),
-    canView: hiddenCatalogPermissions["tasks.catalog.view"] === true,
+    canView: hiddenCatalogPermissions.view === true,
     entryCount: Array.isArray(hiddenBillableCatalog.body?.entries) ? hiddenBillableCatalog.body.entries.length : -1,
   }));
-  assert(hiddenCatalogPermissions["tasks.catalog.view"] === false
+  assert(hiddenCatalogPermissions.view === false
     && Array.isArray(hiddenBillableCatalog.body?.entries)
     && hiddenBillableCatalog.body.entries.length === 0,
   "task_creation_permission_does_not_grant_catalog_visibility");
