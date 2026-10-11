@@ -479,17 +479,36 @@ async function configureSupabaseEnvironment(envPath: string): Promise<Record<str
 function createLocalEnv(envPath: string): Record<string, string> {
   const migratorPassword = secret(24);
   const appPassword = secret(24);
+  const configuredProjectName = process.env.NOVA_COMPOSE_PROJECT_NAME;
+  const repoSlug = basename(root).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[^a-z0-9]+/, "").replace(/-+$/, "").slice(0, 32) || "workspace";
+  const projectHash = createHash("sha256").update(root, "utf8").digest("hex").slice(0, 8);
+  const composeProjectName = configuredProjectName ?? `nova-${repoSlug}-${projectHash}`;
+  if (!/^[a-z0-9][a-z0-9_-]{0,62}$/.test(composeProjectName)) {
+    throw new Error("NOVA_COMPOSE_PROJECT_NAME_INVALID");
+  }
+  const port = (name: "NOVA_POSTGRES_PORT" | "NOVA_API_PORT", fallback: number): number => {
+    const value = process.env[name] ?? String(fallback);
+    const parsed = Number(value);
+    if (!/^\d{1,5}$/.test(value) || !Number.isSafeInteger(parsed) || parsed < 1 || parsed > 65535) {
+      throw new Error(`${name}_INVALID`);
+    }
+    return parsed;
+  };
+  const postgresPort = port("NOVA_POSTGRES_PORT", 5432);
+  const apiPort = port("NOVA_API_PORT", 3001);
+  if (postgresPort === apiPort) throw new Error("NOVA_PORTS_MUST_DIFFER");
   const values: Record<string, string> = {
+    NOVA_COMPOSE_PROJECT_NAME: composeProjectName,
     NOVA_MIGRATOR_PASSWORD: migratorPassword,
     NOVA_APP_PASSWORD: appPassword,
-    NOVA_POSTGRES_PORT: "5432",
-    NOVA_API_PORT: "3001",
-    MIGRATOR_DATABASE_URL: `postgresql://nova_migrator:${migratorPassword}@localhost:5432/nova`,
-    DATABASE_URL: `postgresql://nova_app:${appPassword}@localhost:5432/nova`,
+    NOVA_POSTGRES_PORT: String(postgresPort),
+    NOVA_API_PORT: String(apiPort),
+    MIGRATOR_DATABASE_URL: `postgresql://nova_migrator:${migratorPassword}@localhost:${postgresPort}/nova`,
+    DATABASE_URL: `postgresql://nova_app:${appPassword}@localhost:${postgresPort}/nova`,
     NOVA_APPLICATION_DATABASE_ROLE: "nova_app",
     BETTER_AUTH_SECRET: secret(32),
-    BETTER_AUTH_URL: "http://localhost:3001",
-    NOVA_ALLOWED_ORIGINS: "http://localhost:3001",
+    BETTER_AUTH_URL: `http://localhost:${apiPort}`,
+    NOVA_ALLOWED_ORIGINS: `http://localhost:${apiPort}`,
     NOVA_BOOTSTRAP_TOKEN: secret(32),
     NOVA_SECRETS_ENCRYPTION_KEY: secret(32),
     NOVA_BACKGROUND_JOB_SECRET: secret(32),

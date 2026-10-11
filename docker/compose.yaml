@@ -1,3 +1,5 @@
+name: ${NOVA_COMPOSE_PROJECT_NAME:-docker}
+
 x-postgres-base: &postgres-base
   image: postgres:17-alpine
   restart: unless-stopped

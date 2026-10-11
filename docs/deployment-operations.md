@@ -26,7 +26,19 @@ Guided first path:
   run `bash docker/bootstrap.sh` from an interactive WSL shell and keep that
   shell open while using NOVA; Ubuntu VPS uses the same shell command. These
   wrappers need only Docker/Compose, create `.env` once, start the same stack
-  and wait for `/api/ready`;
+  and wait for `/api/ready`. They default to host ports 5432 (PostgreSQL) and
+  3001 (NOVA); if a local service already owns either port, set
+  `NOVA_POSTGRES_PORT` and/or `NOVA_API_PORT` before first setup. For WSL or
+  Linux, for example, run
+  `NOVA_POSTGRES_PORT=15432 NOVA_API_PORT=13001 bash docker/bootstrap.sh`.
+  In PowerShell, set `$env:NOVA_POSTGRES_PORT` and `$env:NOVA_API_PORT` before
+  running `docker/bootstrap.ps1`. Both scripts accept only ports from 1 to
+  65535 and write the chosen ports into `.env`, generated local database URLs,
+  and the auth origin. Fresh setup also stores a stable per-checkout
+  `NOVA_COMPOSE_PROJECT_NAME`, keeping independent clones' containers and
+  database volumes separate. Existing `.env` files without that key retain
+  the legacy Compose name `docker` for volume compatibility; do not change it
+  during an upgrade;
 - Supabase Cloud: run `bun run setup:supabase`; it displays the selected
   project ref and requires you to type it exactly before it performs any write,
   then resolves the transaction pooler, applies the canonical migrations, and

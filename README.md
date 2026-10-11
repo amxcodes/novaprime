@@ -56,7 +56,17 @@ powershell -ExecutionPolicy Bypass -File .\docker\bootstrap.ps1
 
 On an Ubuntu VPS, run `bash docker/bootstrap.sh`. Both wrappers refuse to
 overwrite an existing `.env`, generate fresh local secrets, start the same
-Compose stack, wait for `/api/ready`, and print the one-time setup token.
+Compose stack, wait for `/api/ready`, and print the one-time setup token. The
+default published ports are 5432 (PostgreSQL) and 3001 (NOVA). If either is
+already in use, choose free ports before the first run. In WSL or Linux, for
+example, use `NOVA_POSTGRES_PORT=15432 NOVA_API_PORT=13001 bash docker/bootstrap.sh`;
+in PowerShell, set `$env:NOVA_POSTGRES_PORT` and `$env:NOVA_API_PORT` before
+running the wrapper. The generated `.env`, auth origin, and database URLs use
+the selected values.
+Fresh setup also records a stable, per-checkout Compose project name in `.env`,
+so separate clones do not share containers or databases. An older `.env`
+without that setting keeps Compose's legacy `docker` project name and its
+existing data volume; preserve it when upgrading an existing installation.
 
 If Docker Engine exists only inside WSL, open an interactive WSL distro shell,
 run the repository's `bash docker/bootstrap.sh` from there, and keep that shell

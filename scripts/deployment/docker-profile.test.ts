@@ -6,6 +6,12 @@ const proxyConfig = await readFile(new URL("../../docker/nginx/default.conf", im
 const dockerfile = await readFile(new URL("../../docker/Dockerfile", import.meta.url), "utf8");
 
 describe("self-hosted Docker entry point", () => {
+  test("keeps old Compose installs compatible while allowing setup to isolate fresh checkouts", () => {
+    expect(compose.startsWith("name: ${NOVA_COMPOSE_PROJECT_NAME:-docker}")).toBe(true);
+    expect(compose).toContain("${NOVA_POSTGRES_PORT:-5432}:5432");
+    expect(compose).toContain("${NOVA_API_PORT:-3001}:80");
+  });
+
   test("the production image builds and ships only the generated web application", () => {
     expect(dockerfile).toContain("FROM build AS web-build");
     expect(dockerfile).toContain("COPY vite.config.ts ./vite.config.ts");
