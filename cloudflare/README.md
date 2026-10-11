@@ -29,7 +29,7 @@ background scheduler calls `/api/internal/background/tick` every five minutes.
    NOVA_SECRETS_ENCRYPTION_KEY
    ```
 
-   Both Wrangler configs set `keep_vars = true` so these dashboard-managed
+   All Wrangler configs set `keep_vars = true` so these dashboard-managed
    origin variables survive later GitHub deployments. The scheduler selector
    remains defined by the chosen Wrangler config. The Worker trusts
    Cloudflare's edge client-IP header for auth throttling;
@@ -47,20 +47,39 @@ reported as the release. This makes identity checks detect an unexpected
 version and connect a tested candidate to its source commit. Version URLs use
 the uploaded version's existing bindings, including production Hyperdrive and
 secrets. Cloudflare preview/version URLs are public by default when enabled.
-Zero Trust Access was not configured because its setup required payment/card
-details. Do not upload a version with production secrets and leave a public
-preview enabled. `wrangler dev --remote` can serve a local request entry point
-while the Worker executes on Cloudflare with Hyperdrive, but Cloudflare does
-not document that its temporary remote environment has no public route.
-Omitting `--tunnel` only avoids the documented tunnel; it does not prove
-privacy. Keep this test gated until the candidate route and access boundary are
-independently verified. Any approved isolated test must keep `crons = []` and
-use bounded read-only probes against a disposable database. This tests the
-Cloudflare Worker/Hyperdrive execution path, but not a public domain, signed-in
-browser session, traffic promotion, or rollback. A future permanent candidate
-still needs a reviewed access boundary and the journaled executor/recovery
-work. The read-only deployment manager inventory continues to fail closed for
-public previews without verified protection. See
+Zero Trust Access is optional for NOVA's public runtime and is not needed for a
+candidate test. Use `wrangler.runtime-candidate.toml` for that test: it deploys
+a separate `nova-runtime-candidate` Worker on the account's public
+`workers.dev` hostname, disables version preview URLs, and declares no Cron.
+Do not use `wrangler.supabase-cron.toml` for a candidate; it has the production
+Worker name `nova` and changes that Worker's deployment.
+
+Because the candidate hostname is public, give it a disposable Supabase/Postgres
+target through a separate Hyperdrive configuration, use the restricted
+`nova_app` role, and configure the candidate's own `BETTER_AUTH_URL`,
+`NOVA_ALLOWED_ORIGINS`, and `NOVA_PUBLIC_ORIGIN` to that exact hostname. Use
+NOVA's normal sign-in and feature permissions for authenticated read-only page
+checks. Do not use a customer database or migration-owner credentials for this
+public candidate. Keep `NOVA_BACKGROUND_SCHEDULER` set to the scheduler that
+actually owns the disposable database; the candidate itself has no Cron and
+must not receive the Supabase Cron callback. Its `workers.dev` URL is public,
+not a secret or an access-control mechanism; see Cloudflare's
+[workers.dev](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/)
+and [Preview URL](https://developers.cloudflare.com/workers/versions-and-deployments/preview-urls/)
+documentation.
+
+Deploy and verify it with:
+
+```text
+npx wrangler@4.141.0 deploy --config cloudflare/wrangler.runtime-candidate.toml
+```
+
+This verifies the remote Worker/Hyperdrive path, static assets, candidate
+authentication origin, and bounded read-only endpoints. It does not promote
+the customer hostname or prove traffic cutover, rollback, or a same-database
+runtime move. Those remain separate gates. The deployment manager continues to
+require its verified Access boundary before it accepts a public version URL as
+a production move candidate. See
 [Version Metadata](https://developers.cloudflare.com/workers/runtime-apis/bindings/version-metadata/),
 [Version URLs](https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/),
 [Hyperdrive local development](https://developers.cloudflare.com/hyperdrive/configuration/local-development/),

@@ -22,8 +22,8 @@ const environmentKeys = [
 ] as const;
 const previousEnvironment = new Map(environmentKeys.map((key) => [key, process.env[key]]));
 
-test("both Cloudflare scheduler configs build and serve the same Vite asset graph", () => {
-  for (const file of ["./wrangler.toml", "./wrangler.supabase-cron.toml"]) {
+test("Cloudflare configs build and serve the same Vite asset graph", () => {
+  for (const file of ["./wrangler.toml", "./wrangler.supabase-cron.toml", "./wrangler.runtime-candidate.toml"]) {
     const configuration = readFileSync(new URL(file, import.meta.url), "utf8");
     expect(configuration).toContain('command = "bun run build:web"');
     expect(configuration).toContain('directory = "../web/dist"');
@@ -33,9 +33,20 @@ test("both Cloudflare scheduler configs build and serve the same Vite asset grap
   const supabaseCron = readFileSync(new URL("./wrangler.supabase-cron.toml", import.meta.url), "utf8");
   expect(supabaseCron).toContain('NOVA_BACKGROUND_SCHEDULER = "supabase"');
   expect(supabaseCron).toContain("crons = []");
-  for (const file of ["./wrangler.toml", "./wrangler.supabase-cron.toml"]) {
+  for (const file of ["./wrangler.toml", "./wrangler.supabase-cron.toml", "./wrangler.runtime-candidate.toml"]) {
     expect(readFileSync(new URL(file, import.meta.url), "utf8")).toContain('binding = "CF_VERSION_METADATA"');
   }
+});
+
+test("the no-Access candidate is a separate public Worker with preview URLs and Cron disabled", () => {
+  const candidate = readFileSync(new URL("./wrangler.runtime-candidate.toml", import.meta.url), "utf8");
+  expect(candidate).toContain('name = "nova-runtime-candidate"');
+  expect(candidate).not.toContain('name = "nova"');
+  expect(candidate).toContain("workers_dev = true");
+  expect(candidate).toContain("preview_urls = false");
+  expect(candidate).toContain('NOVA_BACKGROUND_SCHEDULER = "supabase"');
+  expect(candidate).toContain("crons = []");
+  expect(candidate).toContain('id = "replace-with-candidate-hyperdrive-config-id"');
 });
 
 test("Cloudflare runtime identity uses the immutable Worker version id and a commit tag", () => {

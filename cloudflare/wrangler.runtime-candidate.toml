@@ -1,0 +1,35 @@
+# Public, isolated Worker used to verify the Cloudflare runtime before a
+# customer hostname or production Worker is changed. This is deliberately a
+# different Worker from `nova`; keep its database target disposable.
+name = "nova-runtime-candidate"
+main = "worker.ts"
+compatibility_date = "2026-09-22"
+compatibility_flags = ["nodejs_compat"]
+keep_vars = true
+workers_dev = true
+preview_urls = false
+
+[build]
+command = "bun run build:web"
+
+[vars]
+NOVA_BACKGROUND_SCHEDULER = "supabase"
+
+[version_metadata]
+binding = "CF_VERSION_METADATA"
+
+[triggers]
+crons = []
+
+[assets]
+directory = "../web/dist"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+html_handling = "drop-trailing-slash"
+not_found_handling = "none"
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+# Point only to the disposable Supabase/PostgreSQL test database. Use the
+# restricted nova_app role; never use a migration-owner connection here.
+id = "replace-with-candidate-hyperdrive-config-id"
