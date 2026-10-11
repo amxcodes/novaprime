@@ -2,26 +2,34 @@
 
 ## Latest production follow-up — 2026-10-11
 
-Netlify published `195815d` as deploy `6acb37e6160bd000082380bf` at 12:46 PM
-IST. This commit only refreshes documentation; the latest application change
-is `522d049`, removing Work's unused `/api/tasks` roster request. The
-test-only follow-up `5046c1f` passed GitHub verification run #119 (both
-`checks` and `postgres`); verification
-[run #120](https://github.com/amxcodes/novaprime/actions/runs/38120837385) for
-`195815d` also passed both gates. A signed-in Super Admin opened Work
-Tasks and My Day on the published deploy. Both rendered their expected
-authorized empty/setup states, and no records were changed. This is a narrow
-read-only smoke, not a full workflow or network-waterfall test.
+Netlify published application commit `7d338af` as deploy
+`6acb3f759d24190007f0d169`. It fixes the task-catalogue permission response:
+the server now projects canonical grants to the stable `view`, `propose`,
+`manage`, and `review` contract that both Work Setup and the task composer
+consume. A signed-in Super Admin opened Work Setup and Work administration on
+the published build. The reusable-definition form and its approved/suggestion
+sections rendered, and the task composer exposed its enabled optional
+definition selector. The disposable catalogue has no definitions yet, which
+is shown as an empty state; no records were changed. Focused server tests (2),
+web route tests (19), and the server TypeScript check passed. No migration was
+needed. This is a narrow authorization/UI smoke, not full role or workflow QA.
 
-Live Netlify diagnostics after that deployment recorded `GET
-auth.get-session` as HTTP 200 in 3,161 ms and `GET api.notifications` as HTTP
-200 in 4,316 ms. The former counted four NOVA pool acquisitions (3,097 ms
-summed) and four queries (685 ms summed); the latter counted six NOVA
-acquisitions (3,037 ms) and nine queries (1,491 ms), plus five auth pool
-acquisitions (3,052 ms) and eight auth queries (2,471 ms). These subtotals can
-overlap and must not be added to infer elapsed time. They are single live
-observations and show that server-side API latency remains high; they do not
-measure every route or establish a before/after improvement.
+Live Netlify diagnostics from 1:19–1:20 PM IST show continuing high latency:
+`GET api.task-catalog` took 4,766 ms in the handler, with 3,065 ms summed NOVA
+pool-acquisition time and 1,932 ms summed query time; its auth pool counted
+3,041 ms of acquisition and 2,402 ms of query time. `api.work-context` took
+2,677 ms, `api.notifications` 1,397–4,377 ms, and `api.me` 1,620–4,447 ms.
+Acquisition/query totals may overlap and must not be added to infer elapsed
+time. These are live samples, not route distributions or a before/after
+result.
+
+The Netlify project settings show Functions running in `CMH (Ohio, US East)`;
+the selected Supabase primary database is in Seoul (`ap-northeast-2`). Netlify
+shows region customization as locked behind an upgrade for this project. The
+region mismatch is a plausible contributor, not a proven sole cause. No
+provider, region, or database setting was changed. See the current Netlify
+[function region guidance](https://docs.netlify.com/build/functions/configuration/)
+and [Supabase region guidance](https://supabase.com/docs/guides/platform/regions).
 
 Earlier fixes in `c025824`, `2099ad0`, and `fd1e520` preserve non-default
 forwarded ports, load the Work review actions, and explain the no-office
@@ -331,7 +339,7 @@ history; use newer evidence above when results differ.
 
 | Gate | Current result | What's still needed |
 | --- | --- | --- |
-| Actual deployed baseline | **Netlify published docs-only commit `27373e4`; the production app bundle remains `522d049`.** GitHub Actions run [#121](https://github.com/amxcodes/novaprime/actions/runs/38121164580) passed both `checks` and `postgres`. The signed-in Super Admin opened Work, My Day, People, Organisation settings, and People and access; each rendered its authorized data or expected setup state, including the protected Super Admin role. No records were changed. Live Netlify diagnostics from 12:58–12:59 IST measured `api.people` at 1,437 ms, organisation reads at 1,487–1,500 ms, some warm Work/notification reads at 1,349–1,374 ms, and cold/bursty Work, leave, availability and office reads at 3.4–5.4 s. Attendance returned 409 because the disposable organisation has no active office assignment, matching the UI's setup-needed state; no 5xx was observed. The selected disposable Supabase project's ledger is checksum-verified through `0080`; the lease table has RLS, `nova_app` has no direct table access and can execute the lease RPCs. The last verified Cron run succeeded before the current app bundle. | Collect browser request waterfalls and route distributions under repeated controlled conditions, and a fresh scheduler observation. Hosted first-install evidence remains separate. |
+| Actual deployed baseline | **Netlify production application bundle is `7d338af`; its deploy is published.** The permission-contract fix is live and the Super Admin Work Setup and Work administration states render correctly. Earlier GitHub Actions run [#121](https://github.com/amxcodes/novaprime/actions/runs/38121164580) passed both `checks` and `postgres`; focused checks for `7d338af` passed locally. The signed-in Super Admin opened Work, My Day, People, Organisation settings, People and access, Work Setup, and Work administration; each rendered its authorized data or expected setup state, including the protected Super Admin role and empty task catalogue. No records were changed. Live Netlify diagnostics from 12:58–12:59 IST measured `api.people` at 1,437 ms, organisation reads at 1,487–1,500 ms, some warm Work/notification reads at 1,349–1,374 ms, and cold/bursty Work, leave, availability and office reads at 3.4–5.4 s. The latest 1:19–1:20 samples remain slow at 1.4–4.8 s. Attendance returned 409 because the disposable organisation has no active office assignment, matching the UI's setup-needed state; no 5xx was observed. The selected disposable Supabase project's ledger is checksum-verified through `0080`; the lease table has RLS, `nova_app` has no direct table access and can execute the lease RPCs. The last verified Cron run succeeded before the current app bundle. | Collect browser request waterfalls and route distributions under repeated controlled conditions, and a fresh scheduler observation. Hosted first-install evidence remains separate. |
 | Customer releases and updates | **Updater code and local migration/restore evidence exist; customer release discovery is unavailable.** Version `0.1.3` has 80 manifest hashes. Fresh install, SQL/RLS fixtures, restricted-role preflight, and PostgreSQL 17 dump/restore pass. The updater's direct PostgreSQL upgrade rehearsal and zero-pending rerun pass. There are no published stable GitHub releases/tags. | Publish the updater-bearing baseline and the newer tested stable release, then prove clean-clone adoption, fork conflict handling, wrong-project refusal, failed migration/retry, declined push, and host-build failure after schema migration. |
 | Advertised first installs | **Local Docker/PostgreSQL lifecycle and archive restore pass; hosted first installs remain unproven.** The local PostgreSQL 17 install applied all 80 migrations, passed protected maintenance and authenticated workflow suites, and restored counts, RLS, sequence, auth/session, encryption, and role boundaries. The founder setup through loopback Nginx was rerun successfully after fixing non-default-port forwarding. The published Netlify + Supabase site is test infrastructure, not a clean customer project. Cloudflare packaging passes CI but no live Hyperdrive connection exists. | Complete isolated Netlify + Supabase and Cloudflare + Supabase first-install checks. Prove internet-facing Docker only after the exact public exposure is confirmed and external TLS/firewall checks are ready. |
 | Same-database runtime move | **Planner and safety constraints pass; real cutover is not implemented.** Netlify→Cloudflare planning preserves database identity, scheduler ownership and public origin and disables Worker Cron when Supabase owns the schedule. | Complete and rehearse a journaled Worker candidate upload, exact readback, health/auth/workflow validation, traffic promotion and recovery in a disposable Cloudflare account. This requires an available scoped Cloudflare account/token and must keep the existing database and scheduler unchanged. |
