@@ -26,10 +26,13 @@ capacity guarantee.
 
 The signed-in Super Admin also opened My Day and Work on both the current
 Netlify deployment and current isolated Worker. Both pages rendered their
-content. Work showed no assignments, sessions, or timeline events; My Day
-showed no assignments/events/requests and the expected attendance setup state
-because the disposable organisation has no active office assignment. No
-business records or settings were changed. This proves those pages resolve on
+content. The Cloudflare candidate also rendered the People directory and
+People and access page through Hyperdrive; its one-person directory and people
+controls loaded, and the browser reported no console errors or warnings. Work
+showed no assignments, sessions, or timeline events; My Day showed no
+assignments/events/requests and the expected attendance setup state because
+the disposable organisation has no active office assignment. No business
+records or settings were changed. This proves selected read pages resolve on
 the deployed source; it does not yet provide authenticated request percentiles
 or a browser waterfall.
 
@@ -152,6 +155,26 @@ was open during this smoke, so concurrent page-bootstrap activity may affect
 these samples. The page rendered the signed-in Super Admin navigation and
 Work empty/setup states; no write action was taken. This is a live smoke, not
 a single-tab waterfall or stable route distribution.
+
+### Later Netlify Functions log sample — 11 October 2026, 21:13–21:20 IST
+
+The newer production log window still shows slow API requests after the JIT
+round-trip change. Auth session requests took about 2.7–4.9 s total; `/api/me`
+about 1.4–5.9 s; Work about 1.2–6.8 s; notifications about 1.3 s; attendance
+about 5.9 s (the expected 409 because the test user has no office assignment);
+and leave/availability reads about 6.1 s. Pool diagnostics showed no pool at
+capacity and no waiting clients, while summed acquisition time approached 3 s
+per pool in the slow samples. A later protected background tick returned 200;
+the handler took 3.214 s, with 1.082 s across 11 NOVA pool acquisitions and
+2.128 s in queries, with no database errors.
+
+These log fields are per-request totals and accumulated per-operation
+subtotals, so they must not be added as if they were mutually exclusive elapsed
+time. They confirm that the current Netlify product path remains slow, but do
+not establish pool exhaustion. The next useful comparison is a single-tab
+authenticated browser waterfall paired with request IDs and the corresponding
+database-side query timings. Until then, cross-region round trips and
+connection/setup latency remain hypotheses rather than confirmed causes.
 
 Netlify's Functions → Region settings page confirms the deployed region is
 `CMH (Ohio, US East)` and shows “Upgrade to customize region.” Netlify's
