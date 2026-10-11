@@ -1,5 +1,42 @@
 # NOVA runtime smoke runbook
 
+## Latest 200-employee PostgreSQL run and archive restore — 2026-10-11
+
+An isolated PostgreSQL 17 run passed with 200 synthetic employees, 10 tasks
+per employee, and up to 25 concurrent requests. Fresh install applied all 80
+migrations and passed rollback/RLS fixtures, specialized attendance/WFH/leave/
+geofence checks, authenticated lifecycle flows, and least-privilege
+application-role preflight. The 0072→0080 updater rehearsal applied the eight
+pending migrations and a second plan reported no pending migrations.
+
+The full dump/restore check verified all 80 migration checksums, 65 table row
+counts, 59 RLS policies, one sequence, two extensions, auth/session identity,
+cross-tenant isolation, encrypted provider-secret decryption with the matching
+ephemeral key, and rejection with the wrong key. The `nova_app` role boundary
+passed after restore. QA used a private run-scoped network and generated
+credentials, exposed no database port, and removed only the resources created
+for this run.
+
+Synchronized local in-process p50/p95/p99 were: work context
+151.4/225.2/247.3 ms (1.754 s batch, 113.99 requests/s); task
+create/self-assign 84.7/120.7/135.1 ms (9.504 s, 210.44 requests/s); timer
+start 102.2/150.3/169.1 ms (11.572 s, 172.83 requests/s); timer stop
+55.5/74.6/83.6 ms (5.899 s, 339.07 requests/s); assignment reads
+371.7/632.8/648.4 ms (4.755 s, 42.06 requests/s). The assignment-read query
+is the slowest local wave; its diagnostic database execution included about
+106 ms of JIT work and 110 ms of execution. There were no database diagnostic
+failures in any wave.
+
+These measurements exclude browser rendering, HTTP transport, Netlify or
+Cloudflare startup, provider networking, and sustained load. They establish a
+repeatable local database baseline, not hosted latency or capacity. Netlify
+published the Work page read-batch change as deploy
+`6acb2050f6bb2a0008aac061` from `dd4f891`; CI run [#113](https://github.com/amxcodes/novaprime/actions/runs/38115319334)
+passed both `checks` and `postgres`. The first authenticated production
+`POST /api/work` sample returned HTTP 200 in 5.792 seconds, so reduced browser
+request fan-out has not demonstrated a latency improvement. A matched
+before/after browser waterfall and more route-specific samples remain open.
+
 ## Latest PostgreSQL 17 fresh-install and restore rehearsal — 2026-10-10
 
 The final `0.1.3` candidate passed a clean PostgreSQL 17 setup with migrations

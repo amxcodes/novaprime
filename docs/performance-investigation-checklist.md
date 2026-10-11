@@ -1,11 +1,53 @@
 # NOVA API and page performance investigation
 
-Date: 2026-10-10
+Date: 2026-10-11
 
 This checklist separates browser time, Netlify execution, database connection
 wait, PostgreSQL round trips, and query execution. It records evidence before
 changing runtime or database architecture. The production database is in Seoul
 (`ap-northeast-2`); the Netlify function currently runs in Ohio (`cmh`).
+
+## Latest live and code-level evidence — 11 October 2026
+
+Netlify published `dd4f891` as deploy `6acb2050f6bb2a0008aac061` at 11:06
+IST. A signed-in Work page refresh rendered. At 11:08 IST the batched
+`POST /api/work` returned HTTP 200 in 5,792 ms; its nine internal reads each
+took 4,394–5,760 ms. That request recorded 50 NOVA query round trips and 14
+pool acquisitions (8,648 ms and 9,178 ms summed across concurrent reads),
+with no diagnostic DB failures. The separate `/api/work-context` read returned
+200 in 5,702 ms with 14 NOVA queries and a 533 ms maximum query. These sums
+overlap across concurrent operations and must not be added to infer elapsed
+time. The first production sample shows that Work remains slow; a matched
+before/after comparison is still needed to determine the batch's effect.
+
+The protected internal background tick returned HTTP 200 at 11:10 IST in
+2,929 ms (11 NOVA queries); the preceding five-minute tick was 2,943 ms.
+These scheduled calls contribute to the mixed function metrics and should be
+reported separately from interactive page/API traffic. They do not explain
+the 5.7–5.8 second Work reads, which have their own route diagnostics.
+
+The 24-hour Function Metrics window through 11:12 IST showed 647 `nova`
+invocations, zero errors, average duration 3,241 ms, p50 2,926 ms, p95
+5,633 ms, and p99 5,666 ms. Only roughly six minutes of that window followed
+the new deploy, so it is not a before/after estimate. A useful comparison
+still needs enough route-specific warm samples on this deployment and a
+signed-in browser waterfall. The 200-employee local PostgreSQL run on 11
+October passed at concurrency 25; its results and limitations are recorded in
+`docs/runtime-smoke.md`.
+
+The Work page now sends up to nine allow-listed, permission-selected reads in
+one bounded `POST /api/work/page-read`. The server resolves the actor once for
+that explicit batch, dispatches only the existing read handlers, and preserves
+each read's independent error result. Individual handlers remain responsible
+for authorization and scope; the batch rejects writes, unknown paths, and
+unexpected query parameters. This reduces browser-to-function request fan-out
+for Work but does not reduce SQL round trips inside a handler. Code and tests
+are on `main` (`33d1b01` plus test correction `dd4f891`). Local full tests
+passed 572/572. GitHub Actions run [#113](https://github.com/amxcodes/novaprime/actions/runs/38115319334)
+passed both `checks` and `postgres` for `dd4f891`. A matched hosted
+before/after comparison is still open. The post-deploy sample shows that
+Work's handler latency remains high, but is insufficient to determine whether
+browser-to-function batching improved it relative to baseline.
 
 ## Latest live snapshot — 10 October 2026
 
@@ -188,10 +230,13 @@ round-trip and 1.0–2.4 s across 6–14 queries. The database had no current
 blocking or resource saturation when inspected. This makes cross-region
 network latency plus query fan-out the leading explanation, with query
 execution and cold pool acquisition still contributing. Netlify startup adds
-some cold latency but is not the main warm-request cost. The present evidence
-is not a matched per-request database timing sample; collect a delta from
-`pg_stat_statements` and compare an Asia-region runtime before selecting a
-permanent hosting change.
+some cold latency but is not the main warm-request cost. The post-deploy logs
+confirm that interactive route handlers dominate these samples and that
+database acquisition/round-trip totals are high. They still do not match each
+driver round trip to PostgreSQL execution time, so capture a bounded
+`pg_stat_statements` delta around the next controlled workload and compare
+the same code/database on a closer runtime before selecting a permanent
+hosting change.
 
 ## Checklist
 
@@ -220,23 +265,23 @@ permanent hosting change.
 
 ### 2. Attribute each slow request
 
-- [ ] Compare `handler_ms` with `app_ms`. A large gap points outside NOVA's
-  route handler, such as function startup or platform/gateway work. A small
-  gap means the application route dominates.
-- [ ] Compare `entry_module_load_ms` and `auth_module_load_ms`. If these remain
-  small while `app_ms` is high, changing bundle imports will not fix the warm
-  request.
-- [ ] Compare `nova_db_pool_acquire_ms` and `auth_db_pool_acquire_ms` with their
-  acquisition counts. High acquisition time with many acquisitions points to
-  connection creation or queueing; high query time with low acquisition time
-  points to database/network round trips.
-- [ ] Compare query count, total round-trip time, and maximum round-trip time.
-  A high maximum points to an outlier query; many moderately slow round trips
-  point to query fan-out or a distant database. These are aggregate timings,
-  so do not add them to `app_ms` as separate elapsed intervals.
-- [ ] Treat `queryRoundTripMs` as driver/network/Postgres elapsed time, not
-  PostgreSQL execution time alone. Validate execution time and locks with
-  database-side statistics before rewriting SQL.
+- [x] Compare handler and application time in the first deployed Work sample:
+  5,792 vs 5,791 ms for the batch and 5,702 vs 5,700 ms for work context.
+  Application code dominates these samples; platform overhead was negligible.
+- [x] Compare module load time for the Work batch. Entry-module load was 4 ms,
+  so import time does not explain the 5.8-second response.
+- [x] Compare pool acquisitions and query totals for that batch. NOVA pool
+  acquisition summed to 9,178 ms over 14 acquisitions; Auth acquisition summed
+  to 2,990 ms over five. Query round trips summed to 8,648 ms over 50 queries.
+  These are overlapping totals across concurrent reads, not elapsed intervals.
+- [x] Compare maximum query duration: the batch maximum was 192 ms; the
+  separate work-context maximum was 533 ms. The context statement needs a safe
+  plan review, but this sample does not identify its execution-time share.
+- [ ] Collect repeat samples before generalizing these first post-deploy
+  observations to other routes or time windows.
+- [ ] Treat driver round-trip time as network/driver/PostgreSQL elapsed time,
+  not PostgreSQL execution time alone. Capture a matched database-side
+  statistics delta before rewriting SQL or adding indexes.
 
 ### 3. Inspect PostgreSQL and connection capacity
 
@@ -300,10 +345,14 @@ permanent hosting change.
   session/actor work only inside that explicit batch; it is not a browser or
   cross-request cache. Focused server, dispatcher, diagnostics, and Work UI
   tests pass in local validation in the current `main` commit.
-- [ ] Publish the current `main` commit, then compare Work's browser request count, warm and
-  cold navigation-to-interactive time, `/api/work/page-read` handler/query
-  timings, partial-read behavior, and error rate against the baseline. Local
-  test results do not prove a production speed improvement.
+- [x] Publish the current `main` commit and verify Netlify serves `dd4f891` as
+  production deploy `6acb2050f6bb2a0008aac061`; a signed-in Work refresh
+  rendered and the batch returned HTTP 200.
+- [ ] Compare Work's browser request count, warm and cold
+  navigation-to-interactive time, `/api/work/page-read` handler/query
+  timings, partial-read behavior, and error rate against the baseline. The
+  first request still took 5.792 seconds, so the batch reduced function
+  request fan-out but did not demonstrate a latency improvement.
 - [ ] If a page waits for many independently slow reads, consider a
   permission-aware aggregate read endpoint only where it materially reduces
   repeated session validation, function dispatches, or database round trips.
@@ -323,21 +372,23 @@ permanent hosting change.
   selected function ran in `cmh` (Ohio); the project's current settings locked
   region configuration behind a plan upgrade. Netlify documents `nrt` (Tokyo)
   as available on Pro and Enterprise plans.
-- [ ] If the plan allows it, compare an `nrt` deploy against the same
-  authenticated workload and database. Netlify runs each function in one
+- [ ] If the plan allows it, compare a Netlify Asia-region deploy against the
+  same authenticated workload and database. Netlify runs each function in one
   region, so this is a controlled regional comparison, not geo-routing. Keep
   a known-good deploy available for rollback.
 - [ ] Compare warm p50/p95, cold latency, errors, and function execution costs
   before selecting a region. Since all `/api/*` traffic currently enters the
   same `nova` function, a per-function region affects the whole API.
-- [ ] If regional configuration is unavailable or still too slow, test a
-  small Deno/Supabase Edge Function canary near the Seoul database, not a
-  wholesale API cutover. Keep the canary limited to a read path with a clear
-  auth contract and equivalent result semantics.
-- [ ] Before moving Better Auth, PostgreSQL access, or all APIs, verify the
-  Deno runtime dependencies, transaction/isolation behavior, trusted origins,
-  session cookies, CSRF protection, CORS, same-origin routing, rate limits,
-  migrations, logging, and rollback with integration tests.
+- [ ] If regional configuration is unavailable or still too slow, test the
+  existing Cloudflare Worker + Supabase profile as a protected candidate,
+  keeping the database, Supabase Cron owner, and public production route
+  unchanged. Compare the same authenticated read workload before considering
+  promotion. Cloudflare account access is not configured in the workspace, so
+  a live candidate upload remains an external gate.
+- [ ] Before moving Better Auth, PostgreSQL access, or all APIs to another
+  runtime, verify its dependencies, transaction/isolation behavior, trusted
+  origins, session cookies, CSRF protection, CORS, same-origin routing, rate
+  limits, migrations, logging, and rollback with integration tests.
 
 ## Hosting decision: Netlify Functions or Supabase Functions?
 
@@ -356,20 +407,27 @@ continue to be enforced; Supabase hosting alone does not replace that auth
 contract. Moving the browser API from `novaprimetest.netlify.app` to the
 default `*.supabase.co` origin also changes cookie and CORS behavior.
 
+The selected customer profiles remain Netlify + Supabase, Cloudflare +
+Supabase, and self-hosted Docker + PostgreSQL. Do not present Supabase Edge as
+a fourth customer deployment choice until its runtime, auth, and upgrade path
+are proven.
+
 Recommended order:
 
-1. Publish the diagnostics and measure authenticated warm and cold requests.
-2. If database round trips dominate, run the Netlify Asia-region comparison
-   first when the plan supports it. This retains the existing Node runtime,
-   same-origin cookies, auth behavior, and deployment model.
-3. If a region switch is unavailable or insufficient, build a small Supabase
-   Edge Function canary with the same auth and RLS/domain checks. Compare it
-   against the same API workload before deciding whether an API migration is
-   justified.
-4. Use PostgreSQL functions for specific data-intensive transactions when
-   the measured bottleneck is database-side work that benefits from executing
-   close to the data. Keep external services, email, and orchestration in an
-   application runtime.
+1. Production diagnostics are published and the first authenticated Work and
+   work-context samples are recorded. Collect the missing route distributions
+   and browser waterfalls before tuning database plans.
+2. Test the existing Cloudflare Worker + Supabase profile as the next
+   protected candidate, using the same database and Supabase Cron owner while
+   Netlify remains the production route. This isolates runtime location without
+   mixing in a database move or scheduler change. Cloudflare account access is
+   not configured in the workspace, so the live candidate remains a gate.
+3. Compare a Netlify Asia-region deploy only if this project's plan supports
+   it without a plan upgrade. Its current settings lock region changes behind
+   an upgrade; do not spend money solely on an unmeasured latency hypothesis.
+4. Use PostgreSQL functions for specific data-intensive operations only when
+   matched measurements show database-side execution benefits. Keep external
+   services, email, and orchestration in an application runtime.
 
 Keep Netlify for the static frontend during this evaluation. A split runtime
 is possible, but it adds a second deployment, auth/CORS/cookie configuration,
