@@ -1,4 +1,8 @@
 /* Public navigation, page frame, and loading placeholders stay in the global shell. */
+body.workspace-mode .site-header {
+  display: none;
+}
+
 body:not(.workspace-mode) {
   background: var(--nova-color-canvas);
 }

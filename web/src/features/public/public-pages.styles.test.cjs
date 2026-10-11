@@ -9,6 +9,7 @@ test("global public styles own only the static shell, app frame, and loading pla
   for (const selector of [".site-header", ".wordmark", ".site-nav", "#app", "#app .loading"]) {
     assert.ok(css.includes(selector), `expected live public shell selector ${selector}`);
   }
+  assert.match(css, /body\.workspace-mode\s+\.site-header\s*\{[^}]*display:\s*none/s);
 
   assert.doesNotMatch(
     css,
