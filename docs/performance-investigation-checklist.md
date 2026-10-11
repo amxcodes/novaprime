@@ -93,6 +93,49 @@ operations and cannot be added to infer elapsed time. These two samples show
 that successful API requests remain slow; they are single observations, and
 neither identifies a matched before/after improvement.
 
+## Authenticated route sample — 11 October 2026, 12:58–12:59 PM IST
+
+The same signed-in Super Admin session then opened Work, My Day, People,
+Organisation settings, and People and access. Those pages eventually rendered
+their expected authorized content/setup states; no 5xx was observed and no
+records were changed. Attendance returned HTTP 409 because this disposable
+organisation has no active office assignment, and the page rendered the
+matching “Attendance setup needed” state. This is an expected business-state
+response, not a server failure. The Admin routes also loaded the organisation
+and protected-role surfaces, including the immutable Super Admin role.
+
+Netlify diagnostics recorded the following route-group timings:
+
+- `api.people`: 1,437 ms (HTTP 200); organisation and department reads were
+  1,487–1,500 ms, and a warm Work read was 1,349 ms.
+- Work's initial page read took 5,434 ms (HTTP 200). Its measured assignment,
+  timeline, and attendance reads each took about 4.4–5.4 seconds. The Tasks
+  page read took 4,756 ms, with the visible-task read at 3,454 ms and catalog
+  read at 4,748 ms. A later Work request completed in 1,349 ms.
+- Leave and availability reads each took 4,711–4,727 ms; office reads ranged
+  from 3,441–3,551 ms. A background tick also appeared in this log window and
+  is excluded from user-page performance conclusions.
+- Warm notifications reads varied from 1,374 to 3,315 ms; another sample was
+  4,491 ms. This variation rules out treating a single fast warm sample as a
+  stable result.
+
+The slow requests generally recorded roughly 3.0 seconds summed in both NOVA
+and auth pool acquisition, while some warm requests recorded zero acquisition
+wait. Even those warm requests commonly spent about 1.0–1.2 seconds in NOVA
+query round trips. The Work page sample recorded 3.95 seconds in NOVA query
+time over 23 queries, with a 205 ms maximum single query. These subtotals
+overlap across concurrent operations. They point to connection setup/wait and
+many database round trips as material costs; they do not establish that one
+slow SQL statement or Netlify cold start is the sole cause. The logs contain
+no browser waterfall and are single-session samples, so they cannot be used as
+p50/p95 or as proof that Cloudflare will be faster.
+
+The current signed-in Cloudflare account tab has not yet appeared in the task
+browser. Once available, keep the existing Supabase database, Supabase Cron,
+and production origin fixed while preparing a protected Cloudflare candidate;
+compare the same authenticated read paths and record cold/warm distributions
+before considering any traffic promotion.
+
 The Work Tasks UI rendered, but this browser inspection did not expose a
 network trace. Confirm that Work Tasks omits `/api/tasks` and collect its
 `/api/work` and `/api/work-context` timings in the browser Network panel before
