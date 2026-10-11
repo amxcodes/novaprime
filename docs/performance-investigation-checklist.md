@@ -2,18 +2,19 @@
 
 Date: 2026-10-11
 
-## Live Cloudflare Hyperdrive smoke and paired readiness sample — 11 October 2026
+## Earlier anonymous Cloudflare Hyperdrive smoke and paired readiness sample — 11 October 2026
 
-Cloudflare currently lists `nova-runtime-candidate` as Ready at version
-`6d50dd5c`, with only its public `workers.dev` hostname. It has no customer
-domain or Cron. Its `HYPERDRIVE` binding targets the disposable Supabase
+At this earlier anonymous probe, Cloudflare listed `nova-runtime-candidate`
+as Ready at version `6d50dd5c`; the exact-source current deployment and signed-in
+route checks are recorded below. The Worker has only its public `workers.dev`
+hostname, with no customer domain or Cron. Its `HYPERDRIVE` binding targets the disposable Supabase
 project through configuration `nova-runtime-candidate-owfg-test`:
 `db.owfgvojdaxafayutbcuf.supabase.co:5432/postgres`, restricted role
 `nova_app`, query caching disabled, and a soft origin connection limit of 20.
 The password is held by Hyperdrive and is not displayed. This must stay an
 isolated test target because the candidate hostname is public.
 
-Fresh anonymous probes returned HTTP 200 from `/api/health`, database-backed
+The earlier anonymous probes returned HTTP 200 from `/api/health`, database-backed
 `/api/ready` (`status=ready`, `scheduler=supabase`), and
 `/api/auth/get-session` (empty session). The app shell and its referenced
 471,207-byte JavaScript asset also returned 200. Cloudflare's dashboard
@@ -33,10 +34,11 @@ was 40/45 ms for Cloudflare and 163/164 ms for Netlify. The Cloudflare sample
 resolved at `NRT`; another isolated response during the same session resolved
 at `SIN`, so the edge route varied. This is a small, anonymous readiness
 comparison, not an authenticated page benchmark or capacity test. Cloudflare's
-candidate JavaScript and Netlify's served JavaScript have different SHA-256
-hashes despite equal byte lengths, and the candidate's source commit is not
-verified; therefore this is directional runtime evidence, not a controlled
-same-build comparison or proof that Hyperdrive alone caused the difference.
+candidate JavaScript and Netlify's served JavaScript had different SHA-256
+hashes despite equal byte lengths, and that earlier candidate's source commit
+was not verified; therefore this remains directional historical evidence, not
+a controlled same-build comparison or proof that Hyperdrive alone caused the
+difference.
 
 The measurements include this client's network path. They do not identify a
 stable cold-start cause or represent signed-in product routes, browser
@@ -137,8 +139,52 @@ database route, and Supabase Cron were not changed. Because the candidate is
 public, its endpoint is only suitable for disposable data and NOVA's normal
 authentication; it is not an Access-protected production-move candidate.
 
-Remote checks returned `/api/health` 200, `/api/ready` 200 with
-`scheduler=supabase`, and `/api/auth/get-session` 200 with an empty session.
+### Latest exact-source Cloudflare candidate check — 11 October 2026
+
+After the earlier anonymous smoke, the candidate was redeployed from the exact
+`main` source revision `6498e15e4ce0ea6628de23b33bc9ef16d9075c6c`. Cloudflare's
+deployment record shows version `185d9929-c3ee-448f-b710-01079699d3a5`, Ready,
+with 100% of this candidate Worker's traffic assigned to it. That is not
+production NOVA traffic: the Worker remains an isolated, public
+`workers.dev` candidate connected only to the disposable Supabase project.
+It still has no custom domain and no Cloudflare Cron; `NOVA_BACKGROUND_SCHEDULER`
+remains `supabase`, so scheduler ownership did not move.
+
+Using the signed-in test Super Admin session, the People and access page loaded
+the protected role catalogue and one authorized directory record, and the
+Organisation page loaded office/department totals and the current attendance
+policy from the database. No business records or settings were changed. My Day
+and Work were then opened through in-app navigation; their main panels stayed in
+loading states rather than resolving to content or an error. That is an open
+route-level failure, so this run does **not** certify authenticated workflow
+readiness or a completed runtime move. Cloudflare's Issues panel asks to enable
+issue detection and it was left unchanged; therefore there is no correlated
+Worker exception trace for those stuck panels.
+
+A read-only Wrangler tail from the exact deployed version recorded
+`GET /api/attendance/today` as HTTP 409 and `GET /api/leave/mine` as HTTP 200;
+the captured executions completed without Worker exceptions or application
+log entries. The 409 is consistent with this disposable organisation having no
+office configured, but it does not explain why the My Day panels stayed in
+their loading states. No response bodies or personal request headers were
+retained. The Work loader still has no correlated request-level cause, so it
+needs a browser request waterfall or temporarily enabled, appropriately scoped
+diagnostics before a root cause can be stated.
+
+The Hyperdrive dashboard's last-24-hours snapshot after this smoke showed 203
+queries, 908.02 kB returned, 11 ms query latency, 3 ms connection latency, and
+zero Hyperdrive errors. It classified 196 queries as cache-disabled, four as
+transactions, and three as uncacheable; cached bytes were zero. The pool showed
+six open connections, zero waiting clients, and a ceiling of 20. Cloudflare's
+deployment snapshot showed 0% Worker error rate and 16.05 ms median CPU. These
+are aggregate, low-volume dashboard observations, not per-route attribution,
+latency percentiles, or evidence of 100/200-user capacity. The earlier paired
+`/api/ready` timings predate this exact-source deployment; repeat them alongside
+authenticated browser timings after resolving the My Day and Work loading issue.
+
+On the earlier candidate version, remote checks returned `/api/health` 200,
+`/api/ready` 200 with `scheduler=supabase`, and `/api/auth/get-session` 200
+with an empty session.
 Readiness executed its schema query against PostgreSQL. The session request had
 no authentication cookie, so it verified the Better Auth handler response but
 did not test a database-backed signed-in session. Together the health and
