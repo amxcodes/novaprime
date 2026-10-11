@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 mock.module("pg", () => ({ Pool: class Pool {}, Client: class Client {} }));
-const { projectTaskCatalogProposal } = await import("./task-catalog.js");
+const { projectTaskCatalogPermissions, projectTaskCatalogProposal } = await import("./task-catalog.js");
 
 const actorId = "11111111-1111-4111-8111-111111111111";
 const otherPersonId = "22222222-2222-4222-8222-222222222222";
@@ -40,5 +40,18 @@ describe("task-catalog proposal response projection", () => {
     expect(projectTaskCatalogProposal(proposal(), actorId, false).canReview).toBe(false);
     expect(projectTaskCatalogProposal(proposal({ proposed_by_person_id: actorId }), actorId, true).canReview).toBe(false);
     expect(projectTaskCatalogProposal(proposal({ status: "approved" }), actorId, true).canReview).toBe(false);
+  });
+
+  test("projects canonical grant keys to the stable permissions object consumed by the UI", () => {
+    expect(projectTaskCatalogPermissions({
+      "tasks.catalog.view": true,
+      "tasks.catalog.propose": false,
+      "tasks.catalog.manage": true,
+      "tasks.catalog.review": false,
+      "unexpected.permission": true,
+    })).toEqual({ view: true, propose: false, manage: true, review: false });
+    expect(projectTaskCatalogPermissions({})).toEqual({
+      view: false, propose: false, manage: false, review: false,
+    });
   });
 });

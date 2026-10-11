@@ -86,6 +86,25 @@ type Proposal = Readonly<{
   reviewer_name: string | null;
 }>;
 
+export type TaskCatalogPermissions = Readonly<{
+  view: boolean;
+  propose: boolean;
+  manage: boolean;
+  review: boolean;
+}>;
+
+/** Keep the HTTP contract independent of permission-catalog key names. */
+export function projectTaskCatalogPermissions(
+  grants: Readonly<Record<string, boolean>>,
+): TaskCatalogPermissions {
+  return {
+    view: grants["tasks.catalog.view"] === true,
+    propose: grants["tasks.catalog.propose"] === true,
+    manage: grants["tasks.catalog.manage"] === true,
+    review: grants["tasks.catalog.review"] === true,
+  };
+}
+
 export function projectTaskCatalogProposal(
   proposal: Proposal,
   actorId: string,
@@ -115,16 +134,14 @@ export async function readTaskCatalog(request: Request): Promise<Response> {
   if ("response" in actor) return actor.response;
   try {
     const result = await withDatabaseRequest(actor.context, async (transaction) => {
-      const permissions = await hasPermissions(
+      const grantSnapshot = await hasPermissions(
         transaction,
         actor.context.userId,
         actor.context.organisationId,
         ["tasks.catalog.view", "tasks.catalog.propose", "tasks.catalog.manage", "tasks.catalog.review"],
       );
-      const canView = permissions["tasks.catalog.view"] === true;
-      const canPropose = permissions["tasks.catalog.propose"] === true;
-      const canManage = permissions["tasks.catalog.manage"] === true;
-      const canReview = permissions["tasks.catalog.review"] === true;
+      const permissions = projectTaskCatalogPermissions(grantSnapshot);
+      const { view: canView, propose: canPropose, manage: canManage, review: canReview } = permissions;
       let entries: CatalogEntry[] = [];
       if (canView || canManage) {
         entries = (await transaction.query<CatalogEntry>(
