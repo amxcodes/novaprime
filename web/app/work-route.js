@@ -1,3 +1,9 @@
+import {
+  getAvailableWorkAreas,
+  isWorkFeatureIncludedInArea,
+  resolveWorkAreaId,
+} from "./work-areas.js";
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function isCollaborationRequestId(value) {
@@ -128,6 +134,7 @@ export function resolveWorkRouteContext({
     : null;
   const hasFocusedCollaborationRoute = Boolean(focusRequest);
   const taskDetailRoute = Boolean(taskId && readPlan.taskDetail);
+  const invalidFocusedRoute = collaborationRoute.status === "invalid";
   const reviewTarget = reviewId
     ? { assignmentId: reviewId }
     : taskId && !readPlan.taskDetail && readPlan.reviews
@@ -141,7 +148,12 @@ export function resolveWorkRouteContext({
   });
   const validReviewTarget = Boolean(reviewTarget) && Object.values(reviewTarget).every(isUuid);
 
-  const workDescription = canActOnTasks || readPlan.sessions
+  const standardFeatureRoute = !taskDetailRoute && !hasReviewRoute && !hasFocusedCollaborationRoute && !invalidFocusedRoute;
+  const availableWorkAreas = standardFeatureRoute ? getAvailableWorkAreas(readPlan, canCreateTasks) : [];
+  const workAreaId = resolveWorkAreaId(searchParams.get("area"), availableWorkAreas);
+  const workArea = availableWorkAreas.find((area) => area.id === workAreaId) || null;
+
+  const workDescription = workArea?.description || (canActOnTasks || readPlan.sessions
     ? "Use permitted assignment actions and track productive time separately from attendance."
     : canCreateTasks && !readPlan.taskCollection && !readPlan.assignments
       ? "Create tasks in workstreams available under your access."
@@ -151,19 +163,19 @@ export function resolveWorkRouteContext({
           ? "Review submitted work available to you."
           : readPlan.workContextView
             ? "Browse client, workstream, and group context available under your access."
-            : "Review work and context available under your access.";
+            : "Review work and context available under your access.");
   const workPageTitle = taskDetailRoute
     ? "Task details"
     : hasReviewRoute
       ? "Pending review"
       : focusRequest
         ? "Collaboration request"
-        : "Work";
-  const invalidFocusedRoute = collaborationRoute.status === "invalid";
-  const standardFeatureRoute = !taskDetailRoute && !hasReviewRoute && !hasFocusedCollaborationRoute;
-  const reviewSectionRoute = !taskDetailRoute && !hasFocusedCollaborationRoute;
+        : workArea?.title || "Work";
   const collaborationSectionRoute = !taskDetailRoute && !hasReviewRoute;
   const canLoadFeature = (enabled) => Boolean(enabled && !invalidFocusedRoute);
+  const areaFeature = (feature) => standardFeatureRoute
+    ? isWorkFeatureIncludedInArea(feature, workAreaId, readPlan, canCreateTasks)
+    : false;
 
   return {
     taskId,
@@ -177,18 +189,21 @@ export function resolveWorkRouteContext({
     validReviewTarget,
     workDescription,
     workPageTitle,
+    availableWorkAreas,
+    workArea,
     featureImports: {
       taskDetail: canLoadFeature(taskDetailRoute),
-      workContext: canLoadFeature(readPlan.workContextView && standardFeatureRoute),
-      reviews: canLoadFeature(readPlan.reviews && reviewSectionRoute),
-      collaboration: canLoadFeature((readPlan.reviewerRequests || readPlan.handoverRequests) && collaborationSectionRoute),
-      taskComposer: canLoadFeature(canCreateTasks && standardFeatureRoute),
-      sessions: canLoadFeature(readPlan.sessions && standardFeatureRoute),
-      timeline: canLoadFeature((readPlan.timeline || readPlan.attendance) && standardFeatureRoute),
-      assignments: canLoadFeature(readPlan.assignments && standardFeatureRoute),
-      savedTaskViews: canLoadFeature((readPlan.assignments || readPlan.taskCollection) && standardFeatureRoute),
-      visibleTasks: canLoadFeature(readPlan.taskCollection && standardFeatureRoute),
-      reviewerManagement: canLoadFeature(readPlan.reviewerManagement && standardFeatureRoute),
+      workContext: canLoadFeature(readPlan.workContextView && areaFeature("workContext")),
+      reviews: canLoadFeature(readPlan.reviews && (areaFeature("reviews") || hasReviewRoute)),
+      collaboration: canLoadFeature((readPlan.reviewerRequests || readPlan.handoverRequests) &&
+        (areaFeature("collaboration") || collaborationSectionRoute && hasFocusedCollaborationRoute)),
+      taskComposer: canLoadFeature(areaFeature("taskComposer")),
+      sessions: canLoadFeature(areaFeature("sessions")),
+      timeline: canLoadFeature(areaFeature("timeline")),
+      assignments: canLoadFeature(areaFeature("assignments")),
+      savedTaskViews: canLoadFeature(areaFeature("savedTaskViews")),
+      visibleTasks: canLoadFeature(areaFeature("visibleTasks")),
+      reviewerManagement: canLoadFeature(areaFeature("reviewerManagement")),
     },
   };
 }

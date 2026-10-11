@@ -107,6 +107,45 @@ test("route planning excludes unauthorized modules and narrows direct review/tas
   );
 });
 
+test("route composition keeps selected feature pages separate", () => {
+  const reviewsArea = createWorkPageSections(allReads, {
+    canCreateTasks: true,
+    hasReviewRoute: false,
+    taskDetailRoute: false,
+    workArea: { id: "reviews", sections: ["reviews"] },
+  });
+  const tasksArea = createWorkPageSections(allReads, {
+    canCreateTasks: true,
+    hasReviewRoute: false,
+    taskDetailRoute: false,
+    workArea: { id: "tasks", sections: ["tasks", "create"] },
+  });
+  assert.deepEqual(reviewsArea.map(({ id }) => id), ["reviews"]);
+  assert.deepEqual(tasksArea.map(({ id }) => id), ["tasks", "create"]);
+});
+
+test("area navigation exposes only provided pages and marks the current page", () => {
+  const markup = render({
+    workAreas: [
+      { id: "my-work", label: "My work", href: "/?view=work&area=my-work" },
+      { id: "reviews", label: "Reviews", href: "/?view=work&area=reviews" },
+    ],
+    activeWorkAreaId: "reviews",
+  });
+  assert.match(markup, /<nav[^>]*aria-label="Work areas"/);
+  assert.match(markup, /href="\/\?view=work&amp;area=reviews" aria-current="page">Reviews<\/a>/);
+  assert.doesNotMatch(markup, /area=reviewer-management/);
+});
+
+test("area navigation keeps keyboard, mobile touch, reduced motion, and contrast behavior", () => {
+  const css = fs.readFileSync(path.join(__dirname, "./WorkPage.module.css"), "utf8");
+  assert.match(css, /\.areaNavigation\s*\{[^}]*overflow-x:\s*auto/s);
+  assert.match(css, /\.areaLink:focus-visible\s*\{[^}]*outline:\s*2px/s);
+  assert.match(css, /@media \(any-pointer: coarse\)[\s\S]*?\.areaLink,[\s\S]*?min-height:\s*var\(--nova-control-touch-target\)/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.areaLink\s*\{\s*transition:\s*none/);
+  assert.match(css, /@media \(forced-colors: active\)[\s\S]*?\.areaLink\[aria-current="page"\][^}]*background:\s*Highlight/s);
+});
+
 test("renders supplied section content in its authorized section and keeps fallback slots for unconverted sections", () => {
   const content = React.createElement("article", { "data-work-feature": "timeline" }, "Timeline feature");
   const markup = render({
@@ -170,7 +209,7 @@ test("the route host keeps API and capability orchestration while React owns tim
   assert.match(route, /renderShell\(createElement\("div", \{ id: "work-route-root" \}\), "work"\);/);
   assert.match(route, /const workSlot = \(id\) => workRouteRoot\.querySelector\(\`\[data-work-slot=/);
   assert.match(route, /sectionContent: options\.sectionContent/);
-  assert.match(route, /if \(!hasReviewRoute && !hasFocusedCollaborationRoute && \(readPlan\.timeline \|\| readPlan\.attendance\)\) \{\s*if \(!timelineUi \|\| typeof timelineRoute\?\.projectWorkTimelineProps !== "function"\)/,
+  assert.match(route, /if \(!hasReviewRoute && !hasFocusedCollaborationRoute && pageSections\.some\(\(section\) => section\.id === "timeline"\)\) \{\s*if \(!timelineUi \|\| typeof timelineRoute\?\.projectWorkTimelineProps !== "function"\)/,
     "the timeline UI and projector are composed only when the host read plan permits it and the route exposes that section");
   assert.match(route, /timelineRoute\.projectWorkTimelineProps\(\{\s*readPlan,\s*timelineResult: timeline/,
     "the feature receives a host-projected allowlisted state rather than raw API responses");
@@ -178,7 +217,7 @@ test("the route host keeps API and capability orchestration while React owns tim
     "the host passes the authorized timeline into the typed WorkPage composition");
   assert.match(route, /pageSectionContent\.timeline = createElement\(workPageUi\.WorkFeatureMessage/,
     "timeline load failures stay within the same feature-owned section");
-  assert.match(routeContext, /timeline:\s*canLoadFeature\(\(readPlan\.timeline \|\| readPlan\.attendance\) && standardFeatureRoute\)/,
+  assert.match(routeContext, /timeline:\s*canLoadFeature\(areaFeature\("timeline"\)\)/,
     "task-detail and review routes do not request the timeline feature chunk");
   assert.match(featureLoader, /timeline: \(\) => Promise\.all\(\[\s*import\("\.\.\/src\/features\/work\/timeline\/WorkTimeline\.tsx"\),\s*import\("\.\/work-timeline-route\.js"\),\s*\]\)/,
     "the visible timeline loads its feature component and projector together");
@@ -219,21 +258,21 @@ test("the route host keeps API and capability orchestration while React owns tim
     "the Work shell loads without pulling feature components through the aggregate barrel");
   assert.doesNotMatch(route, /src\/features\/work\/index\.ts/,
     "the route avoids importing the broad Work feature barrel");
-  assert.match(routeContext, /assignments:\s*canLoadFeature\(readPlan\.assignments && standardFeatureRoute\)/,
+  assert.match(routeContext, /assignments:\s*canLoadFeature\(areaFeature\("assignments"\)\)/,
     "My Assignments loads only for its planned, visible collection route");
-  assert.match(routeContext, /savedTaskViews:\s*canLoadFeature\(\(readPlan\.assignments \|\| readPlan\.taskCollection\) && standardFeatureRoute\)/,
+  assert.match(routeContext, /savedTaskViews:\s*canLoadFeature\(areaFeature\("savedTaskViews"\)\)/,
     "Work saved-view controls load only when a supported collection is visible");
-  assert.match(routeContext, /workContext:\s*canLoadFeature\(readPlan\.workContextView && standardFeatureRoute\)/,
+  assert.match(routeContext, /workContext:\s*canLoadFeature\(readPlan\.workContextView && areaFeature\("workContext"\)\)/,
     "Work Context UI is not loaded behind an unrelated direct-review route");
-  assert.match(routeContext, /taskComposer:\s*canLoadFeature\(canCreateTasks && standardFeatureRoute\)/,
+  assert.match(routeContext, /taskComposer:\s*canLoadFeature\(areaFeature\("taskComposer"\)\)/,
     "the task composer is not loaded when a direct-review route hides its section");
-  assert.match(routeContext, /sessions:\s*canLoadFeature\(readPlan\.sessions && standardFeatureRoute\)/,
+  assert.match(routeContext, /sessions:\s*canLoadFeature\(areaFeature\("sessions"\)\)/,
     "session UI is not loaded when a direct-review route hides its section");
-  assert.match(routeContext, /timeline:\s*canLoadFeature\(\(readPlan\.timeline \|\| readPlan\.attendance\) && standardFeatureRoute\)/,
+  assert.match(routeContext, /timeline:\s*canLoadFeature\(areaFeature\("timeline"\)\)/,
     "timeline UI is not loaded when a direct-review route hides its section");
-  assert.match(routeContext, /collaboration:\s*canLoadFeature\(\(readPlan\.reviewerRequests \|\| readPlan\.handoverRequests\) && collaborationSectionRoute\)/,
+  assert.match(routeContext, /collaboration:\s*canLoadFeature\(\(readPlan\.reviewerRequests \|\| readPlan\.handoverRequests\) &&[\s\S]*?areaFeature\("collaboration"\)[\s\S]*?hasFocusedCollaborationRoute\)/,
     "collaboration UI is not loaded when a direct-review route hides its section");
-  assert.match(routeContext, /visibleTasks:\s*canLoadFeature\(readPlan\.taskCollection && standardFeatureRoute\)/,
+  assert.match(routeContext, /visibleTasks:\s*canLoadFeature\(areaFeature\("visibleTasks"\)\)/,
     "VisibleTasks and its allowlist projector are dynamically imported only for a planned task collection");
   assert.match(featureLoader, /visibleTasks: \(\) => Promise\.all\(\[\s*import\("\.\.\/src\/features\/work\/VisibleTasks\.tsx"\),\s*import\("\.\/visible-tasks-route\.js"\),/,
     "VisibleTasks and its allowlist projector stay in the same lazy feature bundle");
@@ -278,11 +317,11 @@ test("the route host keeps API and capability orchestration while React owns tim
     "visible-task paging continues through the existing host history adapter");
   assert.match(route, /onNewer: \(\) => \{\s*if \(window\.history\.state\?\.novaVisibleTaskPage && window\.history\.length > 1\) \{\s*window\.history\.back\(\)/,
     "the prior-page browser-history behavior remains unchanged");
-  assert.match(route, /const workReadDataPromise = !taskDetailRoute && !workRouteUnavailableMessage\s*\?\s*readWorkRouteData\(\{[\s\S]*?lifetime,\s*pageApi,\s*\}\)\s*:\s*null;/,
+  assert.match(route, /const workReadDataPromise = !taskDetailRoute && !workRouteUnavailableMessage\s*\?\s*readWorkRouteData\(\{[\s\S]*?workArea: workArea\?\.id,\s*canCreateTasks,\s*lifetime,\s*pageApi,\s*\}\)\s*:\s*null;/,
     "the app starts only permitted Work reads through its authenticated page reader and route lifetime");
   assert.match(route, /const \[workReadData\] = await Promise\.all\(\[\s*workReadDataPromise,\s*savedTaskViewsRead,/,
     "Work route data and saved views load concurrently before their shared render path");
-  assert.match(route, /if \(readPlan\.workContextView && !hasReviewRoute && !hasFocusedCollaborationRoute\) \{\s*(?:stage = "mount-work-context";\s*)?const workContextHost = workSlot\("context"\);\s*mountWorkContextRoute\(\{\s*target: workContextHost,\s*result: workContext,\s*ui: workContextUi,\s*uiLoadError: workContextUiLoadError,\s*actorGrants: state\.actorGrants,[\s\S]*?runCommand: createWorkContextDepartmentCommandAction\(\{/,
+  assert.match(route, /if \(readPlan\.workContextView && pageSections\.some\(\(section\) => section\.id === "context"\) && !hasReviewRoute && !hasFocusedCollaborationRoute\) \{\s*(?:stage = "mount-work-context";\s*)?const workContextHost = workSlot\("context"\);\s*mountWorkContextRoute\(\{\s*target: workContextHost,\s*result: workContext,\s*ui: workContextUi,\s*uiLoadError: workContextUiLoadError,\s*actorGrants: state\.actorGrants,[\s\S]*?runCommand: createWorkContextDepartmentCommandAction\(\{/,
     "the visible feature receives the host read and current-grant action boundary");
   assert.match(route, /getPermissionData: \(\) => \(\{ actorGrants: state\.actorGrants, workContext \}\)/,
     "Work Context commands read the latest host grants and current projected context");
@@ -301,7 +340,7 @@ test("the route host keeps API and capability orchestration while React owns tim
   assert.match(assignmentsRoute, /mountReactIsland\(target, Component, \{/);
   assert.doesNotMatch(route, /mountReactIsland\(assignmentHost|candidateReadCache|projectAssignmentCandidateRead/,
     "assignment projection and mount wiring live at their feature route boundary");
-  assert.match(route, /if \(readPlan\.reviewerManagement && !taskDetailRoute && !hasReviewRoute && !hasFocusedCollaborationRoute\) \{[\s\S]*?mountWorkReviewerManagementRoute\(reviewerManagementRoot, \{/,
+  assert.match(route, /if \(readPlan\.reviewerManagement && pageSections\.some\(\(section\) => section\.id === "reviewer-management"\) && !taskDetailRoute && !hasReviewRoute && !hasFocusedCollaborationRoute\) \{[\s\S]*?mountWorkReviewerManagementRoute\(reviewerManagementRoot, \{/,
     "the host preserves the planned reviewer section gate before mounting its route adapter");
   assert.match(reviewerManagementRoute, /\/api\/task-assignments\/reviewer-management\?/);
   assert.match(reviewerManagementRoute, /host\.mountReactIsland\(target, Component, \{/);

@@ -39,6 +39,66 @@
   line-height: var(--nova-type-line-normal);
 }
 
+.areaNavigation {
+  max-width: 100%;
+  margin-block: calc(-1 * var(--nova-space-2)) var(--nova-space-5);
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.areaLinks {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  align-items: center;
+  gap: var(--nova-space-1);
+  padding: 3px;
+  border: 1px solid var(--nova-color-control-edge-quiet);
+  border-radius: var(--nova-radius-control);
+  background: var(--nova-color-control-fill-quiet);
+}
+
+.areaLink {
+  display: inline-flex;
+  min-width: 0;
+  min-height: var(--nova-control-height);
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: var(--nova-space-2) var(--nova-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--nova-radius-status);
+  color: var(--nova-color-text-secondary);
+  font-size: var(--nova-type-size-control-label);
+  font-weight: var(--nova-type-weight-regular);
+  line-height: var(--nova-type-line-control);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    background-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard),
+    border-color var(--nova-motion-duration-fast) var(--nova-motion-ease-standard);
+}
+
+.areaLink:hover:not([aria-current="page"]) {
+  border-color: var(--nova-color-control-edge-hover);
+  color: var(--nova-color-text-primary);
+  background: var(--nova-color-control-fill-hover);
+}
+
+.areaLink[aria-current="page"] {
+  border-color: var(--nova-color-action-edge);
+  color: var(--nova-color-action-contrast);
+  background: var(--nova-color-action);
+  font-weight: var(--nova-type-weight-medium);
+}
+
+.areaLink:focus-visible {
+  outline: 2px solid var(--nova-color-focus);
+  outline-offset: 2px;
+}
+
 .board {
   min-width: 0;
   container: work-board / inline-size;
@@ -169,12 +229,32 @@
   .timelineControl > button { width: 100%; min-height: var(--nova-control-touch-target); }
 }
 
+@media (max-width: 40rem) {
+  .areaNavigation {
+    margin-inline: calc(-1 * var(--nova-space-2));
+    padding-inline: var(--nova-space-2);
+  }
+
+  .areaLinks {
+    min-width: max-content;
+  }
+}
+
 @media (any-pointer: coarse) {
+  .areaLink,
   .timelineControl input,
   .timelineControl > button { min-height: var(--nova-control-touch-target); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .areaLink { transition: none; }
+}
+
 @media (forced-colors: active) {
+  .areaLinks { border-color: ButtonText; background: ButtonFace; }
+  .areaLink { color: ButtonText; }
+  .areaLink[aria-current="page"] { border-color: Highlight; color: HighlightText; background: Highlight; }
+  .areaLink:focus-visible { outline-color: Highlight; }
   .section[data-section="sessions"] .sectionHeader { border-color: CanvasText; }
 
   .section[data-section="create"],

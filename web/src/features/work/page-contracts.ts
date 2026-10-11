@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { WorkArea, WorkAreaId } from "../../../app/work-areas.js";
 import type { WorkReadPlan } from "./read-capabilities";
 
 export type WorkPageSectionId =
@@ -31,6 +32,7 @@ export interface WorkPageSectionOptions {
   hasReviewRoute: boolean;
   taskDetailRoute: boolean;
   focusedCollaborationRequest?: boolean;
+  workArea?: WorkArea | WorkAreaId | null;
 }
 
 /** Present only the modules the route host has authorized and prepared. */
@@ -60,7 +62,12 @@ export function createWorkPageSections(
   }
   if (reads.timeline || reads.attendance) sections.push({ id: "timeline" });
   if (reads.workContextView) sections.push({ id: "context" });
-  return sections;
+  const allowedSections = typeof options.workArea === "string"
+    ? undefined
+    : options.workArea?.sections;
+  return allowedSections
+    ? sections.filter((section) => allowedSections.includes(section.id))
+    : sections;
 }
 
 export interface WorkPageNotice {

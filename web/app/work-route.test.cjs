@@ -83,9 +83,77 @@ test("Work route context derives focused modes and lazy feature imports from hos
     readPlan: { workContextView: false, taskCatalog: true },
     canCreateTasks: true,
   });
-  assert.equal(groupOnlyCreator.workDescription, "Create tasks in workstreams available under your access.");
+  assert.equal(groupOnlyCreator.workArea.id, "tasks");
   assert.equal(groupOnlyCreator.featureImports.taskComposer, true);
   assert.equal(groupOnlyCreator.featureImports.taskDetail, false);
+});
+
+test("Work areas are grant-derived and an unavailable area query falls back to an available page", () => {
+  const readPlan = {
+    assignments: true,
+    sessions: false,
+    timeline: false,
+    attendance: false,
+    taskCollection: false,
+    reviews: false,
+    reviewerRequests: false,
+    handoverRequests: false,
+    reviewerManagement: false,
+    workContextView: false,
+  };
+  const route = resolveWorkRouteContext({
+    searchParams: new URLSearchParams("view=work&area=reviewer-management"),
+    readPlan,
+  });
+
+  assert.deepEqual(route.availableWorkAreas.map(({ id }) => id), ["my-work"]);
+  assert.equal(route.workArea.id, "my-work");
+  assert.deepEqual(route.featureImports, {
+    taskDetail: false,
+    workContext: false,
+    reviews: false,
+    collaboration: false,
+    taskComposer: false,
+    sessions: false,
+    timeline: false,
+    assignments: true,
+    savedTaskViews: true,
+    visibleTasks: false,
+    reviewerManagement: false,
+  });
+});
+
+test("selecting one authorized Work area does not import other available areas", () => {
+  const readPlan = {
+    assignments: true,
+    sessions: true,
+    timeline: true,
+    attendance: true,
+    reviews: true,
+    reviewerRequests: true,
+    handoverRequests: true,
+    workContext: true,
+    workContextView: true,
+    tasks: true,
+    taskCollection: true,
+    taskCatalog: true,
+    reviewerManagement: true,
+  };
+  const route = resolveWorkRouteContext({
+    searchParams: new URLSearchParams("view=work&area=reviews"),
+    readPlan,
+    canCreateTasks: true,
+  });
+
+  assert.deepEqual(route.availableWorkAreas.map(({ id }) => id), [
+    "my-work", "tasks", "reviews", "requests", "reviewer-management", "context",
+  ]);
+  assert.equal(route.workArea.id, "reviews");
+  assert.equal(route.workPageTitle, "Reviews");
+  assert.deepEqual(
+    Object.entries(route.featureImports).filter(([, enabled]) => enabled).map(([name]) => name),
+    ["reviews"],
+  );
 });
 
 test("Work route context rejects an invalid focused collaboration route without importing unrelated features", () => {
@@ -156,6 +224,21 @@ test("task detail links preserve only the approved filters from the current Work
 
   const outsideWork = new URL(taskDetailUrl("task-8", new URLSearchParams("view=people&taskStatus=done")), "https://nova.test");
   assert.deepEqual([...outsideWork.searchParams.entries()], [["view", "work"], ["task", "task-8"]]);
+});
+
+test("Work area links keep collection filters and discard focused feature IDs", () => {
+  const { workAreaHref } = require("./work-areas.js");
+  const href = new URL(workAreaHref(
+    "https://nova.test/?view=work&task=task-7&assignmentSearch=review&taskStatus=blocked&reviewerRequest=private-id&person=private-id#main",
+    "tasks",
+  ), "https://nova.test");
+  assert.equal(href.searchParams.get("area"), "tasks");
+  assert.equal(href.searchParams.get("assignmentSearch"), "review");
+  assert.equal(href.searchParams.get("taskStatus"), "blocked");
+  assert.equal(href.searchParams.has("task"), false);
+  assert.equal(href.searchParams.has("reviewerRequest"), false);
+  assert.equal(href.searchParams.has("person"), false);
+  assert.equal(href.hash, "#main");
 });
 
 test("assignment filters map query names and omit default values from bounded reads", () => {

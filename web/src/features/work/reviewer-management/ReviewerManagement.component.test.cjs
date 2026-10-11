@@ -175,7 +175,7 @@ test("the route host keeps reviewer reads gated, paged, and separate from assign
   const readsRoute = fs.readFileSync(path.join(__dirname, "../../../../app/work-read-route.js"), "utf8");
   const actionsRoute = fs.readFileSync(path.join(__dirname, "../../../../app/work-reviewer-management-actions-route.ts"), "utf8");
   assert.match(route, /resolveWorkRouteContext\(\{/);
-  assert.match(routeContext, /reviewerManagement:\s*canLoadFeature\(readPlan\.reviewerManagement && standardFeatureRoute\)/);
+  assert.match(routeContext, /reviewerManagement:\s*canLoadFeature\(areaFeature\("reviewerManagement"\)\)/);
   assert.match(route, /const reviewerManagementUi = loadedWorkRouteFeatures\.reviewerManagement\?\.module \|\| null/);
   assert.match(route, /reviewerManagementScopes = \["organisation", "client_workstream", "group", "assigned_work"\]/);
   assert.match(readsRoute, /enabled:\s*nonFocusedFeatureReads && readPlan\.reviewerManagement,[\s\S]*?path:\s*"\/api\/task-assignments\/reviewer-management\?limit=25"/);

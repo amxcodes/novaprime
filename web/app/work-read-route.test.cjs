@@ -45,42 +45,28 @@ function reader(overrides = {}) {
   };
 }
 
-test("dispatches only reads present in the authorized Work plan and preserves URL contracts", async () => {
+test("the default area dispatches only bounded My work reads from the authorized plan", async () => {
   const { readWorkRouteData } = await loadRoute();
   const host = reader();
-  const searchParams = new URLSearchParams(
-    "assignmentStatus=late&assignmentDue=overdue&assignmentSearch=client+review&assignmentCursor=next%2Fpage&taskStatus=blocked&taskDue=today&taskSearch=handoff&taskCursor=cursor%3D2",
-  );
+  const searchParams = new URLSearchParams("assignmentStatus=late&assignmentDue=overdue&assignmentSearch=client+review&assignmentCursor=next%2Fpage");
   const readPlan = Object.fromEntries(Object.keys(emptyPlan()).map((key) => [key, true]));
 
   await readWorkRouteData({
     readPlan,
-    reviewTarget: { assignmentId: "assignment-1" },
     date: "2026-10-06",
     searchParams,
     lifetime: host.lifetime,
     pageApi: host.pageApi,
   });
 
+  assert.deepEqual(host.calls.map(({ path }) => path).sort(), [
+    "/api/work/page-read", "/api/work-sessions/mine",
+  ].sort());
   const batchCall = host.calls.find(({ path }) => path === "/api/work/page-read");
-  assert.ok(batchCall);
-  assert.deepEqual(batchCall.options, {
-    method: "POST",
-    readOnly: true,
-    body: { reads: [
+  assert.deepEqual(batchCall.options.body.reads, [
     "/api/work/assignments/mine?limit=30&status=late&due=overdue&q=client+review&cursor=next%2Fpage",
     "/api/work/timeline?date=2026-10-06",
-    "/api/reviews/pending?assignmentId=assignment-1",
-    "/api/task-reviewer-requests",
-    "/api/task-handover-requests",
-    "/api/work/tasks/visible?limit=30&status=blocked&due=today&q=handoff&cursor=cursor%3D2",
-    "/api/task-catalog",
     "/api/attendance/today",
-    "/api/task-assignments/reviewer-management?limit=25",
-    ] },
-  });
-  assert.deepEqual(host.calls.filter(({ path }) => path !== "/api/work/page-read").map(({ path }) => path), [
-    "/api/work-sessions/mine", "/api/work-context", "/api/tasks",
   ]);
   assert.ok(host.calls.every((call) => call.lifetime === host.lifetime));
 });
@@ -93,13 +79,57 @@ test("group-only task creation loads only its authorized context and catalog cho
     workContext: true,
     taskCatalog: true,
   };
-  const result = await readWorkRouteData({ readPlan, lifetime: host.lifetime, pageApi: host.pageApi });
+  const result = await readWorkRouteData({ readPlan, canCreateTasks: true, lifetime: host.lifetime, pageApi: host.pageApi });
 
   assert.deepEqual(host.calls.map(({ path }) => path), ["/api/work-context", "/api/task-catalog"]);
   assert.deepEqual(result.tasksResult, { tasks: [] });
   assert.deepEqual(result.visibleTasksResult, { tasks: [] });
   assert.deepEqual(result.assignmentsResult, { assignments: [] });
   assert.deepEqual(result.workContext, { path: "/api/work-context", allowed: true });
+});
+
+test("each Work area dispatches only its own authorized reads", async () => {
+  const { readWorkRouteData } = await loadRoute();
+  const readPlan = Object.fromEntries(Object.keys(emptyPlan()).map((key) => [key, true]));
+  const expected = {
+    tasks: ["/api/task-catalog", "/api/work-context", "/api/tasks", "/api/work/tasks/visible?limit=30&status=blocked&q=handoff"],
+    reviews: ["/api/reviews/pending"],
+    requests: ["/api/task-handover-requests", "/api/task-reviewer-requests"],
+    "reviewer-management": ["/api/task-assignments/reviewer-management?limit=25"],
+    context: ["/api/work-context"],
+  };
+
+  for (const [workArea, paths] of Object.entries(expected)) {
+    const host = reader();
+    await readWorkRouteData({
+      readPlan,
+      canCreateTasks: true,
+      workArea,
+      searchParams: new URLSearchParams("taskStatus=blocked&taskSearch=handoff"),
+      lifetime: host.lifetime,
+      pageApi: host.pageApi,
+    });
+    const requestedPaths = host.calls.flatMap(({ path, options }) => path === "/api/work/page-read"
+      ? options.body.reads
+      : [path]);
+    assert.deepEqual(requestedPaths.sort(), [...paths].sort(), `${workArea} only reads its feature data`);
+  }
+});
+
+test("a request for an unavailable area cannot introduce reads outside the plan", async () => {
+  const { readWorkRouteData } = await loadRoute();
+  const host = reader();
+  await readWorkRouteData({
+    readPlan: { ...emptyPlan(), assignments: true },
+    workArea: "reviewer-management",
+    searchParams: new URLSearchParams("area=reviewer-management"),
+    lifetime: host.lifetime,
+    pageApi: host.pageApi,
+  });
+
+  assert.deepEqual(host.calls.map(({ path, options }) => path === "/api/work/page-read"
+    ? options.body.reads
+    : [path]).flat(), ["/api/work/assignments/mine?limit=30"]);
 });
 
 test("focused review routes request only the server-filtered pending review feed", async () => {

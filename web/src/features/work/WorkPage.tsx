@@ -1,4 +1,4 @@
-import type { FormEvent, ReactNode } from "react";
+import type { FormEvent, MouseEvent, ReactNode } from "react";
 import { Button, EmptyState, StateMessage } from "../../design-system";
 import type { WorkPageNotice, WorkPageSection, WorkPageSectionContent } from "./page-contracts";
 import styles from "./WorkPage.module.css";
@@ -8,6 +8,9 @@ export interface WorkPageProps {
   description?: string;
   sections: ReadonlyArray<WorkPageSection>;
   sectionContent?: WorkPageSectionContent;
+  workAreas?: ReadonlyArray<{ id: string; label: string; href: string }>;
+  activeWorkAreaId?: string | null;
+  onSelectWorkArea?: (areaId: string) => void;
   state?: "loading" | "ready" | "error";
   message?: string;
   notices?: ReadonlyArray<WorkPageNotice>;
@@ -84,6 +87,9 @@ export function WorkPage({
   description,
   sections,
   sectionContent,
+  workAreas = [],
+  activeWorkAreaId,
+  onSelectWorkArea,
   state = "ready",
   message,
   notices = [],
@@ -99,6 +105,33 @@ export function WorkPage({
         <h1 id="work-page-title">{title}</h1>
         {description ? <p className={styles.lede}>{description}</p> : null}
       </header>
+
+      {workAreas.length > 1 ? (
+        <nav className={styles.areaNavigation} aria-label="Work areas">
+          <div className={styles.areaLinks}>
+            {workAreas.map((area) => {
+              const current = area.id === activeWorkAreaId;
+              const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+                if (!onSelectWorkArea || event.defaultPrevented || event.button !== 0 ||
+                    event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                onSelectWorkArea(area.id);
+              };
+              return (
+                <a
+                  key={area.id}
+                  className={styles.areaLink}
+                  href={area.href}
+                  aria-current={current ? "page" : undefined}
+                  onClick={handleClick}
+                >
+                  {area.label}
+                </a>
+              );
+            })}
+          </div>
+        </nav>
+      ) : null}
 
       <p id="feedback" className="notice" role="status" hidden />
 

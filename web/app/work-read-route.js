@@ -1,4 +1,9 @@
 import {
+  getAvailableWorkAreas,
+  isWorkReadIncludedInArea,
+  resolveWorkAreaId,
+} from "./work-areas.js";
+import {
   pendingReviewsReadUrl,
   visibleTaskFilters,
   visibleTaskReadUrl,
@@ -40,6 +45,8 @@ export async function readWorkRouteData({
   reviewTarget = {},
   date,
   searchParams = new URLSearchParams(),
+  workArea,
+  canCreateTasks = false,
   lifetime,
   pageApi,
 } = {}) {
@@ -49,6 +56,9 @@ export async function readWorkRouteData({
   const fallbackDate = date || new Date().toISOString().slice(0, 10);
   const focusedRoute = hasReviewRoute || focusRequest !== null;
   const nonFocusedFeatureReads = !focusedRoute;
+  const availableAreas = getAvailableWorkAreas(readPlan, canCreateTasks);
+  const requestedAreaId = typeof workArea === "string" ? workArea : workArea?.id;
+  const workAreaId = resolveWorkAreaId(requestedAreaId || searchParams.get("area"), availableAreas);
   const assignmentFilter = workAssignmentFilters(searchParams);
   const visibleTaskFilter = visibleTaskFilters(searchParams);
 
@@ -91,7 +101,9 @@ export async function readWorkRouteData({
       fallback: emptyReviewerManagement,
     },
   ];
-  const activeReads = requestedReads.filter((read) => read.enabled);
+  const activeReads = requestedReads.filter((read) => read.enabled && (
+    focusedRoute || isWorkReadIncludedInArea(read.key, workAreaId, canCreateTasks)
+  ));
   const batchReads = activeReads.filter((read) => read.batchable !== false);
   const standaloneReads = activeReads.filter((read) => read.batchable === false);
   const results = Object.fromEntries(requestedReads.map((read) => [read.key, read.fallback()]));
