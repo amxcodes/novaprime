@@ -2,18 +2,18 @@
 
 ## Live baseline and release refresh — 2026-10-11
 
-At the live check, Netlify served docs commit `67cc73888ec8005d1fde3045af2addd033f33e5f`
-as deploy `6acbb03be89cc000083d01f7`; the deployment was docs-only over
-application source `9a97dc9896411c7acfbc9b29f9e876e0173ec2b6`. Cloudflare's separate public
-candidate is Ready as version `9130324d` from that same application source. It
-uses the disposable database through Hyperdrive as restricted `nova_app`, has
+At the latest live check, Netlify published docs commit `26785bbefc1dd4ea6a4df45b6f73fd441bf47e99`
+as deploy `6acbd2ae3484ca00084163b4`, over application source `b51edc9`.
+Cloudflare's separate public candidate remains Ready as version `9130324d` from
+older application source `9a97dc9896411c7acfbc9b29f9e876e0173ec2b6`. It uses
+the disposable database through Hyperdrive as restricted `nova_app`, has
 query caching disabled and a 20-connection soft ceiling, and has no customer
-hostname or Cron. A signed-in Super Admin loaded My Day and Work on both hosts;
-the candidate also loaded People and People and access. No business data was
-changed. The matched anonymous readiness sample and its limitations are in the
-[performance investigation](performance-investigation-checklist.md). This is
-selected runtime evidence, not a production cutover or customer install.
-See the [performance investigation](performance-investigation-checklist.md).
+hostname or Cron. A signed-in Super Admin loaded My Day, People, Work, and
+Admin through this candidate; empty setup data was expected and no business
+records were created or changed. The matched anonymous readiness sample and
+its limitations are in the [performance investigation](performance-investigation-checklist.md).
+This is selected runtime evidence, not a production cutover or customer
+install.
 
 Tags `v0.1.3`, `v0.1.4`, and `v0.1.5` passed exact-tag verification and their
 stable GitHub releases are published. A full-history customer clone at

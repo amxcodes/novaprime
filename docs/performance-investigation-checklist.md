@@ -1069,3 +1069,33 @@ or enter production credentials. To make a fair runtime comparison, deploy
 the same source commit to both runtimes, use the same signed-in route sequence
 and data shape, collect route-level client timings plus server diagnostics,
 and repeat cold and warm runs at realistic concurrency.
+
+## Current-source 200-employee PostgreSQL load run — 11 October 2026
+
+The isolated `bun run qa:postgres` run used current application source
+`b51edc9`, 200 synthetic employees, 10 tasks per employee, and at most 25
+concurrent requests. It applied all 80 migrations, passed lifecycle, role and
+RLS checks, the specialized attendance/WFH/leave suite, restricted application
+role preflight, full PostgreSQL backup/restore, and the updater rehearsal from
+migration 0072 through the current ledger. The test dropped its run-scoped
+databases, containers, network, volumes, and temporary credentials. No hosted
+database was involved.
+
+| Read or write workload | Requests | p50 | p95 | p99 |
+| --- | ---: | ---: | ---: | ---: |
+| Work context at 200 employees | 200 | 127 ms | 212 ms | 235 ms |
+| Assignment read at 200 employees | 200 | 41 ms | 55 ms | 61 ms |
+| Timeline read at 200 employees | 200 | 66 ms | 96 ms | 113 ms |
+| Task create and self-assign | 2,000 | 61 ms | 90 ms | 99 ms |
+| Timer start | 2,000 | 70 ms | 106 ms | 120 ms |
+| Timer stop | 2,000 | 41 ms | 56 ms | 60 ms |
+
+No diagnostic failures were reported. Under this local concurrent run, the
+work-context NOVA pool acquisition p95 was 95 ms and its NOVA query total p95
+was 106 ms; assignment-read NOVA acquisition/query p95 was 22/23 ms.
+This is useful evidence that the current source handles the modeled 200-person
+data shape on local PostgreSQL. It does not establish the same latency on
+Netlify, Cloudflare, or a customer-hosted database, and it is not a sustained
+capacity or SLA test. The remaining performance gate is an authenticated,
+same-source hosted comparison with route-level p50/p95/p99 and a controlled
+concurrency profile.

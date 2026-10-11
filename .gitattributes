@@ -1,0 +1,2 @@
+# POSIX scripts run from WSL and Linux containers must keep Unix line endings.
+*.sh text eol=lf
