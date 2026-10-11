@@ -359,10 +359,14 @@ hosting change.
   task-and-assignment roster and repeated actor/session resolution. Keep
   `/api/tasks` in place for its Admin and Operations consumers. Focused route
   and grant-plan tests pass, and the web typecheck passes.
-- [ ] After the optimization deploys, verify that navigating to Work Tasks no
-  longer emits the `api.tasks` diagnostic and compare the same authenticated
-  browser navigation and `api.work`/`api.work-context` timings. This removes a
-  proven unused read; it is not yet a measured production latency improvement.
+- [x] Publish the request removal to production. Netlify published `522d049`
+  and then the test-only follow-up `5046c1f`; GitHub verification run #119
+  passed both `checks` and `postgres`.
+- [ ] After deployment, verify in a signed-in browser that Work Tasks no longer
+  calls `/api/tasks`, then compare the same authenticated navigation and
+  `/api/work` and `/api/work-context` timings. The fresh browser tab opened
+  signed out, so this has not been measured yet. The code change removes a
+  proven unused read; it is not a quantified production latency improvement.
 - [ ] Use browser traces to count API requests per page and identify true
   dependencies. Preserve server permission checks; optimize only requests
   proven to be redundant or independent.
