@@ -196,7 +196,7 @@ describe("Supabase database update adapter", () => {
     const events: string[] = [];
     const request = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith("/database/query")) {
+      if (url.endsWith("/database/query/read-only")) {
         const query = (JSON.parse(String(init?.body)) as { query: string }).query;
         if (query.includes("to_regclass")) return Response.json([{ ledger_exists: true, has_sha256: false }]);
         return Response.json(ledger.map((filename) => ({ filename })));
@@ -243,7 +243,7 @@ describe("Supabase database update adapter", () => {
     const ledger = ["0001_initial.sql"];
     let migrationCalls = 0;
     const request = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).endsWith("/database/query")) {
+      if (String(input).endsWith("/database/query/read-only")) {
         const query = (JSON.parse(String(init?.body)) as { query: string }).query;
         if (query.includes("to_regclass")) return Response.json([{ ledger_exists: true, has_sha256: false }]);
         return Response.json(ledger.map((filename) => ({ filename })));
@@ -271,21 +271,24 @@ describe("Supabase database update adapter", () => {
       ["0002_feature.sql", null],
     ]);
     const request = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (!String(input).endsWith("/database/query")) return Response.json({});
+      const url = String(input);
       const query = (JSON.parse(String(init?.body)) as { query: string }).query;
-      if (query.includes("to_regclass")) {
+      if (url.endsWith("/database/query/read-only") && query.includes("to_regclass")) {
         return Response.json([{ ledger_exists: true, has_sha256: true }]);
       }
-      if (query.includes("information_schema.columns")) {
+      if (url.endsWith("/database/query/read-only") && query.includes("information_schema.columns")) {
         return Response.json([{ has_sha256: true }]);
       }
-      if (query.startsWith("UPDATE public.nova_schema_migrations")) {
+      if (url.endsWith("/database/query") && query.startsWith("UPDATE public.nova_schema_migrations")) {
         expect(query).toContain("0002_feature.sql");
         expect(query).not.toContain("0001_initial.sql");
         ledger.set("0002_feature.sql", fixture.targetManifest["0002_feature.sql"]);
         return Response.json({});
       }
-      return Response.json([...ledger].map(([filename, sha256]) => ({ filename, sha256 })));
+      if (url.endsWith("/database/query/read-only")) {
+        return Response.json([...ledger].map(([filename, sha256]) => ({ filename, sha256 })));
+      }
+      throw new Error("unexpected Supabase updater query");
     }) as typeof fetch;
 
     const result = await applySupabaseUpdate({

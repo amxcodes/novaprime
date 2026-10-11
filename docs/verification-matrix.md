@@ -15,9 +15,13 @@ changed. The matched anonymous readiness sample and its limitations are in the
 selected runtime evidence, not a production cutover or customer install.
 See the [performance investigation](performance-investigation-checklist.md).
 
-Tags `v0.1.3`, `v0.1.4`, and `v0.1.5` passed exact-tag verification and each
-has a GitHub draft release. Customer updater discovery is not active until a
-maintainer reviews and publishes the intended drafts.
+Tags `v0.1.3`, `v0.1.4`, and `v0.1.5` passed exact-tag verification and their
+stable GitHub releases are published. A full-history customer clone at
+`v0.1.3` discovers `v0.1.5` with `bun run nova:update --check`. Database
+planning remains blocked: the available token received HTTP 403 from both the
+legacy query endpoint and the current read-only ledger endpoint. No SQL was
+written. Verify exact-project access and `database_read` before repeating the
+plan.
 
 Current Netlify function logs after deploy `6acb5d10ece4b700080a203a` show a
 warm Notifications request at 1.20 seconds with no pool-acquisition wait,
@@ -169,9 +173,10 @@ departments, as confirmed in Organisation settings. People/access also loaded
 with the protected Super Admin role and scoped people directory. No records
 were changed.
 
-Customer release discovery is still unavailable because tags `v0.1.3` and
-`v0.1.4` point to verified draft releases, not published releases. The
-200-employee local burst and Docker restore do not prove fresh Netlify+Supabase
+Customer release discovery now works from a full-history `v0.1.3` clone and
+finds published `v0.1.5`. The target plan remains unverified because the
+available Management API token receives 403 from the read-only ledger
+endpoint; no database write occurred. The 200-employee local burst and Docker restore do not prove fresh Netlify+Supabase
 or Cloudflare+Supabase customer installs. The live Cloudflare Worker/Hyperdrive
 candidate now proves disposable database connectivity, but no authenticated
 business workflow or same-database route move is verified. At 00:20 IST on
@@ -482,7 +487,7 @@ history; use newer evidence above when results differ.
 | Gate | Current result | What's still needed |
 | --- | --- | --- |
 | Actual deployed baseline | **The reviewed Netlify production deploy served docs commit `67cc738` as deploy `6acbb03be89cc000083d01f7`, over app source `9a97dc9`.** Health/readiness checks returned 200; signed-in Super Admin My Day and Work rendered. The disposable Supabase project remains checksum-verified through `0080`. One active named Cron job ran successfully at 15:55 UTC on 11 October after app source `9a97dc9`; its paired `net._http_response` returned 200 without timeout or error. | Collect authenticated browser waterfalls and repeated route distributions, and hosted first-install evidence. Route checks cover selected pages and one Super Admin. |
-| Customer releases and updates | **Updater code and local migration/restore evidence exist; verified release drafts v0.1.3, v0.1.4, and v0.1.5 are present.** `v0.1.3` at `a957cd4` is the updater-bearing baseline with 80 migration hashes. `v0.1.4` at `50b4b6e` has no SQL changes and requires a `0.1.3` starting version; `v0.1.5` at `4a85727` also has no SQL changes. All exact-tag verification workflows passed. A source-only clone rehearsal merged an actual `v0.1.5` target into a `v0.1.3`-based customer branch and preserved a committed customer file, with the source checkout unchanged. Releases remain invisible to updater discovery until reviewed and published. | Publish the reviewed drafts, then run the actual CLI from a clean customer clone through release discovery, candidate build, and database planning. Exercise the older-clone baseline merge, real conflict review, wrong-project refusal, migration failure/retry, declined push, backup/restore, and host-build failure after schema change. |
+| Customer releases and updates | **Stable releases `v0.1.3`, `v0.1.4`, and `v0.1.5` are published.** `v0.1.3` at `a957cd4` is the updater-bearing baseline with 80 migration hashes. `v0.1.4` at `50b4b6e` has no SQL changes and requires a `0.1.3` starting version; `v0.1.5` at `4a85727` also has no SQL changes. All exact-tag verification workflows passed. A full-history `v0.1.3` clone discovers `v0.1.5`; a source-only rehearsal preserves a committed customer customization. The actual plan is blocked because the available token receives 403 from Supabase's read-only ledger endpoint; no SQL was submitted. | Verify exact-project access and `database_read`, then run the actual CLI from a clean customer clone through database planning and the remaining candidate, migration, push, backup/restore, and failure-recovery cases. Exercise older-clone baseline merge, real conflict review, wrong-project refusal, migration failure/retry, declined push, and host-build failure after schema change. |
 | Advertised first installs | **Local Docker/PostgreSQL lifecycle and archive restore pass in prior evidence; hosted first installs remain unproven.** The local PostgreSQL 17 install applied all 80 migrations, passed protected maintenance and authenticated workflow suites, and restored counts, RLS, sequence, auth/session, encryption, and role boundaries. The published Netlify + Supabase site and Cloudflare candidate are test infrastructure, not clean-customer installs. Cloudflare now has a disposable Hyperdrive and separate public candidate Worker; no customer provisioning flow was exercised. | Complete clean, isolated Netlify + Supabase and Cloudflare + Supabase first installs. Prove internet-facing Docker only after public exposure, firewall, and TLS checks are ready. |
 | Same-database runtime move | **Cloudflare Hyperdrive and selected signed-in routes are proven on an isolated disposable target; a runtime move is not.** Candidate version `9130324d` runs application source `9a97dc9`; a Super Admin loaded My Day, Work, People, and People and access through it, with no business records changed. | The Worker is public and must stay on disposable data; it has no customer hostname or Cron, and no traffic was moved. Route smoke is not a complete workflow, role, latency, or capacity test. Implement and rehearse journaled promotion and rollback before calling a runtime move complete. Keep this separate from any database migration. |
 | Scheduler ownership | **The selected Supabase scheduler and lease-backed run succeeded after application source `9a97dc9` was live.** One active named Cron row was observed; its 15:55 UTC run on 11 October succeeded, and the matching Net HTTP callback returned 200 without timeout or error. The `0080` migration tests overlap, expiration, renewal, stale-owner fencing and execute-only app-role checks. | Extend inventory to duplicate triggers outside this project and exercise missed runs, retries, secret rotation and recovery on each live supported profile. The current inventory cannot prove every trigger account-wide. |

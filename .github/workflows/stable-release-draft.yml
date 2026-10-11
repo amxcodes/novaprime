@@ -95,7 +95,7 @@ jobs:
               "",
               `Verified source commit: ${process.env.RELEASE_COMMIT}`,
               "",
-              "This draft was generated only after the tagged commit passed the full NOVA verification workflow. Review the impact and compatibility notes before publishing.",
+              "The tagged source passed the full NOVA verification workflow. Review this compatibility note and the target database plan before applying the release.",
             ].join("\n");
             writeFileSync(`${process.env.RUNNER_TEMP}/nova-release-notes.md`, `${notes}\n`, { flag: "wx" });
           '

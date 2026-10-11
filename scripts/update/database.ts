@@ -586,7 +586,7 @@ function validateSupabaseTarget(projectRef: string, confirmation: string, access
 }
 
 async function readSupabaseLedger(options: SupabaseUpdateOptions): Promise<MigrationLedgerEntry[]> {
-  const ledgerState = await supabaseRequest(options, "database/query", {
+  const ledgerState = await supabaseRequest(options, "database/query/read-only", {
     method: "POST",
     body: {
       query: `SELECT to_regclass('public.nova_schema_migrations') IS NOT NULL AS ledger_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'nova_schema_migrations' AND column_name = 'sha256') AS has_sha256`,
@@ -599,7 +599,7 @@ async function readSupabaseLedger(options: SupabaseUpdateOptions): Promise<Migra
     throw new Error("DATABASE_MIGRATION_BASELINE_UNKNOWN");
   }
   const hasSha256 = (ledgerState[0] as { has_sha256?: unknown }).has_sha256 === true;
-  const result = await supabaseRequest(options, "database/query", {
+  const result = await supabaseRequest(options, "database/query/read-only", {
     method: "POST",
     body: {
       query: hasSha256
@@ -631,7 +631,7 @@ async function readSupabaseLedger(options: SupabaseUpdateOptions): Promise<Migra
 
 async function supabaseRequest(
   options: SupabaseUpdateOptions,
-  endpoint: "database/query" | "database/migrations",
+  endpoint: "database/query" | "database/query/read-only" | "database/migrations",
   request: { method: "POST"; body: unknown },
 ): Promise<unknown> {
   const fetcher = options.request ?? fetch;
@@ -671,7 +671,7 @@ async function backfillSupabaseAttemptChecksums(
   const mappings = checksumBackfillEntries(verifiedMigrationHashes, baselineManifest);
   if (mappings.length === 0) return;
 
-  const state = await supabaseRequest(options, "database/query", {
+  const state = await supabaseRequest(options, "database/query/read-only", {
     method: "POST",
     body: {
       query: `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'nova_schema_migrations' AND column_name = 'sha256') AS has_sha256`,
