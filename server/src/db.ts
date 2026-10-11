@@ -168,8 +168,11 @@ export async function withDatabaseRequest<T>(
   operation: (transaction: DatabaseTransaction) => Promise<T>,
 ): Promise<T> {
   // Keep the only values interpolated into the transaction setup constrained
-  // to UUIDs. Sending BEGIN and the transaction-local RLS context together
-  // saves one database round trip for every scoped command.
+  // to UUIDs. Sending BEGIN, the transaction-local RLS context, and the OLTP
+  // JIT policy together saves one database round trip for every scoped
+  // command. JIT compilation dominated the 10-row assignment query at the
+  // 200-employee profile. Transaction-local scope works with transaction
+  // poolers and resets automatically at commit without changing other sessions.
   const validatedContext = databaseRequestContext(context.userId, context.organisationId);
   const transaction = await database().connect();
 
@@ -178,7 +181,8 @@ export async function withDatabaseRequest<T>(
       `BEGIN;
        SELECT
         set_config('nova.user_id', '${validatedContext.userId}', true),
-        set_config('nova.organisation_id', '${validatedContext.organisationId}', true);`,
+        set_config('nova.organisation_id', '${validatedContext.organisationId}', true),
+        set_config('jit', 'off', true);`,
     );
 
     const result = await operation(transaction);

@@ -4,21 +4,23 @@ Date: 2026-10-11
 
 ## Latest latency work and provider constraints — 11 October 2026
 
-The current source now sends `BEGIN` and the transaction-local RLS identity in
-one PostgreSQL request for every `withDatabaseRequest` transaction. Both IDs
-are validated as UUIDs before they are interpolated; transaction scope and
-policy checks are unchanged. This removes one network round trip per scoped
-command. Verification passed the complete 575-test suite, server/operator and
-Cloudflare TypeScript checks, plus the isolated PostgreSQL 17 lifecycle,
-restore, and 0072→0080 updater rehearsals.
+The current source sends `BEGIN`, transaction-local RLS identity, and
+`jit=off` in one PostgreSQL request for each `withDatabaseRequest`
+transaction. Both IDs are UUID-validated before interpolation; transaction
+scope is unchanged. The JIT choice resets automatically at commit and adds no
+database round trip. Server and Cloudflare typechecks passed. The broad Bun
+test command did not complete after eight minutes of CPU-bound silence in this
+session, so it is recorded as inconclusive. The full isolated PostgreSQL 17
+QA did complete successfully with all 80 migrations, 200 employees × 10 tasks,
+restore verification, and the 0072→0080 updater rehearsal.
 
-The post-change local workload used 100 employees, 10 tasks each and at most
-25 concurrent requests. The five wave p95s were 289.5 ms for work context,
-182.7 ms for task creation/self-assignment, 210.0 ms for timer start, 310.3 ms
-for timer stop, and 64.6 ms for assignment reads. All waves had zero database
-diagnostic failures; the complete lifecycle passed 2,433 assertions. This is
-a local PostgreSQL burst, not a controlled before/after comparison, a hosted
-latency result, or a sustained capacity guarantee.
+The current 200-employee local workload used 10 tasks each and at most 25
+concurrent requests. The five p95s were 346 ms for work context, 101 ms for
+task creation/self-assignment, 113 ms for timer start, 59 ms for timer stop,
+and 59 ms for assignment reads. The assignment EXPLAIN used no JIT and
+executed in 3.5 ms; all waves had zero database diagnostic failures. These
+local PostgreSQL measurements are not hosted route latency, a sustained soak,
+or a customer capacity guarantee.
 
 Netlify's Functions → Region settings page confirms the deployed region is
 `CMH (Ohio, US East)` and shows “Upgrade to customize region.” Netlify's
@@ -194,8 +196,11 @@ invocations, zero errors, average duration 3,241 ms, p50 2,926 ms, p95
 5,633 ms, and p99 5,666 ms. Only roughly six minutes of that window followed
 the new deploy, so it is not a before/after estimate. A useful comparison
 still needs enough route-specific warm samples on this deployment and a
-signed-in browser waterfall. The 200-employee local PostgreSQL run on 11
-October passed at concurrency 25; its results and limitations are recorded in
+signed-in browser waterfall. Fresh 200×10 PostgreSQL runs passed at concurrency
+25. Raising the local DB/auth pools from 10/5 to 25/10 removed most acquisition
+wait in one read path but increased assignment query time and did not improve
+assignment p95. Keep production pool defaults unchanged until a hosted,
+connection-budget-aware comparison exists. Full metrics and limits are in
 `docs/runtime-smoke.md`.
 
 A later authenticated Tasks-page sample at 12:17 IST returned HTTP 200 for

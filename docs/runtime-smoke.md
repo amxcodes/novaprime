@@ -41,15 +41,38 @@ passed after restore. QA used a private run-scoped network and generated
 credentials, exposed no database port, and removed only the resources created
 for this run.
 
-Synchronized local in-process p50/p95/p99 were: work context
-151.4/225.2/247.3 ms (1.754 s batch, 113.99 requests/s); task
-create/self-assign 84.7/120.7/135.1 ms (9.504 s, 210.44 requests/s); timer
-start 102.2/150.3/169.1 ms (11.572 s, 172.83 requests/s); timer stop
-55.5/74.6/83.6 ms (5.899 s, 339.07 requests/s); assignment reads
-371.7/632.8/648.4 ms (4.755 s, 42.06 requests/s). The assignment-read query
-is the slowest local wave; its diagnostic database execution included about
-106 ms of JIT work and 110 ms of execution. There were no database diagnostic
-failures in any wave.
+On a fresh repeat with the default database/auth pools (10/5), synchronized
+local in-process p50/p95/p99 were: work context 318.8/461.3/472.6 ms (3.613 s
+batch, 55.35 requests/s); task create/self-assign 162.8/222.7/232.1 ms
+(17.886 s, 111.82 requests/s); timer start 85.6/202.5/263.9 ms (11.020 s,
+181.47 requests/s); timer stop 43.9/60.0/67.1 ms (4.683 s, 427.04
+requests/s); assignment reads 305.0/437.7/527.1 ms (3.592 s, 55.68
+requests/s). No wave reported a database diagnostic failure. Pool-acquisition
+p95 reached 305 ms for work context and 297 ms for assignment reads; their
+database query-total p95s were 175 ms and 185 ms respectively. The assignment
+query's single EXPLAIN sample planned in 2.6 ms and executed in 101.4 ms,
+including 97.7 ms of JIT work.
+
+A second 200×10 run at the same concurrency, with database/auth pools raised
+to 25/10, reduced work-context p95 to 337 ms and task creation to 189 ms, but
+assignment-read p95 increased to 457 ms. Its assignment database acquisition
+fell below 1 ms while query-total p95 rose to 442 ms. This points to a tradeoff
+between connection queueing and database query/CPU pressure; it does not
+support a blanket production pool increase. Both profiles passed the complete
+isolated QA suite and removed only their run-scoped resources.
+
+The current code-level repeat adds `jit=off` transaction-locally with the RLS
+context, using the default 10/5 pools. It passed the complete isolated QA suite
+and produced p95s of 346 ms work context, 101 ms task create/self-assign,
+113 ms timer start, 59 ms timer stop, and 59 ms assignment reads. The
+assignment-read EXPLAIN reported 2.4 ms planning, 3.5 ms execution, and
+`jit=null`; database diagnostic failures were zero. Against the earlier
+default-pool run, assignment-read p95 fell from 438 ms to 59 ms. These are
+sequential local tests rather than a randomized or hosted comparison, but the
+plan confirms removal of the measured compile cost in the real request path.
+PostgreSQL guidance says JIT mainly helps long, CPU-bound queries and that its
+overhead can exceed its benefit for short queries
+([PostgreSQL 17 JIT decision guide](https://www.postgresql.org/docs/17/jit-decision.html)).
 
 These measurements exclude browser rendering, HTTP transport, Netlify or
 Cloudflare startup, provider networking, and sustained load. They establish a
