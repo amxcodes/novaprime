@@ -1038,3 +1038,34 @@ complexity.
 - [Supabase database functions](https://supabase.com/docs/guides/database/functions)
 - [Better Auth installation and request-handler integration](https://better-auth.com/docs/installation)
 - [Cloudflare Workers placement near a database or backend](https://developers.cloudflare.com/workers/configuration/placement/)
+
+## Cloudflare Hyperdrive candidate smoke — 11 October 2026
+
+The signed-in candidate at `nova-runtime-candidate.amanxnu.workers.dev` was
+verified against the disposable Supabase database through its Hyperdrive
+binding. My Day, People, Work, and Admin loaded for the Super Admin test
+account. Admin showed the expected empty office and department setup, and My
+Day showed that attendance needs an office assignment; no test records were
+created. The candidate keeps Supabase as the database and scheduler owner.
+No production domain, Netlify route, or Cron configuration was changed.
+
+The candidate currently runs Worker version `9130324d`, built from commit
+`9a97dc9896411c7acfbc9b29f9e876e0173ec2b6`; Netlify production runs `b51edc9`.
+The versions are not source-matched, so this is a runtime wiring and
+authenticated page smoke, not a controlled provider speed comparison. With
+the Cloudflare dashboard filtered to actively deployed versions, its 24-hour
+view showed 288 invocations and zero Worker errors. The request-duration
+chart showed p50 about 857 ms, p90 about 1.0 s, and p99 about 2.0 s; CPU time
+showed p50 about 23 ms, p90 about 226 ms, and p99 about 338 ms. These are
+small-sample dashboard distributions, not route-specific timings or a load
+test. The separate static-asset panel showed 85 4xx responses; identify their
+paths before treating asset delivery as clean.
+
+The candidate uses a public `workers.dev` address because Cloudflare Access
+was not available on the test account. Its application APIs still require
+NOVA authentication, and its database is disposable, but the URL is not an
+access-controlled staging environment. Do not use it for production traffic
+or enter production credentials. To make a fair runtime comparison, deploy
+the same source commit to both runtimes, use the same signed-in route sequence
+and data shape, collect route-level client timings plus server diagnostics,
+and repeat cold and warm runs at realistic concurrency.
