@@ -18,6 +18,16 @@ business records or settings were changed. The independent My Day panel loads
 resolve on both runtimes; this check does not cover every role, write action,
 accessibility/responsive journey, or authenticated latency distribution.
 
+After the candidate session was confirmed active on 11 October, the Cloudflare
+Worker also rendered the People directory and People and access pages through
+the same Hyperdrive-backed runtime. The directory returned the single expected
+Super Admin record; the access page loaded the protected role and people-in-scope
+controls. Its people/onboarding panel briefly showed a loading state and then
+resolved. The candidate browser reported no console errors or warnings. These
+were read-only checks; they do not validate custom-role behavior, mutations, or
+every protected route. Cloudflare Workers Observability is disabled, so this
+check did not enable persistent Worker event logging.
+
 The same-source anonymous readiness timing sample is recorded in the
 [performance investigation](performance-investigation-checklist.md). Its
 results do not certify user-facing route speed or hosted 100/200-person capacity.
