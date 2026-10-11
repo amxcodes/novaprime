@@ -9,11 +9,12 @@ changing runtime or database architecture. The production database is in Seoul
 
 ## Query-path fix and current deployment — 11 October 2026
 
-Before this query change, Netlify had published `cf50b49` to Production, and
-the authenticated Admin and People pages rendered after that deploy. No new
-route-level latency sample was captured after it, so the older hosted timings
-below remain the production performance evidence until the query fix is
-published and measured.
+Netlify has published `a4e64ea` (`perf: avoid correction task scans`) to
+Production as deploy `6acb4e021787e000087b6622`; the build took 29 seconds.
+GitHub Actions run [#130](https://github.com/amxcodes/novaprime/actions/runs/38126275344)
+passed both `checks` and `postgres`. The live function log now provides
+post-deploy route samples, but they do not yet show that the whole product is
+fast.
 
 A controlled local PostgreSQL 17 regression test found and fixed a specific
 slow read: the employee assignment and Admin task queries self-joined the
@@ -33,6 +34,23 @@ The run used only a disposable local database and removed its containers,
 volumes, network, and random credentials afterward. This is a reproducible
 query regression result, not a Netlify/Cloudflare timing or capacity guarantee.
 
+Netlify's project dashboard confirms that the production Function runs in
+`CMH (Ohio, US)`, while NOVA's Supabase database is in Seoul (`ap-northeast-2`).
+Post-deploy logs from 14:21–14:25 IST show the handler and database costs
+remain high: `GET api.work-context` took 5,568 ms inside NOVA (7,149 ms total
+Function duration), with 14 database queries and 2,766 ms summed query time;
+`POST api.work` took 3,364 ms inside NOVA with 20 queries; and
+`GET api.work-sessions` took 4,386 ms inside NOVA (6,014 ms total). Several
+other requests took 1.3–1.7 seconds warm. Slow calls also show roughly 1–3.3
+seconds of accumulated pool-acquisition time across 3–6 acquisitions in each
+pool. These subtotals overlap and are not elapsed time to add. The first
+post-deploy session read shows only about 4 ms of entry-module load, so cold
+module startup does not explain these samples. The geographic mismatch and
+database round-trip/pool costs are now the leading measured causes; Netlify
+platform overhead adds a smaller but visible amount on some calls. A matched
+regional runtime test is still required before claiming which change will
+improve employee experience or by how much.
+
 A pool-size comparison before this query fix also showed why simply raising
 the default is unsafe. With 10 connections, assignment-read request p95 was
 1,175 ms, NOVA acquisition p95 was 827 ms, and NOVA query-total p95 was 452 ms.
@@ -45,9 +63,12 @@ request mix and the database's shared connection budget justify a different
 value.
 
 The signed-in Cloudflare account was inspected. It currently has no Worker
-projects, and Cloudflare Access is not configured. No Worker, Hyperdrive
-binding, domain, or scheduler was created. A live candidate still needs the
-existing deployment safety gates, a candidate-only Access boundary, and an
+projects, and Cloudflare Access is not configured. The user approved an Access
+policy restricted to `Amanxnu@gmail.com`. The Zero Trust Free plan selector
+opened the Cloudflare checkout page, which remained on a loading state; no
+Access application or policy was created. No Worker, Hyperdrive binding,
+domain, or scheduler was created. A live candidate still needs the existing
+deployment safety gates, a candidate-only Access boundary, and a separately
 approved transfer of the restricted database/runtime secrets to Cloudflare;
 the production Netlify route, Supabase database, and Supabase Cron remain as
 they were.
