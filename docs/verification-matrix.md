@@ -27,9 +27,8 @@ establish a sole cause or route percentiles. See the
 
 The latest `/api/health` and `/api/ready` responses were not verified in this
 environment: the browser blocked the API URL and shell DNS could not resolve
-the Netlify hostname. WSL access is also denied to this Codex session, so the
-earlier WSL/Docker PostgreSQL 17 test evidence remains historical and was not
-rerun here.
+the Netlify hostname. The isolated local PostgreSQL proof was rerun on
+2026-10-11; details follow below. Hosted health and readiness remain open.
 
 Cloudflare Zero Trust setup remains declined. Cloudflare documents
 `wrangler dev --remote` as uploading code to a temporary remote preview, but
@@ -38,6 +37,26 @@ does not document that the temporary route is unreachable publicly. Omitting
 Do not run that path with production credentials or a live database until the
 actual candidate route is verified private. No Worker or Hyperdrive has been
 created for NOVA.
+
+## Fresh isolated PostgreSQL proof — 2026-10-11
+
+`bun run qa:postgres` passed against a unique WSL/Docker PostgreSQL 17
+instance. It applied all 80 canonical migrations, passed the rollback/RLS
+fixtures and authenticated lifecycle (623 assertions), and passed the
+attendance/WFH/leave/geofence runtime smoke. The application-role preflight
+confirmed that `nova_app` owns no NOVA objects, cannot assume their owner, and
+has no privileged membership. The updater rehearsal upgraded a trusted
+72-migration baseline through all eight pending migrations to 0080 and passed
+the post-upgrade role check. A separate full dump/restore rehearsal verified
+80 migration checksums, 65 table row counts, 59 RLS policies, sequence and
+extension state, auth/session data, tenant isolation, encrypted credentials,
+and restricted-role boundaries.
+
+The harness used generated credentials and a run-specific Compose project,
+network, database, data volume, and TLS volume. It removed only those verified
+test resources after success; the shared `nova` database and volume were not
+touched. This is current local PostgreSQL and customer-update-path evidence;
+it does not prove a hosted cloud install or a production performance target.
 
 ## Task-catalogue permission follow-up — 2026-10-11 (`7d338af`)
 
