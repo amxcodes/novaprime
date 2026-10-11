@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "migrations": [
     {
       "filename": "0001_people_identity.sql",
@@ -324,6 +324,6 @@
     }
   ],
   "migrationClass": "online-compatible",
-  "impact": "Adds aggregate pool-state snapshots to slow-request diagnostics so operators can distinguish reusable idle clients, available connection capacity, and likely pool saturation. No schema or migration changes.",
+  "impact": "Disables PostgreSQL JIT for scoped OLTP API transactions to avoid query-planning compilation overhead; the setting is transaction-local and resets at commit or rollback. No schema or migration changes.",
   "minimumStartingVersion": "0.1.3"
 }
