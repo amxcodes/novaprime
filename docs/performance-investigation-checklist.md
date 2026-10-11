@@ -59,6 +59,43 @@ deployment, use them to distinguish likely local-pool saturation from
 connection creation, then correlate with warm/cold samples and provider-side
 metrics before changing pool limits or hosting.
 
+## Current live telemetry after `c622961` (11 October 2026)
+
+Netlify's authenticated dashboard now confirms `c622961` is published as
+deploy `6acb5d10ece4b700080a203a`. The production function remains in
+`CMH (Ohio, US East)`; Supabase identifies the selected database as Seoul.
+The current function logs show `GET /api/auth/get-session` at 3.29 seconds
+inside the handler, `/api/me` at 3.52 seconds, a warm `/api/notifications`
+request at 1.20 seconds, `/api/work-sessions` at 4.19 seconds, and a Work read
+at 5.23 seconds. The Work log counted 20 NOVA queries, with the largest
+individual query at 192 ms; its recorded work-read spans overlap and are not
+additive. Module loading was 4–13 ms in these examples.
+
+Pool diagnostics reported no acquisition at pool capacity. The Work request's
+largest observed waiter count was two; the warm Notifications sample had zero
+pool-acquisition time but still recorded 863 ms across five NOVA query
+round-trips and 330 ms across two auth queries. Summed query and acquisition
+times can overlap, so they must not be added to estimate elapsed time. These
+samples point toward network/round-trip cost and some cold connection setup;
+they do not prove a single cause or give route percentiles.
+
+At the same time, Supabase's live connection view showed 19 of 60 connections,
+one active query, zero blocked queries, and zero idle-in-transaction sessions.
+Its query-performance report showed a 99.99% cache hit rate and 3.3 average
+rows per call. That report is based on accumulated `pg_stat_statements` data
+and includes dashboard/catalog and scheduler SQL, so it is not a matched
+profile of the logged NOVA HTTP requests. It does not show evidence of current
+connection exhaustion or a cache miss problem, but it cannot exclude brief
+resource pressure outside the snapshot.
+
+The next speed comparison should capture route-specific distributions with
+the same authenticated read workload against the current Netlify region and a
+verified isolated runtime closer to Seoul. Netlify shows custom region settings
+locked behind an upgrade; the code cannot move its function region. Supabase
+Edge Functions remain a candidate only after a NOVA runtime adapter and
+same-origin auth routing are tested. No provider, database, pool, or scheduler
+configuration was changed during this read-only inspection.
+
 This checklist separates browser time, Netlify execution, database connection
 wait, PostgreSQL round trips, and query execution. It records evidence before
 changing runtime or database architecture. The production database is in Seoul

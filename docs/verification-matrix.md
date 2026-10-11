@@ -3,13 +3,27 @@
 ## Live baseline and release refresh — 2026-10-11
 
 The authenticated Netlify Deploys dashboard confirms that `main` at
-`50b4b6e10854e9cfd4b85829537843764969fd21` is published as deploy
-`6acb5921088aa40008c165d7`. GitHub Verify run [#134](https://github.com/amxcodes/novaprime/actions/runs/38129103347)
-completed successfully. This commit adds PostgreSQL pool-state diagnostics;
-it does not change the schema or establish that hosted latency is fixed.
+`c622961e41c97b2969c2ede509cc177bb958095b` is published as deploy
+`6acb5d10ece4b700080a203a`. This is a documentation-only commit on top of
+application source `50b4b6e`; GitHub Verify run [#134](https://github.com/amxcodes/novaprime/actions/runs/38129103347)
+passed for that application source. On the current checkout, all 73 updater
+tests passed, the operator typecheck passed, and the `0.1.4` manifest verified
+80 canonical migrations. This still does not establish hosted speed or a
+stable customer release.
 GitHub's release list and tag refs are both empty. Version `0.1.4` is committed
 on `main` and deployed to the test site, but it has no stable tag/release and
 is not discoverable by customer updater flows.
+
+Current Netlify function logs after deploy `6acb5d10ece4b700080a203a` show a
+warm Notifications request at 1.20 seconds with no pool-acquisition wait,
+Work at 5.23 seconds, Work sessions at 4.19 seconds, and session lookup at
+3.29 seconds. Supabase's simultaneous connection snapshot showed 19/60
+connections, one active query, and no blocked or idle-in-transaction sessions.
+The query report showed a 99.99% cache hit rate; its cumulative dashboard and
+scheduler traffic is not a matched endpoint profile. These observations favor
+investigating inter-region and database round-trip cost, but are too small to
+establish a sole cause or route percentiles. See the
+[performance investigation](performance-investigation-checklist.md#current-live-telemetry-after-c622961-11-october-2026).
 
 The latest `/api/health` and `/api/ready` responses were not verified in this
 environment: the browser blocked the API URL and shell DNS could not resolve
