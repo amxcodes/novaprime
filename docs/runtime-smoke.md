@@ -2,13 +2,14 @@
 
 ## Timeline and 100/200-user burst follow-up — 11 October 2026
 
-The timeline endpoint now groups authorization/business-date resolution and
-the attendance/policy/session/adjustment read into two SQL statements, then
-performs the separate adjustment-permission check. The scope conditions remain
-server-side and were exercised by the normal authenticated and role-boundary
-suite. Diagnostics expose only the three safe durations (access, data, and
-adjustment); no timeline payload is included. PostgreSQL `EXPLAIN ANALYZE`
-reports the actual data-query plan in the isolated workload.
+The published baseline on commit `38e3df9` used three serialized timeline
+queries inside a scoped transaction: target permission/business date, timeline
+data, and correction permission. The latest code returns both view and
+correction permission from the first query, preserving server-side scope checks
+and reducing the timeline to two serialized read queries. The Work response
+and Netlify logs forward only the safe access/data durations; no timeline
+payload is included. The authenticated role-boundary tests and the full
+isolated PostgreSQL lifecycle passed with this query.
 
 The 100-employee × 10-task run at 25 concurrent requests passed the complete
 isolated PostgreSQL 17 QA and 2,437 lifecycle assertions. Work context p95 was
@@ -17,7 +18,7 @@ timer-start p95 152 ms, timer-stop p95 226 ms, assignment-read p95 60 ms, and
 timeline-read p95 117 ms. Timeline phase p95 was 10 ms access, 26 ms data, and
 16 ms adjustment; the timeline SQL plan ran in 4.1 ms.
 
-The 200-employee × 10-task run at the same concurrency passed all 4,237
+The earlier 200-employee × 10-task run at the same concurrency passed all 4,237
 lifecycle assertions and the same full migration, role/RLS, restore, updater,
 attendance, and cleanup checks. Work context p95 was 368 ms, task
 creation/self-assignment p95 225 ms across 2,000 requests, timer-start p95 152
@@ -27,10 +28,21 @@ ran in 4.3 ms. The diagnostics showed no DB query failures. This local
 in-process burst is not hosted, sustained, or a capacity guarantee.
 
 An earlier 100×10 run reported a 2.45 s timeline p95 under the same nominal
-profile. This conflict is retained as an unresolved variance, not hidden: the
-new clean 100- and 200-person runs show low phase/query times, while production
-Netlify had previously shown multi-second requests. The source change must
-still be published and compared with fresh single-tab hosted measurements.
+profile. This conflict remains an unresolved variance: clean local runs show
+low database/query time, while hosted Netlify still showed multi-second
+authenticated requests.
+
+The newest isolated PostgreSQL 17 run validated the shared Node app/auth pool
+and two-query timeline against all 80 migrations. At 100 employees × 10 tasks
+and 25 concurrent requests it passed 2,437 lifecycle assertions, specialized
+attendance/WFH/leave checks, restricted application-role readiness, full
+backup/restore, the 0072-to-current updater rehearsal, and complete cleanup.
+Observed p95s were 298 ms for Work context, 169 ms for task create/self-assign
+(1,000 requests), 183 ms for timer start, 275 ms for timer stop, 68 ms for
+assignment reads and 122 ms for timeline reads. Timeline access/data phases
+were 20/34 ms at p95. These are isolated local workload results, not a hosted
+latency or capacity promise. The new source still needs a fresh Netlify and
+same-source Cloudflare comparison.
 
 ## Current Netlify and isolated Cloudflare pages — 11 October 2026
 

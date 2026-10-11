@@ -4,6 +4,7 @@ import {
   createDatabaseDiagnostics,
   readDatabaseDiagnostics,
   withDatabaseDiagnostics,
+  withDatabasePoolSource,
   type RequestDatabaseDiagnostics,
 } from "./database-diagnostics.js";
 import { isSecretsEncryptionKeyValid } from "./secrets.js";
@@ -243,7 +244,7 @@ async function dispatchRequest(
     const authModuleStartedAt = performance.now();
     const { auth } = await import("./auth.js");
     requestTiming.authModuleLoadMs = performance.now() - authModuleStartedAt;
-    return auth.handler(request);
+    return withDatabasePoolSource("auth", () => auth.handler(request));
   }
 
   // Deployment schedulers (Cloudflare Cron, Supabase Cron/pg_net, Netlify,

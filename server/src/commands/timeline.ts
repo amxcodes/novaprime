@@ -1,4 +1,3 @@
-import type { PoolClient } from "pg";
 import { authenticationConfiguration } from "../auth-configuration.js";
 import { withDatabaseRequest, type DatabaseRequestContext } from "../db.js";
 import { isNormalOperationalActor, requestActor } from "../request-actor.js";
@@ -28,151 +27,148 @@ const timelineAccessSql = `
   WITH actor_dates AS MATERIALIZED (
     SELECT nova.person_business_date($1::uuid) AS actor_business_date,
            nova.person_business_date($2::uuid) AS target_business_date
+  ), timeline_access AS MATERIALIZED (
+    SELECT EXISTS (
+      SELECT 1
+      FROM nova.person_role_assignments assignments
+      JOIN nova.roles roles ON roles.id = assignments.role_id
+      JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
+      CROSS JOIN actor_dates
+      WHERE assignments.person_id = $1
+        AND assignments.effective_on <= actor_dates.actor_business_date
+        AND (assignments.effective_until IS NULL OR assignments.effective_until >= actor_dates.actor_business_date)
+        AND roles.archived_at IS NULL
+        AND grants.permission_key = 'work.timeline.view'
+        AND (
+          grants.scope = 'organisation'
+          OR (grants.scope = 'own_record' AND $1 = $2)
+          OR (grants.scope = 'office' AND EXISTS (
+            SELECT 1 FROM nova.person_office_assignments target_offices
+            WHERE target_offices.person_id = $2 AND target_offices.office_id = grants.office_id
+              AND target_offices.effective_on <= actor_dates.target_business_date
+              AND (target_offices.effective_until IS NULL OR target_offices.effective_until >= actor_dates.target_business_date)
+          ))
+          OR (grants.scope = 'organisation_department' AND EXISTS (
+            SELECT 1 FROM nova.person_department_assignments target_departments
+            WHERE target_departments.person_id = $2
+              AND target_departments.organisation_department_id = grants.organisation_department_id
+              AND target_departments.effective_on <= actor_dates.target_business_date
+              AND (target_departments.effective_until IS NULL OR target_departments.effective_until >= actor_dates.target_business_date)
+          ))
+          OR (grants.scope = 'client' AND EXISTS (
+            SELECT 1
+            FROM nova.task_assignments target_assignments
+            JOIN nova.tasks target_tasks ON target_tasks.id = target_assignments.task_id
+            JOIN nova.client_workstreams target_workstreams ON target_workstreams.id = target_tasks.client_workstream_id
+            WHERE target_assignments.organisation_id = $3
+              AND target_assignments.person_id = $2
+              AND target_workstreams.client_id = grants.client_id
+          ))
+          OR (grants.scope = 'client_workstream' AND EXISTS (
+            SELECT 1 FROM nova.task_assignments target_assignments
+            JOIN nova.tasks target_tasks ON target_tasks.id = target_assignments.task_id
+            WHERE target_assignments.organisation_id = $3
+              AND target_assignments.person_id = $2
+              AND target_tasks.client_workstream_id = grants.client_workstream_id
+          ))
+          OR (grants.scope = 'group' AND EXISTS (
+            SELECT 1 FROM nova.task_assignments target_assignments
+            JOIN nova.tasks target_tasks ON target_tasks.id = target_assignments.task_id
+            WHERE target_assignments.organisation_id = $3
+              AND target_assignments.person_id = $2
+              AND target_tasks.work_group_id = grants.group_id
+          ))
+          OR (grants.scope = 'assigned_work' AND EXISTS (
+            SELECT 1
+            FROM nova.task_assignments actor_assignments
+            JOIN nova.task_assignments target_assignments ON target_assignments.task_id = actor_assignments.task_id
+            WHERE actor_assignments.organisation_id = $3
+              AND target_assignments.organisation_id = $3
+              AND actor_assignments.person_id = $1
+              AND target_assignments.person_id = $2
+          ))
+        )
+    ) AS allowed
+    FROM actor_dates
   )
-  SELECT EXISTS (
-    SELECT 1
-    FROM nova.person_role_assignments assignments
-    JOIN nova.roles roles ON roles.id = assignments.role_id
-    JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
-    CROSS JOIN actor_dates
-    WHERE assignments.person_id = $1
-      AND assignments.effective_on <= actor_dates.actor_business_date
-      AND (assignments.effective_until IS NULL OR assignments.effective_until >= actor_dates.actor_business_date)
-      AND roles.archived_at IS NULL
-      AND grants.permission_key = 'work.timeline.view'
-      AND (
-        grants.scope = 'organisation'
-        OR (grants.scope = 'own_record' AND $1 = $2)
-        OR (grants.scope = 'office' AND EXISTS (
-          SELECT 1 FROM nova.person_office_assignments target_offices
-          WHERE target_offices.person_id = $2 AND target_offices.office_id = grants.office_id
-            AND target_offices.effective_on <= actor_dates.target_business_date
-            AND (target_offices.effective_until IS NULL OR target_offices.effective_until >= actor_dates.target_business_date)
-        ))
-        OR (grants.scope = 'organisation_department' AND EXISTS (
-          SELECT 1 FROM nova.person_department_assignments target_departments
-          WHERE target_departments.person_id = $2
-            AND target_departments.organisation_department_id = grants.organisation_department_id
-            AND target_departments.effective_on <= actor_dates.target_business_date
-            AND (target_departments.effective_until IS NULL OR target_departments.effective_until >= actor_dates.target_business_date)
-        ))
-        OR (grants.scope = 'client' AND EXISTS (
-          SELECT 1
-          FROM nova.task_assignments target_assignments
-          JOIN nova.tasks target_tasks ON target_tasks.id = target_assignments.task_id
-          JOIN nova.client_workstreams target_workstreams ON target_workstreams.id = target_tasks.client_workstream_id
-          WHERE target_assignments.organisation_id = $3
-            AND target_assignments.person_id = $2
-            AND target_workstreams.client_id = grants.client_id
-        ))
-        OR (grants.scope = 'client_workstream' AND EXISTS (
-          SELECT 1 FROM nova.task_assignments target_assignments
-          JOIN nova.tasks target_tasks ON target_tasks.id = target_assignments.task_id
-          WHERE target_assignments.organisation_id = $3
-            AND target_assignments.person_id = $2
-            AND target_tasks.client_workstream_id = grants.client_workstream_id
-        ))
-        OR (grants.scope = 'group' AND EXISTS (
-          SELECT 1 FROM nova.task_assignments target_assignments
-          JOIN nova.tasks target_tasks ON target_tasks.id = target_assignments.task_id
-          WHERE target_assignments.organisation_id = $3
-            AND target_assignments.person_id = $2
-            AND target_tasks.work_group_id = grants.group_id
-        ))
-        OR (grants.scope = 'assigned_work' AND EXISTS (
-          SELECT 1
-          FROM nova.task_assignments actor_assignments
-          JOIN nova.task_assignments target_assignments ON target_assignments.task_id = actor_assignments.task_id
-          WHERE actor_assignments.organisation_id = $3
-            AND target_assignments.organisation_id = $3
-            AND actor_assignments.person_id = $1
-            AND target_assignments.person_id = $2
-        ))
-      )
-  ) AS allowed,
-  COALESCE($4::date, (SELECT target_business_date FROM actor_dates))::text AS resolved_date
+  SELECT timeline_access.allowed,
+         COALESCE($4::date, actor_dates.target_business_date)::text AS resolved_date,
+         CASE WHEN timeline_access.allowed THEN EXISTS (
+           SELECT 1
+           FROM nova.person_role_assignments assignments
+           JOIN nova.roles roles ON roles.id = assignments.role_id
+           JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
+           WHERE assignments.person_id = $1
+             AND assignments.effective_on <= actor_dates.actor_business_date
+             AND (assignments.effective_until IS NULL OR assignments.effective_until >= actor_dates.actor_business_date)
+             AND roles.archived_at IS NULL
+             AND (
+               ($1 = $2 AND grants.permission_key = 'work.timeline_adjust_own')
+               OR ($1 <> $2 AND grants.permission_key = 'work.timeline_adjust_others')
+             )
+             AND (
+               grants.scope = 'organisation'
+               OR (grants.scope = 'own_record' AND $1 = $2)
+               OR (grants.scope = 'office' AND EXISTS (
+                 SELECT 1 FROM nova.person_office_assignments target_offices
+                 WHERE target_offices.person_id = $2 AND target_offices.office_id = grants.office_id
+                   AND target_offices.effective_on <= actor_dates.target_business_date
+                   AND (target_offices.effective_until IS NULL OR target_offices.effective_until >= actor_dates.target_business_date)
+               ))
+               OR (grants.scope = 'organisation_department' AND EXISTS (
+                 SELECT 1 FROM nova.person_department_assignments target_departments
+                 WHERE target_departments.person_id = $2
+                   AND target_departments.organisation_department_id = grants.organisation_department_id
+                   AND target_departments.effective_on <= actor_dates.target_business_date
+                   AND (target_departments.effective_until IS NULL OR target_departments.effective_until >= actor_dates.target_business_date)
+               ))
+               OR (grants.scope = 'client' AND EXISTS (
+                 SELECT 1
+                 FROM nova.task_assignments actor_assignments
+                 JOIN nova.task_assignments target_assignments ON target_assignments.task_id = actor_assignments.task_id
+                 JOIN nova.tasks target_tasks ON target_tasks.id = target_assignments.task_id
+                 JOIN nova.client_workstreams target_workstreams ON target_workstreams.id = target_tasks.client_workstream_id
+                 WHERE actor_assignments.organisation_id = $3
+                   AND target_assignments.organisation_id = $3
+                   AND actor_assignments.person_id = $1
+                   AND target_assignments.person_id = $2
+                   AND target_workstreams.client_id = grants.client_id
+               ))
+               OR (grants.scope = 'client_workstream' AND EXISTS (
+                 SELECT 1
+                 FROM nova.task_assignments actor_assignments
+                 JOIN nova.task_assignments target_assignments ON target_assignments.task_id = actor_assignments.task_id
+                 JOIN nova.tasks target_tasks ON target_tasks.id = target_assignments.task_id
+                 WHERE actor_assignments.organisation_id = $3
+                   AND target_assignments.organisation_id = $3
+                   AND actor_assignments.person_id = $1
+                   AND target_assignments.person_id = $2
+                   AND target_tasks.client_workstream_id = grants.client_workstream_id
+               ))
+               OR (grants.scope = 'group' AND EXISTS (
+                 SELECT 1
+                 FROM nova.task_assignments actor_assignments
+                 JOIN nova.task_assignments target_assignments ON target_assignments.task_id = actor_assignments.task_id
+                 JOIN nova.tasks target_tasks ON target_tasks.id = target_assignments.task_id
+                 WHERE actor_assignments.organisation_id = $3
+                   AND target_assignments.organisation_id = $3
+                   AND actor_assignments.person_id = $1
+                   AND target_assignments.person_id = $2
+                   AND target_tasks.work_group_id = grants.group_id
+               ))
+               OR (grants.scope = 'assigned_work' AND EXISTS (
+                 SELECT 1
+                 FROM nova.task_assignments actor_assignments
+                 JOIN nova.task_assignments target_assignments ON target_assignments.task_id = actor_assignments.task_id
+                 WHERE actor_assignments.organisation_id = $3
+                   AND target_assignments.organisation_id = $3
+                   AND actor_assignments.person_id = $1
+                   AND target_assignments.person_id = $2
+               ))
+             )
+         ) ELSE false END AS adjustment_allowed
+  FROM timeline_access CROSS JOIN actor_dates
 `;
-
-async function canAdjustTarget(
-  transaction: PoolClient,
-  actorId: string,
-  organisationId: string,
-  targetPersonId: string,
-): Promise<boolean> {
-  const result = await transaction.query<{ allowed: boolean }>(
-    `SELECT EXISTS (
-       SELECT 1 FROM nova.person_role_assignments assignments
-       JOIN nova.roles roles ON roles.id = assignments.role_id
-       JOIN nova.role_permission_grants grants ON grants.role_id = roles.id
-       WHERE assignments.person_id = $1 AND assignments.effective_on <= nova.person_business_date($1)
-         AND (assignments.effective_until IS NULL OR assignments.effective_until >= nova.person_business_date($1))
-         AND roles.archived_at IS NULL
-         AND grants.permission_key = $2
-         AND (
-           grants.scope = 'organisation'
-           OR (grants.scope = 'own_record' AND $1 = $3)
-           OR (grants.scope = 'office' AND EXISTS (
-             SELECT 1 FROM nova.person_office_assignments target_offices
-             WHERE target_offices.person_id = $3 AND target_offices.office_id = grants.office_id
-               AND target_offices.effective_on <= nova.person_business_date($3)
-               AND (target_offices.effective_until IS NULL OR target_offices.effective_until >= nova.person_business_date($3))
-           ))
-           OR (grants.scope = 'organisation_department' AND EXISTS (
-             SELECT 1 FROM nova.person_department_assignments target_departments
-             WHERE target_departments.person_id = $3
-               AND target_departments.organisation_department_id = grants.organisation_department_id
-               AND target_departments.effective_on <= nova.person_business_date($3)
-               AND (target_departments.effective_until IS NULL OR target_departments.effective_until >= nova.person_business_date($3))
-           ))
-           OR (grants.scope = 'client' AND EXISTS (
-             SELECT 1
-             FROM nova.task_assignments actor_assignments
-             JOIN nova.task_assignments target_assignments ON target_assignments.task_id = actor_assignments.task_id
-             JOIN nova.tasks target_tasks ON target_tasks.id = target_assignments.task_id
-             JOIN nova.client_workstreams target_workstreams ON target_workstreams.id = target_tasks.client_workstream_id
-             WHERE actor_assignments.organisation_id = $4
-               AND target_assignments.organisation_id = $4
-               AND actor_assignments.person_id = $1
-               AND target_assignments.person_id = $3
-               AND target_workstreams.client_id = grants.client_id
-           ))
-           OR (grants.scope = 'client_workstream' AND EXISTS (
-             SELECT 1
-             FROM nova.task_assignments actor_assignments
-             JOIN nova.task_assignments target_assignments ON target_assignments.task_id = actor_assignments.task_id
-             JOIN nova.tasks target_tasks ON target_tasks.id = target_assignments.task_id
-             WHERE actor_assignments.organisation_id = $4
-               AND target_assignments.organisation_id = $4
-               AND actor_assignments.person_id = $1
-               AND target_assignments.person_id = $3
-               AND target_tasks.client_workstream_id = grants.client_workstream_id
-           ))
-           OR (grants.scope = 'group' AND EXISTS (
-             SELECT 1
-             FROM nova.task_assignments actor_assignments
-             JOIN nova.task_assignments target_assignments ON target_assignments.task_id = actor_assignments.task_id
-             JOIN nova.tasks target_tasks ON target_tasks.id = target_assignments.task_id
-             WHERE actor_assignments.organisation_id = $4
-               AND target_assignments.organisation_id = $4
-               AND actor_assignments.person_id = $1
-               AND target_assignments.person_id = $3
-               AND target_tasks.work_group_id = grants.group_id
-           ))
-           OR (grants.scope = 'assigned_work' AND EXISTS (
-             SELECT 1
-             FROM nova.task_assignments actor_assignments
-             JOIN nova.task_assignments target_assignments ON target_assignments.task_id = actor_assignments.task_id
-             WHERE actor_assignments.organisation_id = $4
-               AND target_assignments.organisation_id = $4
-               AND actor_assignments.person_id = $1
-               AND target_assignments.person_id = $3
-           ))
-         )
-     ) AS allowed`,
-    [actorId, targetPersonId === actorId ? 'work.timeline_adjust_own' : 'work.timeline_adjust_others', targetPersonId, organisationId],
-  );
-  return result.rows[0]?.allowed === true;
-}
 
 type TimelineTimestamp = Date | string;
 type TimelineAttendanceRow = {
@@ -355,12 +351,16 @@ export async function readTimeline(request: Request): Promise<Response> {
   const requestedPersonId = url.searchParams.get("personId");
   if (date && !validTimelineDate(date)) return json({ error: "TIMELINE_DATE_INVALID" }, 400);
   if (requestedPersonId && !uuidPattern.test(requestedPersonId)) return json({ error: "TIMELINE_PERSON_INVALID" }, 400);
-  const phaseTimings = { access: 0, data: 0, adjustment: 0 };
+  const phaseTimings = { access: 0, data: 0 };
   try {
     const result = await withDatabaseRequest(access.context, async (transaction) => {
       const targetPersonId = requestedPersonId ?? access.context.userId;
       let phaseStartedAt = performance.now();
-      const targetAccess = await transaction.query<{ allowed: boolean; resolved_date: string }>(
+      const targetAccess = await transaction.query<{
+        allowed: boolean;
+        resolved_date: string;
+        adjustment_allowed: boolean;
+      }>(
         timelineAccessSql,
         [access.context.userId, targetPersonId, access.context.organisationId, date],
       );
@@ -368,6 +368,7 @@ export async function readTimeline(request: Request): Promise<Response> {
       const accessRow = targetAccess.rows[0];
       if (!accessRow?.allowed) return 'PERMISSION_DENIED' as const;
       const resolvedDate = accessRow.resolved_date;
+      const adjustmentAllowed = accessRow.adjustment_allowed === true;
       if (!resolvedDate) throw new Error('TIMELINE_DATE_MISSING');
 
       phaseStartedAt = performance.now();
@@ -423,9 +424,6 @@ export async function readTimeline(request: Request): Promise<Response> {
         }),
         ...adjustments.map((row) => ({ startedAt: new Date(row.started_at), endedAt: new Date(row.ended_at), sourceId: row.id, assignmentId: row.assignment_id, kind: "adjustment" as const })),
       ].sort((left, right) => left.startedAt.getTime() - right.startedAt.getTime());
-      phaseStartedAt = performance.now();
-      const adjustmentAllowed = await canAdjustTarget(transaction, access.context.userId, access.context.organisationId, targetPersonId);
-      phaseTimings.adjustment = performance.now() - phaseStartedAt;
       const exceptions: Array<Record<string, unknown>> = [];
       if (attendanceRow) {
         const attendanceStart = new Date(attendanceRow.checked_in_at);

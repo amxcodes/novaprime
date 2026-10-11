@@ -397,11 +397,12 @@ trusted Origin/Referer, cross-site Fetch Metadata is rejected, and credential-
 free operator/API calls remain available. Focused tests cover same-origin,
 cross-origin, missing-origin and safe-read cases.
 
-The application and Better Auth PostgreSQL pools are now bounded and
-deployment-configurable (`NOVA_DB_POOL_MAX`, default 10; `NOVA_AUTH_POOL_MAX`,
-default 5) instead of serialising every user through a single connection.
-This preserves the portable PostgreSQL design while giving the stated small
-organisation target a usable concurrency baseline.
+The application and Better Auth now share one bounded PostgreSQL pool on Node
+hosts. `NOVA_DB_POOL_MAX` (default 10) plus the retained auth allocation
+`NOVA_AUTH_POOL_MAX` (default 5) set its combined default ceiling to 15 per
+process. This preserves the former total connection budget while letting auth
+reuse a warm app connection; Cloudflare continues to use the request-scoped
+Hyperdrive adapter.
 
 The role-update notification idempotency key now uses the immutable audit-event
 identifier, so two later edits with the same role name and grant count cannot

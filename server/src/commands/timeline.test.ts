@@ -24,10 +24,13 @@ mock.module("../db.js", () => ({
       query: async (sql: string, values: unknown[] = []) => {
         queries.push({ sql, values });
         if (sql.includes("resolved_date")) {
-          return { rows: [{ allowed: timelineAccessAllowed, resolved_date: "2026-10-11" }] };
+          return { rows: [{
+            allowed: timelineAccessAllowed,
+            resolved_date: "2026-10-11",
+            adjustment_allowed: adjustmentAllowed,
+          }] };
         }
         if (sql.includes("AS attendance_policy")) return { rows: [timelineData] };
-        if (sql.includes("AS allowed")) return { rows: [{ allowed: adjustmentAllowed }] };
         throw new Error("Unexpected timeline query");
       },
     }),
@@ -43,7 +46,7 @@ function reset() {
   timelineData = { attendance: null, attendance_policy: null, sessions: [], adjustments: [] };
 }
 
-test("timeline page read uses three database round trips while preserving scoped authorization", async () => {
+test("timeline page read uses two database round trips while preserving scoped authorization", async () => {
   reset();
   const response = await readTimeline(new Request("https://nova.test/api/work/timeline", { method: "GET" }));
   const result = await response.json() as Record<string, any>;
@@ -62,9 +65,11 @@ test("timeline page read uses three database round trips while preserving scoped
   });
   expect(response.headers.get("server-timing")).toMatch(/nova-timeline-access;dur=[\d.]+/);
   expect(response.headers.get("server-timing")).toMatch(/nova-timeline-data;dur=[\d.]+/);
-  expect(response.headers.get("server-timing")).toMatch(/nova-timeline-adjustment;dur=[\d.]+/);
-  expect(queries).toHaveLength(3);
+  expect(response.headers.get("server-timing")).not.toContain("nova-timeline-adjustment");
+  expect(queries).toHaveLength(2);
   expect(queries[0].sql).toContain("grants.permission_key = 'work.timeline.view'");
+  expect(queries[0].sql).toContain("grants.permission_key = 'work.timeline_adjust_own'");
+  expect(queries[0].sql).toContain("grants.permission_key = 'work.timeline_adjust_others'");
   for (const scope of ["organisation", "own_record", "office", "organisation_department", "client", "client_workstream", "group", "assigned_work"]) {
     expect(queries[0].sql).toContain(`grants.scope = '${scope}'`);
   }
@@ -72,8 +77,47 @@ test("timeline page read uses three database round trips while preserving scoped
   expect(queries[1].sql).toContain("session_rows AS");
   expect(queries[1].sql).toContain("adjustment_rows AS");
   expect(queries[1].values).toEqual([organisationId, actorId, "2026-10-11"]);
-  expect(queries[2].sql).toContain("grants.permission_key = $2");
-  expect(queries[2].values).toEqual([actorId, "work.timeline_adjust_own", actorId, organisationId]);
+});
+
+test("timeline correction affordances stay hidden when the merged scoped grant check denies them", async () => {
+  reset();
+  adjustmentAllowed = false;
+  const now = new Date();
+  timelineData = {
+    attendance: {
+      id: "attendance-1",
+      business_date: "2026-10-11",
+      mode: "office",
+      checked_in_at: new Date(now.getTime() - 60_000).toISOString(),
+      checked_out_at: null,
+      closure_reason: null,
+      boundary_at: new Date(now.getTime() + 60_000).toISOString(),
+    },
+    attendance_policy: {
+      mode: "hour_based",
+      required_attendance_minutes: 480,
+      timezone: "Asia/Kolkata",
+      shift_id: null,
+      scheduled_start: null,
+      scheduled_end: null,
+      grace_minutes: null,
+      spans_midnight: false,
+      is_holiday: false,
+      day_end: new Date(now.getTime() + 60_000).toISOString(),
+    },
+    sessions: [],
+    adjustments: [],
+  };
+
+  const response = await readTimeline(new Request("https://nova.test/api/work/timeline"));
+  const result = await response.json() as Record<string, any>;
+
+  expect(response.status).toBe(200);
+  expect(result.exceptions).toContainEqual(expect.objectContaining({
+    type: "work.untracked_gap",
+    actionable: false,
+  }));
+  expect(queries).toHaveLength(2);
 });
 
 test("timeline read denies an out-of-scope person before loading timeline data", async () => {

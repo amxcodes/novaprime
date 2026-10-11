@@ -4,6 +4,7 @@ const {
   createDatabaseDiagnostics,
   instrumentDatabasePool,
   withDatabaseDiagnostics,
+  withDatabasePoolSource,
 } = await import("./database-diagnostics");
 
 function delay(ms: number): Promise<void> {
@@ -42,6 +43,21 @@ test("measures promise pool acquisition and query round trips without recording 
   expect(metrics.nova.queryRoundTripMs).toBeGreaterThanOrEqual(5);
   expect(metrics.nova.maxQueryRoundTripMs).toBeGreaterThanOrEqual(5);
   expect(metrics.auth.queries).toBe(0);
+});
+
+test("routes shared pool timings to the auth source when requested", async () => {
+  const pool = instrumentDatabasePool(promisePool(async () => ({ rows: [] })), "nova");
+  const metrics = createDatabaseDiagnostics();
+
+  await withDatabaseDiagnostics(metrics, () => withDatabasePoolSource("auth", async () => {
+    const client = await pool.connect();
+    await client.query("auth query");
+  }));
+
+  expect(metrics.auth.poolAcquisitions).toBe(1);
+  expect(metrics.auth.queries).toBe(1);
+  expect(metrics.nova.poolAcquisitions).toBe(0);
+  expect(metrics.nova.queries).toBe(0);
 });
 
 test("measures callback pool acquisition and callback query completion", async () => {

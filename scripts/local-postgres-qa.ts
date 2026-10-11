@@ -20,7 +20,8 @@ function requiredPoolSize(name: string, fallback: number, maximum: number): numb
 
 const dbPoolMax = requiredPoolSize("NOVA_DB_POOL_MAX", 10, 50);
 const authPoolMax = requiredPoolSize("NOVA_AUTH_POOL_MAX", 5, 25);
-console.info(`QA runtime pool sizes: database=${dbPoolMax}, auth=${authPoolMax}`);
+const sharedDatabasePoolMax = dbPoolMax + authPoolMax;
+console.info(`QA runtime shared Node pool max: ${sharedDatabasePoolMax} (app allocation=${dbPoolMax}, auth allocation=${authPoolMax})`);
 
 const parsedAdminUrl = new URL(adminUrl);
 if (

@@ -26,6 +26,18 @@ function poolSize(): number {
     : 10;
 }
 
+function authenticationPoolSize(): number {
+  const configured = Number(process.env.NOVA_AUTH_POOL_MAX ?? 5);
+  return Number.isInteger(configured) && configured >= 1 && configured <= 25
+    ? configured
+    : 5;
+}
+
+/** Keep the prior combined app/auth connection ceiling while sharing clients. */
+export function databasePoolMax(): number {
+  return poolSize() + authenticationPoolSize();
+}
+
 export function observeIdleDatabaseErrors(pool: {
   on(event: "error", listener: (error: Error) => void): unknown;
 }): void {
@@ -58,7 +70,7 @@ function defaultDatabase(): Pool {
   }
 
   if (!connection) {
-    connection = instrumentDatabasePool(new Pool({ connectionString: databaseUrl, max: poolSize() }), "nova");
+    connection = instrumentDatabasePool(new Pool({ connectionString: databaseUrl, max: databasePoolMax() }), "nova");
     observeIdleDatabaseErrors(connection);
   }
   return connection;

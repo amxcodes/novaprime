@@ -1,3 +1,5 @@
+import { withDatabasePoolSource } from "./database-diagnostics.js";
+
 export type AuthenticationSession = Readonly<{
   identitySubject: string;
   email: string;
@@ -9,7 +11,10 @@ export async function authenticationSession(
   request: Request,
 ): Promise<AuthenticationSession | undefined> {
   const { auth } = await import("./auth.js");
-  const session = await auth.api.getSession({ headers: request.headers });
+  const session = await withDatabasePoolSource(
+    "auth",
+    () => auth.api.getSession({ headers: request.headers }),
+  );
 
   if (!session) {
     return undefined;

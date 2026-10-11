@@ -44,8 +44,21 @@ type DatabasePoolSource = keyof MutableDatabaseDiagnostics;
 export type RequestDatabaseDiagnostics = { database?: DatabaseDiagnostics };
 
 const requestDatabaseDiagnostics = new AsyncLocalStorage<MutableDatabaseDiagnostics>();
+const requestDatabasePoolSource = new AsyncLocalStorage<DatabasePoolSource>();
 const instrumentedPools = new WeakSet<Pool>();
 const instrumentedClients = new WeakSet<object>();
+
+/** Label shared-pool work by its caller without creating a second pool. */
+export function withDatabasePoolSource<T>(
+  source: DatabasePoolSource,
+  operation: () => Promise<T>,
+): Promise<T> {
+  return requestDatabasePoolSource.run(source, operation);
+}
+
+function selectedPoolSource(fallback: DatabasePoolSource): DatabasePoolSource {
+  return requestDatabasePoolSource.getStore() ?? fallback;
+}
 
 function emptyPoolDiagnostics(): MutableDatabasePoolDiagnostics {
   return {
@@ -127,15 +140,16 @@ export async function measureDatabasePoolAcquisition<T>(
   source: DatabasePoolSource,
   acquire: () => Promise<T>,
 ): Promise<T> {
+  const selectedSource = selectedPoolSource(source);
   const diagnostics = requestDatabaseDiagnostics.getStore();
   if (!diagnostics) return acquire();
   const startedAt = performance.now();
   try {
     const result = await acquire();
-    recordPoolAcquisition(diagnostics, source, startedAt, false);
+    recordPoolAcquisition(diagnostics, selectedSource, startedAt, false);
     return result;
   } catch (error) {
-    recordPoolAcquisition(diagnostics, source, startedAt, true);
+    recordPoolAcquisition(diagnostics, selectedSource, startedAt, true);
     throw error;
   }
 }
@@ -164,6 +178,7 @@ export function instrumentDatabaseClient(client: PoolClient, source: DatabasePoo
     configurable: true,
     value: (...args: unknown[]) => {
       const diagnostics = requestDatabaseDiagnostics.getStore();
+      const selectedSource = selectedPoolSource(source);
       if (!diagnostics) return originalQuery(...args);
 
       const startedAt = performance.now();
@@ -171,7 +186,7 @@ export function instrumentDatabaseClient(client: PoolClient, source: DatabasePoo
       const finish = (failed: boolean) => {
         if (completed) return;
         completed = true;
-        recordQuery(diagnostics, source, startedAt, failed);
+          recordQuery(diagnostics, selectedSource, startedAt, failed);
       };
 
       let callbackIndex = -1;
@@ -224,8 +239,9 @@ export function instrumentDatabasePool(pool: Pool, source: DatabasePoolSource): 
     configurable: true,
     value: (...args: unknown[]) => {
       const diagnostics = requestDatabaseDiagnostics.getStore();
+      const selectedSource = selectedPoolSource(source);
       const startedAt = diagnostics ? performance.now() : 0;
-      recordPoolAcquireStart(diagnostics, source, pool);
+      recordPoolAcquireStart(diagnostics, selectedSource, pool);
       let callbackIndex = -1;
       for (let index = args.length - 1; index >= 0; index -= 1) {
         if (typeof args[index] === "function") {
@@ -238,7 +254,7 @@ export function instrumentDatabasePool(pool: Pool, source: DatabasePoolSource): 
         const callback = args[callbackIndex] as (...callbackArgs: unknown[]) => unknown;
         args[callbackIndex] = function (this: unknown, ...callbackArgs: unknown[]) {
           const failed = Boolean(callbackArgs[0]);
-          if (diagnostics) recordPoolAcquisition(diagnostics, source, startedAt, failed);
+          if (diagnostics) recordPoolAcquisition(diagnostics, selectedSource, startedAt, failed);
           if (!failed && callbackArgs[1] && typeof callbackArgs[1] === "object") {
             instrumentDatabaseClient(callbackArgs[1] as PoolClient, source);
           }
@@ -247,7 +263,7 @@ export function instrumentDatabasePool(pool: Pool, source: DatabasePoolSource): 
         try {
           return originalConnect(...args);
         } catch (error) {
-          if (diagnostics) recordPoolAcquisition(diagnostics, source, startedAt, true);
+          if (diagnostics) recordPoolAcquisition(diagnostics, selectedSource, startedAt, true);
           throw error;
         }
       }
@@ -255,16 +271,16 @@ export function instrumentDatabasePool(pool: Pool, source: DatabasePoolSource): 
       try {
         return Promise.resolve(originalConnect(...args) as PoolClient).then(
           (client) => {
-            if (diagnostics) recordPoolAcquisition(diagnostics, source, startedAt, false);
+            if (diagnostics) recordPoolAcquisition(diagnostics, selectedSource, startedAt, false);
             return instrumentDatabaseClient(client as PoolClient, source);
           },
           (error: unknown) => {
-            if (diagnostics) recordPoolAcquisition(diagnostics, source, startedAt, true);
+            if (diagnostics) recordPoolAcquisition(diagnostics, selectedSource, startedAt, true);
             throw error;
           },
         );
       } catch (error) {
-        if (diagnostics) recordPoolAcquisition(diagnostics, source, startedAt, true);
+        if (diagnostics) recordPoolAcquisition(diagnostics, selectedSource, startedAt, true);
         throw error;
       }
     },

@@ -15,7 +15,7 @@ const workReadRoutes = new Map([
 
 const maxWorkPageReads = 9;
 const maxWorkPageReadBytes = 16_384;
-const timelineReadPhases = ["access", "data", "adjustment"] as const;
+const timelineReadPhases = ["access", "data"] as const;
 
 type WorkPageReadRoute = {
   name: string;
@@ -40,7 +40,7 @@ function safeTimelinePhases(serverTiming: string | null): WorkPageReadResult["ti
   if (!serverTiming) return undefined;
   const phases: NonNullable<WorkPageReadResult["timelinePhases"]> = {};
   for (const entry of serverTiming.split(",")) {
-    const match = /^\s*nova-timeline-(access|data|adjustment)\s*;\s*dur=([\d.]+)\s*$/i.exec(entry);
+    const match = /^\s*nova-timeline-(access|data)\s*;\s*dur=([\d.]+)\s*$/i.exec(entry);
     if (!match) continue;
     const durationMs = Number(match[2]);
     if (Number.isFinite(durationMs) && durationMs >= 0 && durationMs <= 60_000) {

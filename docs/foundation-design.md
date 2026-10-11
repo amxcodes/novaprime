@@ -56,8 +56,9 @@ the standard PostgreSQL `pg` driver, so it does not rely on Bun, Netlify, Vercel
 or Supabase runtime APIs.
 
 For the primary serverless deployment, `DATABASE_URL` uses the Supabase Cloud
-Transaction pooler for the non-owner `nova_app.<project-ref>` role. The API and
-authentication pools are bounded and configurable; NOVA uses explicit
+Transaction pooler for the non-owner `nova_app.<project-ref>` role. One
+bounded process-local pool serves both API and authentication queries; NOVA
+uses explicit
 transactions and no named prepared statements, which keeps its request-local
 RLS context compatible with transaction pooling. The current `pg`
 URL must use `sslmode=require&uselibpqcompat=true`, or a separately configured
@@ -111,14 +112,17 @@ Supabase Cloud is the easy deployment path, not a different backend.
 Supabase deployment must provision that application role and grant it the same
 schema access before running the canonical migration; it must not use a
 `postgres` owner/admin or `service_role` connection for normal NOVA API traffic.
-The same migration/API/RLS contract is required for every deployment. The API
-and Better Auth pools are bounded but no longer single-connection bottlenecks;
-`NOVA_DB_POOL_MAX` (1–50, default 10) and `NOVA_AUTH_POOL_MAX` (1–25, default 5)
-can be tuned to the provider's connection budget. The three Better Auth
-policies share one process-local auth pool on Node hosts, so the default
-per-instance ceiling is ten NOVA plus five auth connections, multiplied by
-concurrent function instances. Request-scoped Hyperdrive connections continue
-to use the existing per-request database adapter.
+The same migration/API/RLS contract is required for every deployment. Node
+hosts use one bounded process-local PostgreSQL pool for both domain queries
+and Better Auth. `NOVA_DB_POOL_MAX` (1–50, default 10) and
+`NOVA_AUTH_POOL_MAX` (1–25, default 5) retain their existing configuration
+meaning and combine into one per-process ceiling (15 by default); the auth
+setting is now an allocation within that shared cap, not a second pool.
+Sharing avoids a cold auth connection when the app already has a warm
+connection and prevents duplicate idle pools. Multiply the combined cap by
+the number of API instances when budgeting provider connections. Cloudflare
+continues to use its request-scoped adapter, with Hyperdrive providing the
+long-lived database pool.
 
 ### Open-source deployment and first-run handoff
 

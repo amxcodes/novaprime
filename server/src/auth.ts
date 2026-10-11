@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { PostgresDialect } from "kysely";
-import { Pool } from "pg";
 import {
   canSkipDatabaseTrustedOrigins,
   authenticationConfiguration,
@@ -11,7 +10,6 @@ import { createDatabaseAuthRateLimitStorage } from "./auth-rate-limit-storage.js
 import { activeEmailConnection } from "./commands/email-connections.js";
 import { stageAuthHandoffForIdentity, type AuthHandoffPurpose } from "./commands/auth-handoffs.js";
 import { database } from "./db.js";
-import { instrumentDatabasePool } from "./database-diagnostics.js";
 import { sendEmail } from "./email-delivery.js";
 import {
   configuredPublicOrigins,
@@ -22,30 +20,9 @@ import {
 
 const configuration = authenticationConfiguration();
 const authenticationHandoffTtlSeconds = 60 * 60;
-let sharedAuthenticationPool: Pool | undefined;
 
 function invitationTokenHash(token: string): Buffer {
   return createHash("sha256").update(token).digest();
-}
-
-function authPoolSize(): number {
-  const configured = Number(process.env.NOVA_AUTH_POOL_MAX ?? 5);
-  return Number.isInteger(configured) && configured >= 1 && configured <= 25
-    ? configured
-    : 5;
-}
-
-function authenticationDatabasePool(): Pool {
-  // Hyperdrive is already the connection pool for Workers. The database proxy
-  // resolves to a request-scoped client there; Node hosts keep Better Auth's
-  // independently bounded pool. All Better Auth policies use the same URL and
-  // can safely share one process-local pool instead of each opening its own.
-  if (process.env.NOVA_DATABASE_REQUEST_SCOPED === "true") return database();
-  sharedAuthenticationPool ??= instrumentDatabasePool(
-    new Pool({ connectionString: configuration.databaseUrl, max: authPoolSize() }),
-    "auth",
-  );
-  return sharedAuthenticationPool;
 }
 
 function trustProxyHeaders(): boolean {
@@ -143,7 +120,10 @@ function buildAuth(options: Readonly<{
     },
     database: {
       dialect: new PostgresDialect({
-        pool: authenticationDatabasePool(),
+        // The app and Better Auth share one bounded pool. Separate pools to the
+        // same Supavisor endpoint caused cold auth handshakes even when the app
+        // pool was warm, and multiplied idle connections per serverless instance.
+        pool: database(),
       }),
       schemaName: "nova_auth",
       type: "postgres",

@@ -14,10 +14,10 @@ const safeWorkReadNames = new Set([
   "assignments", "timeline", "reviews", "reviewer-requests",
   "handover-requests", "visible-tasks",
   "task-catalog", "attendance", "reviewer-management",
-  "timeline-access", "timeline-data", "timeline-adjustment",
+  "timeline-access", "timeline-data",
 ]);
 
-const safeTimelinePhases = new Set(["access", "data", "adjustment"]);
+const safeTimelinePhases = new Set(["access", "data"]);
 
 export type SlowRequestInput = Readonly<{
   method: string;
@@ -49,7 +49,7 @@ function safeTimelinePhaseTimings(serverTiming: string | undefined): Record<stri
   if (!serverTiming) return undefined;
   const timings: Record<string, number> = {};
   for (const entry of serverTiming.split(",")) {
-    const match = /^\s*nova-timeline-(access|data|adjustment)\s*;\s*dur=([\d.]+)\s*$/i.exec(entry);
+    const match = /^\s*nova-timeline-(access|data)\s*;\s*dur=([\d.]+)\s*$/i.exec(entry);
     if (!match || !safeTimelinePhases.has(match[1])) continue;
     const duration = Number(match[2]);
     if (Number.isFinite(duration) && duration >= 0 && duration <= 60_000) {

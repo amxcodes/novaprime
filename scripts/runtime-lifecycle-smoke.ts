@@ -516,8 +516,7 @@ async function runEmployeeLoadSmoke(input: Readonly<{
       };
       const access = phasePercentiles("access");
       const data = phasePercentiles("data");
-      const adjustment = phasePercentiles("adjustment");
-      console.info(`load_timeline_phases_ms: access_p50=${access.p50.toFixed(1)} access_p95=${access.p95.toFixed(1)} data_p50=${data.p50.toFixed(1)} data_p95=${data.p95.toFixed(1)} adjustment_p50=${adjustment.p50.toFixed(1)} adjustment_p95=${adjustment.p95.toFixed(1)}`);
+      console.info(`load_timeline_phases_ms: access_p50=${access.p50.toFixed(1)} access_p95=${access.p95.toFixed(1)} data_p50=${data.p50.toFixed(1)} data_p95=${data.p95.toFixed(1)}`);
     }
 
     const metricPercentiles = (

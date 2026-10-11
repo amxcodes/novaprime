@@ -690,16 +690,16 @@ pool waiting, and application work.
   The metadata query matches Better Auth's Kysely schema check in the installed
   adapter. Better Auth caches a successful check per adapter instance, so this
   is a cold-instance/startup cost, not a query on every warm API request.
-- The code constructs three Better Auth configurations and previously made a
-  separate `pg.Pool` for each one. A warm Netlify instance could therefore
-  allow up to 10 NOVA plus 15 auth connections (25 total). All three policies
-  use the same database URL, so they now share one process-local auth pool;
-  the maximum is 10 + 5 (15 total) without changing sessions, schema
-  validation, or permission checks. This reduces unnecessary pool creation
-  and peak connection capacity, but it does not remove the Ohio-to-Seoul
-  distance. The first post-deploy sample still recorded up to about 3.1 s of
-  aggregate pool-acquisition time on a fresh runtime, so this fix is capacity
-  hygiene, not a demonstrated end-to-end latency cure.
+- The three Better Auth configurations already shared a dedicated 5-client
+  pool, separate from NOVA's 10-client pool. A fresh authenticated Netlify
+  read on 11 October still spent about 979 ms acquiring an auth client while
+  the NOVA pool already had reusable connections. The current code change
+  gives Node hosts one shared pool with the same combined default ceiling of
+  15 (the existing 10 + 5 settings), while diagnostics still label auth and
+  domain queries separately. It preserves live session and actor checks; it
+  does not add a session cache. The isolated lifecycle passed with this pool
+  arrangement, but hosted after-deploy timing is still required before calling
+  the auth-connect cost resolved.
 - `nova.configured_public_origins()` is also a high-call-count statement in
   the cumulative report. It is deliberately read by Better Auth's dynamic
   trusted-origin callback on relevant auth requests. It returns a low
@@ -831,10 +831,12 @@ hosting change.
 - [ ] Confirm the Netlify runtime uses the target project's transaction-mode
   pooler endpoint (port 6543) and the exact host from Supabase Connect. The
   driver options must remain compatible with transaction pooling.
-- [x] Share one process-local Better Auth pool among the three auth
-  configurations that use the same database URL. This corrects the previous
-  per-instance maximum from 25 connections (10 NOVA + three 5-connection auth
-  pools) to 15 (10 NOVA + one 5-connection auth pool) in `server/src/auth.ts`.
+- [x] Share the Node host's process-local pool between NOVA and Better Auth,
+  preserving the prior default combined cap of 15 and source-specific
+  diagnostics. The isolated PostgreSQL lifecycle verified login, sessions,
+  role checks and the 100-employee workload with the shared pool.
+- [ ] Confirm from fresh Netlify logs that auth reuses the warm shared pool
+  and compare authenticated first-load latency after deployment.
 - [ ] Reconcile per-instance pool sizes with Netlify concurrency and Supabase
   limits. The live 13/60 snapshot is healthy; measure peak concurrent
   instances and pooled connections before changing either pool size.
@@ -937,37 +939,44 @@ hosting change.
 ## Timeline read follow-up and matched local load — 11 October 2026
 
 The live Netlify Work trace above identified `GET /api/work/timeline` as a
-3.137 s subread. The handler previously made several dependent database calls
-for authorization/date resolution, attendance and policy, sessions,
-adjustments, and adjustment permission. It now keeps the same server-side scope
-checks while combining date/access into one statement and the timeline records
-into one statement; adjustment permission remains a separate statement. The
-route therefore has at most three command-level queries after the actor is
-resolved. Safe `Server-Timing` fields now report access, data, and adjustment
-phase durations on both direct and batched Work reads. Netlify diagnostics
-accept only those named durations and never log the response data.
+3.137 s subread on the older deployment. Commit `38e3df9` combined
+authorization/date resolution and timeline data, leaving a separate scoped
+correction-permission query (three total after actor resolution). The current
+local patch returns both view and correction permission from the access query,
+so the route needs two serialized data queries. The correction scope remains
+server-side, and denied corrections stay non-actionable. Only access/data
+`Server-Timing` durations are passed through Work and Netlify diagnostics; no
+timeline payload is logged.
 
-The full isolated PostgreSQL 17 QA passed on both 100 employees × 10 completed
-tasks and 200 employees × 10 tasks, with 25 concurrent requests, all 80
-migrations, the authenticated lifecycle assertions, specialized attendance
-tests, restore rehearsal, and cleanup. On the 100-person run, timeline p50/p95
-was 85.8/117.2 ms; on the 200-person run it was 87.2/124.4 ms. Timeline phase
-p95 was 9.8/25.9/16.1 ms at 100 people and 9.7/20.8/16.1 ms at 200 for
-access/data/adjustment. PostgreSQL `EXPLAIN ANALYZE` for the 10-session timeline
-query took 4.1 ms and 4.3 ms respectively, with no buffer reads or temp-file
-spill in these warm local samples. Both runs passed 2,437 and 4,237 lifecycle
-assertions respectively. These are local Docker/PostgreSQL in-process bursts,
-not hosted latency or a sustained capacity guarantee.
+The full isolated PostgreSQL 17 QA passed with this patch on 100 employees ×
+10 tasks and 25 concurrent requests: 80 migrations, 2,437 lifecycle
+assertions, specialized attendance/WFH/leave checks, restricted-role
+readiness, backup/restore, updater rehearsal and cleanup. Timeline p50/p95 was
+86.1/121.6 ms, with access/data p95 of 19.6/33.7 ms. Assignment reads were
+68.0 ms p95; task create/self-assign was 168.5 ms across 1,000 requests. This
+was the first run with a shared Node app/auth pool (effective default cap 15,
+the prior 10+5 allocations). These local Docker/PostgreSQL bursts are not
+hosted latency or a sustained capacity guarantee.
 
-One earlier run at the same 100×10/25-concurrent profile had reported a 2.45 s
-timeline p95 and much higher connection/query subtotals. The new two clean runs
-are substantially faster, but the discrepancy is unresolved; it may reflect
-transient host contention or test-process conditions, and is not proof that
-every hosted route is fixed. The source change has not yet been measured on the
-published Netlify build or on the Cloudflare candidate. After publication,
-repeat a single-tab authenticated Work-page sample and confirm these phase
-fields in Netlify logs; compare that with a same-source Cloudflare run before
-attributing the remaining cross-region overhead to either provider.
+The earlier 100-person run on the prior three-query timeline code measured
+117.2 ms p95; the earlier 200-person run measured 124.4 ms p95. Both remain
+useful scale context but do not test the latest permission-query merge or
+shared-pool changes.
+
+Production Netlify on `38e3df9` still showed 1.60–2.58 s Work-page requests.
+The two Work logs recorded 13 NOVA queries with 2.22–2.28 s summed query time;
+the individual timeline phase queries were about 177–187 ms each. Separate
+`work-sessions` and `notifications` reads took 2.14/2.18 s, including roughly
+979/1,014 ms acquiring an auth-pool client while the NOVA pool already had
+reusable connections. Cold `/api/ready` requests also showed about 988–1,044
+ms acquiring a database client, followed by a ~165–171 ms query; subsequent
+warm requests completed near 170–175 ms. These measurements explain the
+remaining work: remote PostgreSQL round trips are serial in simple protected
+reads, and separate pools can independently pay connection startup. The new
+pool sharing and permission merge are locally verified; deploy them and repeat
+a single-tab authenticated Netlify sample before calling the hosted issue
+resolved. Compare the same source on the isolated Cloudflare candidate as a
+separate provider test.
 
 ## Hosting decision: Netlify Functions or Supabase Functions?
 
