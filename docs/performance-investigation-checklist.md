@@ -22,6 +22,36 @@ executed in 3.5 ms; all waves had zero database diagnostic failures. These
 local PostgreSQL measurements are not hosted route latency, a sustained soak,
 or a customer capacity guarantee.
 
+## Live sample after the scoped-transaction JIT fix — 11 October 2026
+
+Netlify's Deploys page confirms `358776b` (`perf(db): disable JIT for scoped
+API transactions`) is the published Production deploy. The signed-in Work
+screen rendered from that deployment. Function logs from 4:28–4:32 PM IST
+show the live service is still slow on several API routes:
+
+- `GET /api/auth/get-session` returned 200 in 4.78 s total (3.21 s in NOVA);
+  entry-module loading was 4 ms and Better Auth module loading was 15 ms.
+- `GET /api/ready` returned 200 in 1.19 s total. Its sole NOVA connection
+  acquisition was 1.01 s and the query took 166 ms.
+- `GET /api/me` returned 200 in 3.54 s; Work's `POST /api/work` returned 200
+  in 3.39 s with 17 NOVA queries; `GET /api/work-sessions` and
+  `GET /api/notifications` returned 200 in 5.74 s and 5.85 s total.
+- Pool diagnostics did not report the pools at capacity. Query maxima in these
+  samples were roughly 166–560 ms, while summed acquisition and query times
+  were much higher across multiple connections/queries. These subtotals can
+  overlap and are not elapsed time.
+
+This confirms the new code is live, but the local JIT improvement did not make
+the deployed product fast. The samples do not establish whether the remaining
+delay is dominated by cross-region database round trips, pool connection
+setup, or their combination. Netlify is in Ohio and the Supabase project is in
+Seoul. A same-workload runtime comparison near the database is still needed;
+do not tune pool sizes based on this small sample. A Supabase Edge Function
+candidate would keep the provider setup simpler, but NOVA still needs a Deno
+adapter and same-origin Better Auth routing before it is a supported customer
+profile. The current logs are observations from a few minutes, not route
+percentiles or an authenticated browser waterfall.
+
 Netlify's Functions → Region settings page confirms the deployed region is
 `CMH (Ohio, US East)` and shows “Upgrade to customize region.” Netlify's
 official configuration guide limits custom regions to Pro and Enterprise;
