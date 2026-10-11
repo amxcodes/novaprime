@@ -7,7 +7,7 @@ wait, PostgreSQL round trips, and query execution. It records evidence before
 changing runtime or database architecture. The production database is in Seoul
 (`ap-northeast-2`); the Netlify function currently runs in Ohio (`cmh`).
 
-## Latest live and code-level evidence — 11 October 2026
+## Earlier live and code-level evidence — 11 October 2026
 
 Netlify published `dd4f891` as deploy `6acb2050f6bb2a0008aac061` at 11:06
 IST. A signed-in Work page refresh rendered. At 11:08 IST the batched
@@ -48,8 +48,8 @@ also shows that platform overhead matters on this sample. Source inspection
 found that Work did not consume the `/api/tasks` full-roster response at all;
 the rendered task list uses the separately permission-filtered,
 server-paginated `/api/work/tasks/visible` endpoint. A Work-only removal of
-that redundant request is under verification. The `/api/tasks` endpoint
-remains in place for Admin and Operations.
+that redundant request was subsequently deployed in `522d049`. The `/api/tasks`
+endpoint remains in place for Admin and Operations.
 
 At 12:30 IST, a read-only Supabase query confirmed the single
 `nova-background-tick` job is active on `*/5 * * * *`; its latest recorded run
@@ -72,7 +72,33 @@ before/after comparison is still open. The post-deploy sample shows that
 Work's handler latency remains high, but is insufficient to determine whether
 browser-to-function batching improved it relative to baseline.
 
-## Latest live snapshot — 10 October 2026
+## Latest authenticated production probe — 11 October 2026, 12:50 PM IST
+
+The current Netlify production deployment is `195815d` (deploy
+`6acb37e6160bd000082380bf`); the app code includes the Work Tasks request
+removal from `522d049`. A signed-in Super Admin opened Work Tasks and My Day.
+Both rendered their authorized empty/setup states without changing records.
+This confirms the pages render after deployment but does not provide a browser
+network waterfall or measure navigation-to-interactive time.
+
+Netlify's live function log recorded `GET auth.get-session` at 12:47:36 PM IST:
+HTTP 200, 3,161 ms handler, four NOVA pool acquisitions totaling 3,097 ms,
+and four NOVA queries totaling 685 ms; it also recorded three auth pool
+acquisitions totaling 3,006 ms and six auth queries totaling 2,036 ms. At
+12:49:59 PM IST it recorded `GET api.notifications`: HTTP 200, 4,316 ms
+handler, six NOVA acquisitions totaling 3,037 ms across nine queries totaling
+1,491 ms, plus five auth acquisitions totaling 3,052 ms across eight queries
+totaling 2,471 ms. The query/acquisition subtotals overlap across concurrent
+operations and cannot be added to infer elapsed time. These two samples show
+that successful API requests remain slow; they are single observations, and
+neither identifies a matched before/after improvement.
+
+The Work Tasks UI rendered, but this browser inspection did not expose a
+network trace. Confirm that Work Tasks omits `/api/tasks` and collect its
+`/api/work` and `/api/work-context` timings in the browser Network panel before
+calling that request removal a measured speed improvement.
+
+## Earlier live snapshot — 10 October 2026
 
 The Netlify Function Metrics dashboard showed **346 invocations and no
 errors** in its latest 24-hour window. The `nova` function accounted for 343
@@ -364,9 +390,10 @@ hosting change.
   passed both `checks` and `postgres`.
 - [ ] After deployment, verify in a signed-in browser that Work Tasks no longer
   calls `/api/tasks`, then compare the same authenticated navigation and
-  `/api/work` and `/api/work-context` timings. The fresh browser tab opened
-  signed out, so this has not been measured yet. The code change removes a
-  proven unused read; it is not a quantified production latency improvement.
+  `/api/work` and `/api/work-context` timings. A signed-in post-deploy smoke
+  confirmed the screen renders, but the available browser control did not
+  expose a network waterfall. The code change removes a proven unused read; it
+  is not a quantified production latency improvement.
 - [ ] Use browser traces to count API requests per page and identify true
   dependencies. Preserve server permission checks; optimize only requests
   proven to be redundant or independent.

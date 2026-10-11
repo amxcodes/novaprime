@@ -1,24 +1,42 @@
 # NOVA verification matrix
 
-## Latest deployment profile follow-up — 2026-10-11
+## Latest production follow-up — 2026-10-11
 
-The current application source baseline is `main` / Netlify `3d55c06`, published
-as deploy `6acb288367d508000966a199`. GitHub verification
-[run #115](https://github.com/amxcodes/novaprime/actions/runs/38117239800)
-passed both required `checks` and `postgres` jobs. A signed-in Super Admin
-smoke rendered all six Work areas on the live site. Earlier fixes in
-`c025824`, `2099ad0`, and `fd1e520` preserve non-default forwarded ports, load
-the Work review actions, and explain the no-office attendance condition.
+Netlify published `195815d` as deploy `6acb37e6160bd000082380bf` at 12:46 PM
+IST. This commit only refreshes documentation; the latest application change
+is `522d049`, removing Work's unused `/api/tasks` roster request. The
+test-only follow-up `5046c1f` passed GitHub verification run #119 (both
+`checks` and `postgres`); verification
+[run #120](https://github.com/amxcodes/novaprime/actions/runs/38120837385) for
+`195815d` also passed both gates. A signed-in Super Admin opened Work
+Tasks and My Day on the published deploy. Both rendered their expected
+authorized empty/setup states, and no records were changed. This is a narrow
+read-only smoke, not a full workflow or network-waterfall test.
+
+Live Netlify diagnostics after that deployment recorded `GET
+auth.get-session` as HTTP 200 in 3,161 ms and `GET api.notifications` as HTTP
+200 in 4,316 ms. The former counted four NOVA pool acquisitions (3,097 ms
+summed) and four queries (685 ms summed); the latter counted six NOVA
+acquisitions (3,037 ms) and nine queries (1,491 ms), plus five auth pool
+acquisitions (3,052 ms) and eight auth queries (2,471 ms). These subtotals can
+overlap and must not be added to infer elapsed time. They are single live
+observations and show that server-side API latency remains high; they do not
+measure every route or establish a before/after improvement.
+
+Earlier fixes in `c025824`, `2099ad0`, and `fd1e520` preserve non-default
+forwarded ports, load the Work review actions, and explain the no-office
+attendance condition.
 
 The disposable Supabase project `owfgvojdaxafayutbcuf` has checksummed
 migration `0080`, RLS enabled on the lease table, no direct `nova_app` table
 privileges, and execute-only lease RPC access. A fresh read-only check found
 one active `nova-background-tick` and a successful run at 06:35 UTC on 11
 October. The matching `net._http_response` row returned HTTP 200 with no
-error. Public `/api/health` and `/api/ready` each returned HTTP 200 in one
-probe (1.37 s and 1.62 s inclusive). These checks verify the selected project
-and named job, not every external trigger or authenticated product-route
-performance.
+error. A later run at 07:00 UTC also returned HTTP 200, before the `522d049`
+application deployment. Public `/api/health` and `/api/ready` each returned
+HTTP 200 in one probe (1.37 s and 1.62 s inclusive). These checks verify the
+selected project and named job, not every external trigger or authenticated
+product-route performance.
 
 WSL/Docker QA applied all 80 migrations to isolated PostgreSQL 17, passed the
 SQL/RLS fixtures and least-privilege app-role checks, exercised the protected
@@ -313,14 +331,14 @@ history; use newer evidence above when results differ.
 
 | Gate | Current result | What's still needed |
 | --- | --- | --- |
-| Actual deployed baseline | **Netlify published `5046c1f` as production deploy `6acb36d5f394f700082aa6fd`.** Verification [run #119](https://github.com/amxcodes/novaprime/actions/runs/38120581265) passed both `checks` and `postgres`. Its application code includes the Work Tasks unused-roster-request removal from `522d049`; `5046c1f` only aligns the permission-plan assertions with that change. The last signed-in Super Admin UI smoke predates these two deployments; no post-deploy authenticated page/API timing sample is recorded. The selected disposable Supabase project's ledger is checksum-verified through `0080`; the lease table has RLS, `nova_app` has no direct table access and can execute the lease RPCs. The 11 October public health/readiness probes returned HTTP 200 once each, and the observed Supabase Cron run plus its Net HTTP callback succeeded before the latest deployment. | Repeat the signed-in smoke against the current deployment, collect route timing, and refresh the scheduler observation after the current deploy. This does not establish any customer install. |
+| Actual deployed baseline | **Netlify published `195815d` as production deploy `6acb37e6160bd000082380bf`; its application code includes `522d049`.** Runs [#119](https://github.com/amxcodes/novaprime/actions/runs/38120581265) and [#120](https://github.com/amxcodes/novaprime/actions/runs/38120837385) passed both `checks` and `postgres`. A signed-in Super Admin read-only smoke rendered Work Tasks and My Day authorized empty/setup states after deploy. Single post-deploy function diagnostics measured `auth.get-session` at 3,161 ms and `api.notifications` at 4,316 ms (HTTP 200); full page waterfalls and other route timings remain unmeasured. The selected disposable Supabase project's ledger is checksum-verified through `0080`; the lease table has RLS, `nova_app` has no direct table access and can execute the lease RPCs. Public health/readiness probes and the observed Cron run succeeded earlier; that Cron run preceded `522d049`. | Collect browser network waterfalls, broader authenticated route timings, and a fresh scheduler observation. This does not establish any customer install. |
 | Customer releases and updates | **Updater code and local migration/restore evidence exist; customer release discovery is unavailable.** Version `0.1.3` has 80 manifest hashes. Fresh install, SQL/RLS fixtures, restricted-role preflight, and PostgreSQL 17 dump/restore pass. The updater's direct PostgreSQL upgrade rehearsal and zero-pending rerun pass. There are no published stable GitHub releases/tags. | Publish the updater-bearing baseline and the newer tested stable release, then prove clean-clone adoption, fork conflict handling, wrong-project refusal, failed migration/retry, declined push, and host-build failure after schema migration. |
 | Advertised first installs | **Local Docker/PostgreSQL lifecycle and archive restore pass; hosted first installs remain unproven.** The local PostgreSQL 17 install applied all 80 migrations, passed protected maintenance and authenticated workflow suites, and restored counts, RLS, sequence, auth/session, encryption, and role boundaries. The founder setup through loopback Nginx was rerun successfully after fixing non-default-port forwarding. The published Netlify + Supabase site is test infrastructure, not a clean customer project. Cloudflare packaging passes CI but no live Hyperdrive connection exists. | Complete isolated Netlify + Supabase and Cloudflare + Supabase first-install checks. Prove internet-facing Docker only after the exact public exposure is confirmed and external TLS/firewall checks are ready. |
 | Same-database runtime move | **Planner and safety constraints pass; real cutover is not implemented.** Netlify→Cloudflare planning preserves database identity, scheduler ownership and public origin and disables Worker Cron when Supabase owns the schedule. | Complete and rehearse a journaled Worker candidate upload, exact readback, health/auth/workflow validation, traffic promotion and recovery in a disposable Cloudflare account. This requires an available scoped Cloudflare account/token and must keep the existing database and scheduler unchanged. |
-| Scheduler ownership | **The selected Supabase scheduler and lease-backed run succeeded after the current code deploy.** One active named Cron row was observed; its 06:35 UTC run on 11 October succeeded after migration `0080`, and the matching Net HTTP callback returned 200 with no error. The `0080` migration tests overlap, expiration, renewal, stale-owner fencing and execute-only app-role checks. | Extend inventory to duplicate triggers outside this project and exercise missed runs, retries, secret rotation and recovery on each live supported profile. The current inventory cannot prove every trigger account-wide. |
+| Scheduler ownership | **The selected Supabase scheduler and lease-backed run succeeded before the latest application deploy.** One active named Cron row was observed; its 07:00 UTC run on 11 October succeeded after migration `0080`, and the matching Net HTTP callback returned 200 with no error. The `0080` migration tests overlap, expiration, renewal, stale-owner fencing and execute-only app-role checks. | Extend inventory to duplicate triggers outside this project and exercise missed runs, retries, secret rotation and recovery on each live supported profile. The current inventory cannot prove every trigger account-wide. |
 | Database moves | **Separately gated by design; no transfer was attempted.** Runtime plans preserve database identity. | Treat database copy/cutover as its own future project with write freeze/drain, verified backup/restore, object/data/sequence/RLS/auth comparison and rehearsed recovery. Payroll execution remains future work; retain its schema/permission base. |
 | User-facing quality | **The signed-in Super Admin Work experience is now split into six areas:** My work, Tasks, Reviews, Requests, Reviewer management, and Work context; live smoke rendered their empty/setup states. Existing attendance setup guidance remains. No records were changed. Restricted-role journeys, phone/tablet layouts, keyboard and screen-reader review remain open. | Complete representative employee, reviewer, and restricted-role journeys plus narrow/tablet, keyboard, and screen-reader review. Payroll execution remains future implementation; keep only its current permission/schema foundation. |
-| Speed and capacity | **200×10 local burst passes; the unused Work roster request is removed and deployed, but authenticated production route performance remains unmeasured after `522d049`.** With 25 concurrent requests, latest local p95s were 225 ms work-context, 121 ms create/self-assign, 150 ms timer start, 75 ms timer stop, and 633 ms assignment reads. These are in-process PostgreSQL measurements, not hosted SLA evidence. Netlify's rolling 24-hour metrics through 11:12 IST showed 647 `nova` invocations, zero function errors, average 3.24 s, p50 2.93 s, p95 5.63 s and p99 5.67 s. The window predates `3d55c06`, spans deployments, and cannot show a code impact. Earlier `/api/work` and `/api/work-context` reads measured 5.79 s and 5.70 s after `dd4f891`; later diagnostic samples still showed several-second handlers but predate the `522d049` deployment. Public health/readiness each returned 200 in a single 1.37 s/1.62 s probe; these shallow checks are not product-page or route performance evidence. | Repeat the signed-in Work Tasks navigation and confirm it no longer calls `/api/tasks`; collect interleaved authenticated route/page waterfalls, per-route server timing, sustained capacity and pool headroom; compare identical code and database across regions/runtimes before choosing a move. Do not claim the speed issue is fixed from local load or the mixed window. |
+| Speed and capacity | **200×10 local burst passes; one redundant Work request is removed, but no speed improvement is yet quantified.** The post-deploy Super Admin browser smoke rendered Work Tasks and My Day. Netlify logs recorded `auth.get-session` at 3.16 s and `api.notifications` at 4.32 s, both HTTP 200; these are single route samples with no matched before/after baseline, and full browser waterfalls remain unavailable. With 25 concurrent requests, the latest local p95s were 225 ms work-context, 121 ms create/self-assign, 150 ms timer start, 75 ms timer stop, and 633 ms assignment reads. These are in-process PostgreSQL measurements, not hosted SLA evidence. Netlify's older rolling 24-hour metrics through 11:12 IST showed 647 `nova` invocations, zero function errors, average 3.24 s, p50 2.93 s, p95 5.63 s and p99 5.67 s; this mixed window predates `3d55c06` and cannot show a code impact. Earlier `/api/work` and `/api/work-context` reads measured 5.79 s and 5.70 s after `dd4f891`. Public health/readiness each returned 200 in one 1.37 s/1.62 s probe; these shallow checks are not product-page or route performance evidence. | Collect same-deploy browser request waterfalls and matched route timings; confirm Work Tasks no longer calls `/api/tasks`; gather sustained capacity and pool headroom; compare identical code and database across regions/runtimes before choosing a move. Do not claim the speed issue is fixed from local load or these isolated observations. |
 
 ## Not verified / release gates
 
