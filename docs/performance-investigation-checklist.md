@@ -7,6 +7,51 @@ wait, PostgreSQL round trips, and query execution. It records evidence before
 changing runtime or database architecture. The production database is in Seoul
 (`ap-northeast-2`); the Netlify function currently runs in Ohio (`cmh`).
 
+## Query-path fix and current deployment — 11 October 2026
+
+Before this query change, Netlify had published `cf50b49` to Production, and
+the authenticated Admin and People pages rendered after that deploy. No new
+route-level latency sample was captured after it, so the older hosted timings
+below remain the production performance evidence until the query fix is
+published and measured.
+
+A controlled local PostgreSQL 17 regression test found and fixed a specific
+slow read: the employee assignment and Admin task queries self-joined the
+tenant's visible `tasks` table for correction-source details. PostgreSQL chose
+to scan all 1,032 visible tasks once per assignment, even when no correction
+source was selected. The queries now use a correlated lateral lookup by the
+source task's primary key. This keeps the existing row-level security and the
+separate permission check that decides whether correction details may be shown.
+
+With 100 synthetic employees, 10 tasks each, 25 concurrent requests and the
+default application/auth pools (10/5), the local assignment-read p95 fell from
+1,175 ms to 58 ms. The matching `EXPLAIN ANALYZE` fell from 204 ms to 3.2 ms;
+the old plan's repeated full task scan disappeared. The updated run passed
+2,433 lifecycle assertions, the 80-migration install, RLS and workflow checks,
+the 0072-to-current updater rehearsal, and PostgreSQL dump/restore verification.
+The run used only a disposable local database and removed its containers,
+volumes, network, and random credentials afterward. This is a reproducible
+query regression result, not a Netlify/Cloudflare timing or capacity guarantee.
+
+A pool-size comparison before this query fix also showed why simply raising
+the default is unsafe. With 10 connections, assignment-read request p95 was
+1,175 ms, NOVA acquisition p95 was 827 ms, and NOVA query-total p95 was 452 ms.
+At 25 connections, those figures were 1,284 ms, 1 ms, and 1,266 ms. The larger
+pool removed queueing but drove much more work into the small local database;
+it improved request p95 by only about 9% while making p50 slower. After the
+query fix, the default pool measured 58 ms request p95, 27 ms acquisition p95,
+and 22 ms query-total p95. Pool defaults stay unchanged until the hosted
+request mix and the database's shared connection budget justify a different
+value.
+
+The signed-in Cloudflare account was inspected. It currently has no Worker
+projects, and Cloudflare Access is not configured. No Worker, Hyperdrive
+binding, domain, or scheduler was created. A live candidate still needs the
+existing deployment safety gates, a candidate-only Access boundary, and an
+approved transfer of the restricted database/runtime secrets to Cloudflare;
+the production Netlify route, Supabase database, and Supabase Cron remain as
+they were.
+
 ## Earlier live and code-level evidence — 11 October 2026
 
 Netlify published `dd4f891` as deploy `6acb2050f6bb2a0008aac061` at 11:06
@@ -130,9 +175,9 @@ slow SQL statement or Netlify cold start is the sole cause. The logs contain
 no browser waterfall and are single-session samples, so they cannot be used as
 p50/p95 or as proof that Cloudflare will be faster.
 
-The current signed-in Cloudflare account tab has not yet appeared in the task
-browser. Once available, keep the existing Supabase database, Supabase Cron,
-and production origin fixed while preparing a protected Cloudflare candidate;
+The signed-in Cloudflare account has no Worker projects and no Access
+configuration. Keep the existing Supabase database, Supabase Cron, and
+production origin fixed while preparing a protected Cloudflare candidate;
 compare the same authenticated read paths and record cold/warm distributions
 before considering any traffic promotion.
 

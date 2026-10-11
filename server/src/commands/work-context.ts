@@ -2455,8 +2455,13 @@ export function myAssignmentsReadSql(): string {
     JOIN nova.tasks tasks ON tasks.id = assignments.task_id
     LEFT JOIN nova.client_workstreams workstreams
       ON workstreams.id = tasks.client_workstream_id
-    LEFT JOIN nova.tasks correction_source
-      ON correction_source.id = tasks.correction_of_task_id
+    LEFT JOIN LATERAL (
+      SELECT source.title, source.client_workstream_id, source.work_group_id
+      FROM nova.tasks source
+      WHERE tasks.correction_of_task_id IS NOT NULL
+        AND source.id = tasks.correction_of_task_id
+      LIMIT 1
+    ) correction_source ON true
     LEFT JOIN nova.client_workstreams correction_workstreams
       ON correction_workstreams.id = correction_source.client_workstream_id
      CROSS JOIN LATERAL (
@@ -2873,8 +2878,13 @@ export function taskCollectionReadSql(): string {
       ON work_groups.id = tasks.work_group_id
     LEFT JOIN nova.organisation_departments departments
       ON departments.id = tasks.organisation_department_id
-    LEFT JOIN nova.tasks correction_source
-      ON correction_source.id = tasks.correction_of_task_id
+    LEFT JOIN LATERAL (
+      SELECT source.title, source.client_workstream_id, source.work_group_id
+      FROM nova.tasks source
+      WHERE tasks.correction_of_task_id IS NOT NULL
+        AND source.id = tasks.correction_of_task_id
+      LIMIT 1
+    ) correction_source ON true
     LEFT JOIN nova.client_workstreams correction_workstreams
       ON correction_workstreams.id = correction_source.client_workstream_id
     LEFT JOIN nova.clients correction_clients

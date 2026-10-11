@@ -585,7 +585,11 @@ async function runEmployeeLoadSmoke(input: Readonly<{
     planNodes.push(Object.fromEntries(Object.entries(node).filter(([key]) => [
       "Node Type", "Relation Name", "Index Name", "Actual Total Time", "Actual Rows", "Actual Loops",
       "Rows Removed by Filter", "Shared Read Blocks", "Temp Read Blocks", "Temp Written Blocks",
-    ].includes(key))));
+      "Plan Rows", "Index Cond", "Filter", "Hash Cond", "Join Filter", "Rows Removed by Join Filter",
+    ].includes(key)).map(([key, value]) => [
+      key,
+      typeof value === "string" && value.length > 180 ? `${value.slice(0, 177)}...` : value,
+    ])));
     for (const child of Array.isArray(node.Plans) ? node.Plans : []) visitPlan(child as Record<string, unknown>);
   };
   if (explainRoot?.Plan) visitPlan(explainRoot.Plan);
