@@ -14,14 +14,19 @@ is shown as an empty state; no records were changed. Focused server tests (2),
 web route tests (19), and the server TypeScript check passed. No migration was
 needed. This is a narrow authorization/UI smoke, not full role or workflow QA.
 
-Live Netlify diagnostics from 1:19–1:20 PM IST show continuing high latency:
-`GET api.task-catalog` took 4,766 ms in the handler, with 3,065 ms summed NOVA
-pool-acquisition time and 1,932 ms summed query time; its auth pool counted
-3,041 ms of acquisition and 2,402 ms of query time. `api.work-context` took
-2,677 ms, `api.notifications` 1,397–4,377 ms, and `api.me` 1,620–4,447 ms.
+Live Netlify diagnostics from 1:19–1:25 PM IST show continuing high latency.
+During one Work Setup load at 1:23 PM, `api.notifications` took 3,416 ms,
+`api.task-catalog` 3,764 ms, and `api.work-context` 4,611 ms in the handler;
+entry-module load was only 3 ms. Those requests counted roughly 1.0–1.1 s in
+NOVA pool acquisition and 1.0–2.2 s in NOVA queries, plus about 1.0 s in auth
+pool acquisition and 0.3 s in auth queries. Earlier 1:19–1:20 observations
+included `api.task-catalog` at 4,766 ms, `api.work-context` at 2,677 ms,
+`api.notifications` at 1,397–4,377 ms, and `api.me` at 1,620–4,447 ms.
 Acquisition/query totals may overlap and must not be added to infer elapsed
 time. These are live samples, not route distributions or a before/after
-result.
+result. The 3 ms module load rules out import time as the main cause for that
+page sample; database round trips and unmeasured handler/runtime time remain
+to be profiled.
 
 The Netlify project settings show Functions running in `CMH (Ohio, US East)`;
 the selected Supabase primary database is in Seoul (`ap-northeast-2`). Netlify
@@ -346,7 +351,7 @@ history; use newer evidence above when results differ.
 | Scheduler ownership | **The selected Supabase scheduler and lease-backed run succeeded before the latest application deploy.** One active named Cron row was observed; its 07:00 UTC run on 11 October succeeded after migration `0080`, and the matching Net HTTP callback returned 200 with no error. The `0080` migration tests overlap, expiration, renewal, stale-owner fencing and execute-only app-role checks. | Extend inventory to duplicate triggers outside this project and exercise missed runs, retries, secret rotation and recovery on each live supported profile. The current inventory cannot prove every trigger account-wide. |
 | Database moves | **Separately gated by design; no transfer was attempted.** Runtime plans preserve database identity. | Treat database copy/cutover as its own future project with write freeze/drain, verified backup/restore, object/data/sequence/RLS/auth comparison and rehearsed recovery. Payroll execution remains future work; retain its schema/permission base. |
 | User-facing quality | **The signed-in Super Admin Work experience is now split into six areas:** My work, Tasks, Reviews, Requests, Reviewer management, and Work context; live smoke rendered their empty/setup states. Existing attendance setup guidance remains. No records were changed. Restricted-role journeys, phone/tablet layouts, keyboard and screen-reader review remain open. | Complete representative employee, reviewer, and restricted-role journeys plus narrow/tablet, keyboard, and screen-reader review. Payroll execution remains future implementation; keep only its current permission/schema foundation. |
-| Speed and capacity | **200×10 local burst passes, but hosted latency is still high and variable.** Current live samples range from about 1.35–1.5 s on selected warm reads to 3.4–5.4 s on other Work, leave, availability, office, and notification reads. Slow diagnostics show roughly 3 s in summed pool acquisition on both NOVA and auth pools; warm samples still show around 1 s in app DB queries. Query/acquisition totals overlap and are not end-to-end parts to add. These samples do not prove a single cause, Cloudflare improvement, p50/p95, or a speed fix. The browser route smokes render, but full request waterfalls and repeated matched distributions are still missing. With 25 concurrent local requests, p95s were 225 ms work-context, 121 ms create/self-assign, 150 ms timer start, 75 ms timer stop, and 633 ms assignment reads; these in-process PostgreSQL figures do not represent hosted network latency or SLA. The older 24-hour mixed Netlify window through 11:12 IST showed 647 invocations, zero errors, average 3.24 s, p50 2.93 s, p95 5.63 s and p99 5.67 s; this predates `3d55c06`. Earlier Work reads after `dd4f891` measured 5.79 s and 5.70 s. | Capture browser waterfalls and repeated route distributions, measure pool/query contribution, run the same tests through a protected Cloudflare + Hyperdrive candidate against the same database, and collect sustained 100/200-employee capacity and pool headroom. Keep the speed gate open until a matched result exists. |
+| Speed and capacity | **200×10 local burst passes, but hosted latency is still high and variable.** Current live samples range from about 1.35–1.5 s on selected warm reads to 3.4–5.4 s on other Work, leave, availability, office, and notification reads. Fresh Work Setup logs show 3.4–4.6 s handlers with 3 ms module-load time, roughly 1.0–1.1 s summed NOVA pool acquisition, 1.0–2.2 s summed NOVA queries, and about 1.3 s across auth acquisition and queries. Earlier cold/bursty samples reached roughly 3 s summed acquisition on each pool. Query/acquisition totals overlap and are not end-to-end parts to add. These samples do not prove a single cause, Cloudflare improvement, p50/p95, or a speed fix. The browser route smokes render, but full request waterfalls and repeated matched distributions are still missing. With 25 concurrent local requests, p95s were 225 ms work-context, 121 ms create/self-assign, 150 ms timer start, 75 ms timer stop, and 633 ms assignment reads; these in-process PostgreSQL figures do not represent hosted network latency or SLA. The older 24-hour mixed Netlify window through 11:12 IST showed 647 invocations, zero errors, average 3.24 s, p50 2.93 s, p95 5.63 s and p99 5.67 s; this predates `3d55c06`. Earlier Work reads after `dd4f891` measured 5.79 s and 5.70 s. | Capture browser waterfalls and repeated route distributions, measure pool/query contribution, run the same tests through a protected Cloudflare + Hyperdrive candidate against the same database, and collect sustained 100/200-employee capacity and pool headroom. Keep the speed gate open until a matched result exists. |
 
 ## Not verified / release gates
 
