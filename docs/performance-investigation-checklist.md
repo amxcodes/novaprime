@@ -49,8 +49,23 @@ Seoul. A same-workload runtime comparison near the database is still needed;
 do not tune pool sizes based on this small sample. A Supabase Edge Function
 candidate would keep the provider setup simpler, but NOVA still needs a Deno
 adapter and same-origin Better Auth routing before it is a supported customer
-profile. The current logs are observations from a few minutes, not route
-percentiles or an authenticated browser waterfall.
+profile. Those first logs are observations from a few minutes, not route
+percentiles; the later authenticated smoke is recorded below and still lacks
+a browser network waterfall.
+
+A later fresh Work-page smoke in the signed-in Super Admin session, at
+4:36–4:37 PM IST after the documentation deploy, also returned HTTP 200 on
+the sampled routes. `GET /api/auth/get-session` took 2.68 s; `GET /api/me`
+samples ranged from 1.23 to 4.28 s; notifications took 1.16 s; recorded work
+sessions took 5.84 s total; and the Work page's `POST /api/work` took 6.94 s
+total (5.33 s inside NOVA). That Work request had 20 NOVA query round-trips,
+8 NOVA pool acquisitions, and 5 auth-pool acquisitions. Its largest query
+was 530 ms in the auth pool; summed pool acquisition time was about 3.1 s in
+each pool and the observed waiter count peaked at two. More than one Work tab
+was open during this smoke, so concurrent page-bootstrap activity may affect
+these samples. The page rendered the signed-in Super Admin navigation and
+Work empty/setup states; no write action was taken. This is a live smoke, not
+a single-tab waterfall or stable route distribution.
 
 Netlify's Functions → Region settings page confirms the deployed region is
 `CMH (Ohio, US East)` and shows “Upgrade to customize region.” Netlify's
