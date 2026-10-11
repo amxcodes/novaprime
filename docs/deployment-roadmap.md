@@ -1,7 +1,7 @@
 # NOVA customer deployment and update roadmap
 
 - **Status:** decision record and implementation roadmap
-- **Review basis:** published `main` application source `3d55c06` on Netlify (deploy `6acb288367d508000966a199`), passing [verification CI run #115](https://github.com/amxcodes/novaprime/actions/runs/38117239800), a signed-in Super Admin smoke across all six Work areas, the 200-employee WSL/Docker/PostgreSQL 17 install, restore and lifecycle rehearsals, and the previously recorded disposable Supabase project inspection. The Work area split is live; matched post-deploy latency and a fresh scheduler-history read remain open.
+- **Review basis:** published `main` application source `3d55c06` on Netlify (deploy `6acb288367d508000966a199`), passing [verification CI run #115](https://github.com/amxcodes/novaprime/actions/runs/38117239800), a signed-in Super Admin smoke across all six Work areas, the 200-employee WSL/Docker/PostgreSQL 17 install, restore and lifecycle rehearsals, and fresh read-only checks of the disposable Supabase project. `/api/health` and `/api/ready` each returned HTTP 200 in one probe (1.37 s and 1.62 s inclusive); the active Supabase Cron tick at 06:35 UTC succeeded and its recorded Net HTTP callback returned 200. Matched authenticated page/data-route latency remains open.
 - **Repository delivery rule:** work on `main`; push only to `origin/main`.
 
 This is the single customer-facing deployment decision and sequencing document.
