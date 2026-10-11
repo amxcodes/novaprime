@@ -80,7 +80,7 @@ jobs:
           fi
           printf 'release_commit=%s\n' "$release_commit" >> "$GITHUB_OUTPUT"
           bun run update:manifest --check
-          node --input-type=module -e '
+          RELEASE_COMMIT="$release_commit" node --input-type=module -e '
             import { readFileSync, writeFileSync } from "node:fs";
             const manifest = JSON.parse(readFileSync("release-manifest.json", "utf8"));
             const notes = [
@@ -106,10 +106,23 @@ jobs:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
           RELEASE_COMMIT: ${{ steps.validate.outputs.release_commit }}
           RUNNER_TEMP: ${{ runner.temp }}
-        run: >-
-          gh release create "$RELEASE_TAG"
-          --repo "$GITHUB_REPOSITORY"
-          --verify-tag
-          --draft
-          --title "NOVA $RELEASE_TAG"
-          --notes-file "$RUNNER_TEMP/nova-release-notes.md"
+        run: |
+          set -euo pipefail
+          existing_draft="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
+          if [[ -n "$existing_draft" ]]; then
+            if [[ "$existing_draft" != "true" ]]; then
+              echo "STABLE_RELEASE_ALREADY_PUBLISHED"
+              exit 1
+            fi
+            gh release edit "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "NOVA $RELEASE_TAG" \
+              --notes-file "$RUNNER_TEMP/nova-release-notes.md"
+          else
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --draft \
+              --title "NOVA $RELEASE_TAG" \
+              --notes-file "$RUNNER_TEMP/nova-release-notes.md"
+          fi
