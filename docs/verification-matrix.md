@@ -261,6 +261,21 @@ connection acquisition and network round trips as the dominant measured cost,
 rather than slow SQL or cold module loading. The Netlify–Seoul region mismatch
 is a likely contributor, but the aggregate windows are not tied to the same
 request IDs and do not isolate exact per-request network latency.
+
+A second live sample came from read-only navigation through People, Work, My
+Day, and Operations at 1:38 PM IST. The initial `api.me`, `api.work-sessions`,
+and `api.notifications` handlers took 4.4–4.5 seconds; `auth.get-session` took
+3.2 seconds. Their pool acquisitions summed to about 3.0 seconds per pool under
+that cold/bursty load. Subsequent warm requests ranged from 1.3 to 2.8 seconds;
+the combined Work read took 5.4 seconds in the handler (7.0 seconds total) and
+made 23 database round trips. Module loading remained 4–12 ms. This is a small
+live sample, not a percentile distribution. The attendance `409` was the
+expected no-active-office setup state and is separate from the latency issue.
+The adjacent Supabase live connection snapshot showed 19 of 60 connections, no
+active queries, no idle-in-transaction sessions, and no blocked queries. This
+rules out obvious database connection saturation at that instant, not short
+peaks outside the snapshot.
+
 The current Netlify region screen requires an upgrade to change the site's
 function region. Netlify's [function region documentation](https://docs.netlify.com/build/functions/configuration/)
 limits region customization to Pro and Enterprise, includes Tokyo (`nrt`),
