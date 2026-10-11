@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { rolePresetDraft, rolePresets } from "../web/role-grants.js";
 import { myAssignmentsReadSql } from "../server/src/commands/work-context.ts";
+import { timelineReadSql } from "../server/src/commands/timeline.ts";
 import type { DatabaseDiagnostics, RequestDatabaseDiagnostics } from "../server/src/database-diagnostics.ts";
 
 const migrationUrl = process.env.MIGRATOR_DATABASE_URL;
@@ -47,7 +48,7 @@ async function handleSmokeRequest(
     : handleRequest(request, diagnosticSink);
 }
 
-type ApiResult = Readonly<{ status: number; body: any; cookie?: string; location?: string }>;
+type ApiResult = Readonly<{ status: number; body: any; cookie?: string; location?: string; serverTiming?: string }>;
 
 let checks = 0;
 let suppressStatusLogs = false;
@@ -146,6 +147,7 @@ async function request(
     body: parsed,
     ...(cookieFrom(response) ? { cookie: cookieFrom(response) } : {}),
     ...(response.headers.get("location") ? { location: response.headers.get("location")! } : {}),
+    ...(response.headers.get("server-timing") ? { serverTiming: response.headers.get("server-timing")! } : {}),
   };
 }
 
@@ -421,6 +423,7 @@ async function runEmployeeLoadSmoke(input: Readonly<{
       { permissionKey: "tasks.create.billable", scope: "organisation" },
       { permissionKey: "tasks.view", scope: "organisation" },
       { permissionKey: "tasks.start", scope: "assigned_work" },
+      { permissionKey: "work.timeline.view", scope: "own_record" },
     ],
     operationalPolicy: {
       workEnabled: true,
@@ -499,6 +502,24 @@ async function runEmployeeLoadSmoke(input: Readonly<{
     const requestsPerSecond = batchElapsedMs > 0 ? results.length * 1_000 / batchElapsedMs : 0;
     console.info(`load_${name}: employees=${results.length} p50_ms=${percentile(0.50).toFixed(1)} p95_ms=${percentile(0.95).toFixed(1)} p99_ms=${percentile(0.99).toFixed(1)} max_ms=${(values.at(-1) ?? 0).toFixed(1)} batch_ms=${batchElapsedMs.toFixed(1)} requests_per_second=${requestsPerSecond.toFixed(2)}`);
 
+    if (name === "timeline_read") {
+      const phasePercentiles = (phase: "access" | "data" | "adjustment") => {
+        const samples = results.map(({ result }) => {
+          const entry = result.serverTiming?.split(",").find((value) =>
+            new RegExp(`^\\s*nova-timeline-${phase}\\s*;\\s*dur=[\\d.]+\\s*$`, "i").test(value),
+          );
+          const match = entry && /dur=([\d.]+)/i.exec(entry);
+          return match ? Number(match[1]) : 0;
+        }).sort((left, right) => left - right);
+        const at = (fraction: number) => samples[Math.min(samples.length - 1, Math.ceil(samples.length * fraction) - 1)] ?? 0;
+        return { p50: at(0.50), p95: at(0.95), p99: at(0.99) };
+      };
+      const access = phasePercentiles("access");
+      const data = phasePercentiles("data");
+      const adjustment = phasePercentiles("adjustment");
+      console.info(`load_timeline_phases_ms: access_p50=${access.p50.toFixed(1)} access_p95=${access.p95.toFixed(1)} data_p50=${data.p50.toFixed(1)} data_p95=${data.p95.toFixed(1)} adjustment_p50=${adjustment.p50.toFixed(1)} adjustment_p95=${adjustment.p95.toFixed(1)}`);
+    }
+
     const metricPercentiles = (
       select: (diagnostics: DatabaseDiagnostics) => number,
     ) => {
@@ -567,6 +588,15 @@ async function runEmployeeLoadSmoke(input: Readonly<{
   const assignmentReads = await mapConcurrent(employees, loadConcurrency, (employee) => timed((diagnostics) =>
     request("GET", "/work/assignments/mine", undefined, employee.cookie, false, undefined, diagnostics)));
   reportBatch("assignments_read", assignmentReads, 200, performance.now() - assignmentReadStartedAt, employees.length);
+
+  const timelineReadStartedAt = performance.now();
+  const timelineReads = await mapConcurrent(employees, loadConcurrency, (employee) => timed((diagnostics) =>
+    request("GET", "/work/timeline", undefined, employee.cookie, false, undefined, diagnostics)));
+  reportBatch("timeline_read", timelineReads, 200, performance.now() - timelineReadStartedAt, employees.length);
+  assert(timelineReads.every(({ result }) => result.body?.personId &&
+    result.body.sessions?.length === tasksPerEmployee && Array.isArray(result.body?.events)),
+  "load_profile_reads_each_employees_recorded_timeline");
+
   const planEmployee = employees[0]!;
   const planQuery = `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${myAssignmentsReadSql()}`;
   const explainOperation = () => withDatabaseRequest({
@@ -595,6 +625,35 @@ async function runEmployeeLoadSmoke(input: Readonly<{
   if (explainRoot?.Plan) visitPlan(explainRoot.Plan);
   planNodes.sort((left, right) => Number(right["Actual Total Time"] ?? 0) - Number(left["Actual Total Time"] ?? 0));
   console.info(`load_assignments_read_explain: planning_ms=${explainRoot?.["Planning Time"]?.toFixed(1)} execution_ms=${explainRoot?.["Execution Time"]?.toFixed(1)} jit=${JSON.stringify(explainRoot?.JIT ?? null)} slowest_nodes=${JSON.stringify(planNodes.slice(0, 18))}`);
+
+  const timelineExplainQuery = `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${timelineReadSql}`;
+  const timelineExplainOperation = () => withDatabaseRequest({
+    userId: planEmployee.personId,
+    organisationId: input.organisationId,
+  }, (transaction) => transaction.query<{ "QUERY PLAN": Array<{ "Planning Time": number; "Execution Time": number; Plan: Record<string, unknown> }> }>(
+    timelineExplainQuery,
+    [input.organisationId, planEmployee.personId, timelineReads[0]?.result.body?.date],
+  ));
+  const timelineExplain = requestScopedDatabase
+    ? await withRequestScopedDatabase(process.env.DATABASE_URL!, timelineExplainOperation)
+    : await timelineExplainOperation();
+  const timelineExplainRoot = timelineExplain.rows[0]?.["QUERY PLAN"]?.[0] as
+    (typeof timelineExplain.rows[number]["QUERY PLAN"][number] & { JIT?: unknown }) | undefined;
+  const timelinePlanNodes: Array<Record<string, unknown>> = [];
+  const visitTimelinePlan = (node: Record<string, unknown>) => {
+    timelinePlanNodes.push(Object.fromEntries(Object.entries(node).filter(([key]) => [
+      "Node Type", "Relation Name", "Index Name", "Actual Total Time", "Actual Rows", "Actual Loops",
+      "Rows Removed by Filter", "Shared Read Blocks", "Temp Read Blocks", "Temp Written Blocks",
+      "Plan Rows", "Index Cond", "Filter", "Hash Cond", "Join Filter", "Rows Removed by Join Filter",
+    ].includes(key)).map(([key, value]) => [
+      key,
+      typeof value === "string" && value.length > 180 ? `${value.slice(0, 177)}...` : value,
+    ])));
+    for (const child of Array.isArray(node.Plans) ? node.Plans : []) visitTimelinePlan(child as Record<string, unknown>);
+  };
+  if (timelineExplainRoot?.Plan) visitTimelinePlan(timelineExplainRoot.Plan);
+  timelinePlanNodes.sort((left, right) => Number(right["Actual Total Time"] ?? 0) - Number(left["Actual Total Time"] ?? 0));
+  console.info(`load_timeline_read_explain: planning_ms=${timelineExplainRoot?.["Planning Time"]?.toFixed(1)} execution_ms=${timelineExplainRoot?.["Execution Time"]?.toFixed(1)} jit=${JSON.stringify(timelineExplainRoot?.JIT ?? null)} slowest_nodes=${JSON.stringify(timelinePlanNodes.slice(0, 18))}`);
 
   const integrity = (await sql<{
     task_count: number; assignment_count: number; session_count: number; open_session_count: number;
@@ -956,6 +1015,11 @@ async function main(): Promise<void> {
   const organisation = await request("GET", "/organisation", undefined, founderCookie);
   assertStatus("organisation_read", organisation, 200);
   assert(organisation.body?.organisation?.attendancePolicy?.mode === "scheduled", "selected_attendance_mode_persisted");
+
+  const emptyTimeline = await request("GET", "/work/timeline", undefined, founderCookie);
+  assertStatus("timeline_read_without_office_assignment", emptyTimeline, 200);
+  assert(emptyTimeline.body?.personId === founder.id && Array.isArray(emptyTimeline.body?.events),
+    "timeline_read_preserves_authorized_empty_state_without_office");
 
   const officeResponse = await request("POST", "/offices", {
     name: `NOVA Lifecycle Office ${randomUUID().slice(0, 8)}`,

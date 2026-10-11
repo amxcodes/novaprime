@@ -934,6 +934,41 @@ hosting change.
   origins, session cookies, CSRF protection, CORS, same-origin routing, rate
   limits, migrations, logging, and rollback with integration tests.
 
+## Timeline read follow-up and matched local load — 11 October 2026
+
+The live Netlify Work trace above identified `GET /api/work/timeline` as a
+3.137 s subread. The handler previously made several dependent database calls
+for authorization/date resolution, attendance and policy, sessions,
+adjustments, and adjustment permission. It now keeps the same server-side scope
+checks while combining date/access into one statement and the timeline records
+into one statement; adjustment permission remains a separate statement. The
+route therefore has at most three command-level queries after the actor is
+resolved. Safe `Server-Timing` fields now report access, data, and adjustment
+phase durations on both direct and batched Work reads. Netlify diagnostics
+accept only those named durations and never log the response data.
+
+The full isolated PostgreSQL 17 QA passed on both 100 employees × 10 completed
+tasks and 200 employees × 10 tasks, with 25 concurrent requests, all 80
+migrations, the authenticated lifecycle assertions, specialized attendance
+tests, restore rehearsal, and cleanup. On the 100-person run, timeline p50/p95
+was 85.8/117.2 ms; on the 200-person run it was 87.2/124.4 ms. Timeline phase
+p95 was 9.8/25.9/16.1 ms at 100 people and 9.7/20.8/16.1 ms at 200 for
+access/data/adjustment. PostgreSQL `EXPLAIN ANALYZE` for the 10-session timeline
+query took 4.1 ms and 4.3 ms respectively, with no buffer reads or temp-file
+spill in these warm local samples. Both runs passed 2,437 and 4,237 lifecycle
+assertions respectively. These are local Docker/PostgreSQL in-process bursts,
+not hosted latency or a sustained capacity guarantee.
+
+One earlier run at the same 100×10/25-concurrent profile had reported a 2.45 s
+timeline p95 and much higher connection/query subtotals. The new two clean runs
+are substantially faster, but the discrepancy is unresolved; it may reflect
+transient host contention or test-process conditions, and is not proof that
+every hosted route is fixed. The source change has not yet been measured on the
+published Netlify build or on the Cloudflare candidate. After publication,
+repeat a single-tab authenticated Work-page sample and confirm these phase
+fields in Netlify logs; compare that with a same-source Cloudflare run before
+attributing the remaining cross-region overhead to either provider.
+
 ## Hosting decision: Netlify Functions or Supabase Functions?
 
 Yes, Supabase Edge Functions can host authenticated HTTP endpoints and can

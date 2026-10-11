@@ -43,6 +43,22 @@ test("dispatches only bounded GET reads and preserves each existing response", a
   expect(response.headers.get("server-timing")).toContain("nova-work-attendance;dur=");
 });
 
+test("forwards allowlisted timeline phase timings without adding internal fields to response data", async () => {
+  const response = await readWorkPage(request(["/api/work/timeline"]), async () => new Response(JSON.stringify({
+    date: "2026-10-11",
+    sessions: [],
+  }), {
+    headers: { "content-type": "application/json", "server-timing": "nova-timeline-access;dur=2.5, nova-timeline-data;dur=18, nova-private;dur=9999" },
+  }));
+
+  expect(response.headers.get("server-timing")).toContain("nova-work-timeline-access;dur=");
+  expect(response.headers.get("server-timing")).toContain("nova-work-timeline-data;dur=");
+  expect(response.headers.get("server-timing")).not.toContain("nova-private");
+  const body = await response.json();
+  expect(body.reads[0]).toMatchObject({ body: { date: "2026-10-11", sessions: [] } });
+  expect(body.reads[0]).not.toHaveProperty("timelinePhases");
+});
+
 test("rejects mutation, unknown, cross-origin, duplicate, malformed and unbounded reads before dispatch", async () => {
   const invalidPlans = [
     ["/api/work-sessions/start"],

@@ -69,6 +69,24 @@ test("records only allowlisted Work subread timings", () => {
   expect(JSON.stringify(diagnostic)).not.toContain("private");
 });
 
+test("records safe timeline phase timings and ignores arbitrary server timing names", () => {
+  const direct = slowRequestDiagnostic(request({
+    pathname: "/api/work/timeline",
+    durationMs: 1_800,
+    serverTiming: "nova-timeline-access;dur=21.6, nova-timeline-data;dur=1240.4, nova-secret;dur=9999",
+  }));
+  expect(direct).toMatchObject({ timeline_phase_ms: { access: 22, data: 1_240 } });
+  expect(JSON.stringify(direct)).not.toContain("nova-secret");
+
+  const batch = slowRequestDiagnostic(request({
+    pathname: "/api/work/page-read",
+    durationMs: 1_800,
+    serverTiming: "nova-work-timeline-data;dur=1240.4, nova-work-secret;dur=9999",
+  }));
+  expect(batch).toMatchObject({ work_read_ms: { "timeline-data": 1_240 } });
+  expect(JSON.stringify(batch)).not.toContain("secret");
+});
+
 test("records aggregate database time and counts without request data", () => {
   const diagnostic = slowRequestDiagnostic(request({
     durationMs: 1_700,

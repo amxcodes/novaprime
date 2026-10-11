@@ -1,5 +1,37 @@
 # NOVA runtime smoke runbook
 
+## Timeline and 100/200-user burst follow-up — 11 October 2026
+
+The timeline endpoint now groups authorization/business-date resolution and
+the attendance/policy/session/adjustment read into two SQL statements, then
+performs the separate adjustment-permission check. The scope conditions remain
+server-side and were exercised by the normal authenticated and role-boundary
+suite. Diagnostics expose only the three safe durations (access, data, and
+adjustment); no timeline payload is included. PostgreSQL `EXPLAIN ANALYZE`
+reports the actual data-query plan in the isolated workload.
+
+The 100-employee × 10-task run at 25 concurrent requests passed the complete
+isolated PostgreSQL 17 QA and 2,437 lifecycle assertions. Work context p95 was
+293 ms, task creation/self-assignment p95 170 ms across 1,000 requests,
+timer-start p95 152 ms, timer-stop p95 226 ms, assignment-read p95 60 ms, and
+timeline-read p95 117 ms. Timeline phase p95 was 10 ms access, 26 ms data, and
+16 ms adjustment; the timeline SQL plan ran in 4.1 ms.
+
+The 200-employee × 10-task run at the same concurrency passed all 4,237
+lifecycle assertions and the same full migration, role/RLS, restore, updater,
+attendance, and cleanup checks. Work context p95 was 368 ms, task
+creation/self-assignment p95 225 ms across 2,000 requests, timer-start p95 152
+ms, timer-stop p95 61 ms, assignment-read p95 59 ms, and timeline-read p95 124
+ms. Timeline phase p95 was 10/21/16 ms (access/data/adjustment); the SQL plan
+ran in 4.3 ms. The diagnostics showed no DB query failures. This local
+in-process burst is not hosted, sustained, or a capacity guarantee.
+
+An earlier 100×10 run reported a 2.45 s timeline p95 under the same nominal
+profile. This conflict is retained as an unresolved variance, not hidden: the
+new clean 100- and 200-person runs show low phase/query times, while production
+Netlify had previously shown multi-second requests. The source change must
+still be published and compared with fresh single-tab hosted measurements.
+
 ## Current Netlify and isolated Cloudflare pages — 11 October 2026
 
 Both hosted builds are on source commit

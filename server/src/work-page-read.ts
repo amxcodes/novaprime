@@ -15,6 +15,7 @@ const workReadRoutes = new Map([
 
 const maxWorkPageReads = 9;
 const maxWorkPageReadBytes = 16_384;
+const timelineReadPhases = ["access", "data", "adjustment"] as const;
 
 type WorkPageReadRoute = {
   name: string;
@@ -27,7 +28,27 @@ type WorkPageReadItem = {
   body: unknown;
 };
 
+type WorkPageReadResult = WorkPageReadItem & {
+  name: string;
+  durationMs: number;
+  timelinePhases?: Partial<Record<(typeof timelineReadPhases)[number], number>>;
+};
+
 type DispatchRead = (request: Request) => Promise<Response>;
+
+function safeTimelinePhases(serverTiming: string | null): WorkPageReadResult["timelinePhases"] {
+  if (!serverTiming) return undefined;
+  const phases: NonNullable<WorkPageReadResult["timelinePhases"]> = {};
+  for (const entry of serverTiming.split(",")) {
+    const match = /^\s*nova-timeline-(access|data|adjustment)\s*;\s*dur=([\d.]+)\s*$/i.exec(entry);
+    if (!match) continue;
+    const durationMs = Number(match[2]);
+    if (Number.isFinite(durationMs) && durationMs >= 0 && durationMs <= 60_000) {
+      phases[match[1] as (typeof timelineReadPhases)[number]] = durationMs;
+    }
+  }
+  return Object.keys(phases).length ? phases : undefined;
+}
 
 function errorResponse(error: string, status: number): Response {
   return Response.json({ error }, {
@@ -146,7 +167,12 @@ export async function readWorkPage(
         status: response.status,
         body: await response.json().catch(() => ({ error: "INVALID_READ_RESPONSE" })),
       };
-      return { ...result, name: route.name, durationMs: performance.now() - startedAt };
+      return {
+        ...result,
+        name: route.name,
+        durationMs: performance.now() - startedAt,
+        ...(route.name === "timeline" ? { timelinePhases: safeTimelinePhases(response.headers.get("server-timing")) } : {}),
+      };
     } catch (error) {
       const code = error && typeof error === "object" && "code" in error && typeof error.code === "string"
         ? error.code
@@ -180,10 +206,14 @@ export async function readWorkPage(
       reads.some((read) => read.status === 503) ? 503 : 500);
   }
 
-  const serverTiming = reads.map(({ name, durationMs }) =>
+  const serverTiming = reads.flatMap(({ name, durationMs, timelinePhases }) => [
     `nova-work-${name};dur=${Math.max(0, durationMs).toFixed(1)}`,
-  ).join(", ");
-  return Response.json({ reads }, {
+    ...(timelinePhases ? Object.entries(timelinePhases).map(([phase, phaseDurationMs]) =>
+      `nova-work-timeline-${phase};dur=${Math.max(0, phaseDurationMs).toFixed(1)}`,
+    ) : []),
+  ]).join(", ");
+  const responseReads = reads.map(({ timelinePhases: _timelinePhases, ...read }) => read);
+  return Response.json({ reads: responseReads }, {
     headers: {
       "cache-control": "no-store",
       "server-timing": serverTiming,
