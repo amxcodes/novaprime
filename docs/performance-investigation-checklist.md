@@ -2,6 +2,41 @@
 
 Date: 2026-10-11
 
+## Latest latency work and provider constraints — 11 October 2026
+
+The current source now sends `BEGIN` and the transaction-local RLS identity in
+one PostgreSQL request for every `withDatabaseRequest` transaction. Both IDs
+are validated as UUIDs before they are interpolated; transaction scope and
+policy checks are unchanged. This removes one network round trip per scoped
+command. Verification passed the complete 575-test suite, server/operator and
+Cloudflare TypeScript checks, plus the isolated PostgreSQL 17 lifecycle,
+restore, and 0072→0080 updater rehearsals.
+
+The post-change local workload used 100 employees, 10 tasks each and at most
+25 concurrent requests. The five wave p95s were 289.5 ms for work context,
+182.7 ms for task creation/self-assignment, 210.0 ms for timer start, 310.3 ms
+for timer stop, and 64.6 ms for assignment reads. All waves had zero database
+diagnostic failures; the complete lifecycle passed 2,433 assertions. This is
+a local PostgreSQL burst, not a controlled before/after comparison, a hosted
+latency result, or a sustained capacity guarantee.
+
+Netlify's Functions → Region settings page confirms the deployed region is
+`CMH (Ohio, US East)` and shows “Upgrade to customize region.” Netlify's
+official configuration guide limits custom regions to Pro and Enterprise;
+its self-serve Asia Pacific options include `nrt` (Tokyo). A closer Netlify
+region is therefore a paid-plan experiment, not a free setting we can apply
+in code ([Netlify Functions configuration](https://docs.netlify.com/build/functions/configuration/)).
+The user reports Cloudflare Zero Trust onboarding requires payment/card details
+and declined that setup. No Cloudflare application, policy, Worker, Hyperdrive,
+or production route was created. Keep the candidate move gated until a no-card,
+verified owner-only boundary is available and the user approves any secret
+transfer.
+
+The Netlify production deployment remains on the preceding runtime code
+while this transaction-round-trip change is local. Do not report the local
+figures as a production fix; a fresh published deploy and authenticated,
+route-specific measurements are still required.
+
 This checklist separates browser time, Netlify execution, database connection
 wait, PostgreSQL round trips, and query execution. It records evidence before
 changing runtime or database architecture. The production database is in Seoul

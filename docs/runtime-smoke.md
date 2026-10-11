@@ -1,5 +1,29 @@
 # NOVA runtime smoke runbook
 
+## Latest 100-employee workload after transaction setup reduction — 2026-10-11
+
+The current source was tested on an isolated PostgreSQL 17 database with 100
+employees, 10 tasks per employee and at most 25 concurrent requests. It passed
+fresh migrations through `0080`, 2,433 authenticated lifecycle assertions,
+the attendance/WFH/leave/geofence suite, restricted `nova_app` preflight, a
+full dump/restore check, and the 0072→0080 updater rehearsal. The transaction
+initializer now sends `BEGIN` and the validated transaction-local RLS identity
+in one PostgreSQL request, removing one database round trip per scoped
+command.
+
+The five workload wave p50/p95/p99 values were: work context
+199.2/289.5/292.4 ms; task create/self-assign 122.3/182.7/235.4 ms; timer
+start 142.6/210.0/250.8 ms; timer stop 217.5/310.3/359.4 ms; assignment reads
+48.0/64.6/65.3 ms. Throughput was 88.20, 141.49, 120.87, 80.98, and 381.07
+requests/second for those waves. No request wave recorded database diagnostic
+failures. The database `EXPLAIN ANALYZE` for assignment reads took 7.0 ms.
+
+This is a local in-process PostgreSQL workload. It does not include browser
+rendering, provider network distance, Netlify function startup/queueing,
+Hyperdrive, or sustained scale-out. It is not a controlled before/after
+measurement of the one-round-trip reduction and does not prove hosted latency
+or production capacity.
+
 ## Latest 200-employee PostgreSQL run and archive restore — 2026-10-11
 
 An isolated PostgreSQL 17 run passed with 200 synthetic employees, 10 tasks

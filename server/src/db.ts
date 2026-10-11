@@ -167,15 +167,18 @@ export async function withDatabaseRequest<T>(
   context: DatabaseRequestContext,
   operation: (transaction: DatabaseTransaction) => Promise<T>,
 ): Promise<T> {
+  // Keep the only values interpolated into the transaction setup constrained
+  // to UUIDs. Sending BEGIN and the transaction-local RLS context together
+  // saves one database round trip for every scoped command.
+  const validatedContext = databaseRequestContext(context.userId, context.organisationId);
   const transaction = await database().connect();
 
   try {
-    await transaction.query("BEGIN");
     await transaction.query(
-      `SELECT
-        set_config('nova.user_id', $1, true),
-        set_config('nova.organisation_id', $2, true)`,
-      [context.userId, context.organisationId],
+      `BEGIN;
+       SELECT
+        set_config('nova.user_id', '${validatedContext.userId}', true),
+        set_config('nova.organisation_id', '${validatedContext.organisationId}', true);`,
     );
 
     const result = await operation(transaction);
