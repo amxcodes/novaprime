@@ -2,6 +2,36 @@
 
 Date: 2026-10-11
 
+## Fresh hosted serial sample — 11 October 2026
+
+From the same Windows client, ten sequential `fetch` requests were sent to
+each live read-only endpoint over one reused HTTP client connection. All
+requests returned HTTP 200. The nine follow-up responses were:
+
+| Endpoint | Total response p50 / p95 | `nova-app` handler p50 / p95 |
+| --- | ---: | ---: |
+| Netlify `/api/ready` | 518 / 543 ms | 163 / 163 ms |
+| Cloudflare candidate `/api/ready` through Hyperdrive | 421 / 437 ms | 200 / 201 ms |
+| Netlify `/api/auth/get-session` with no cookie | 525 / 536 ms | 166 / 167 ms |
+
+The first request in each sequence was slower: 2,605 ms for Netlify readiness
+(1,137 ms in the app handler), 1,015 ms for Cloudflare readiness (216 ms in
+the handler), and 1,055 ms for the empty Netlify session lookup (340 ms in the
+handler). A separate earlier session request took 1,350 ms in its handler.
+This is consistent with a variable first-request/connection penalty, but does
+not prove a function cold start. The small sample does not identify a stable
+cause, and p95 with only nine follow-up requests is just the largest observed
+value. It includes this client's internet route and does not represent a
+browser session distribution, signed-in workflow, or load test. The observed
+Cloudflare readiness advantage was about 97 ms at warm p50 even though its
+handler p50 was about 37 ms slower; these measurements alone do not isolate
+which platform, network, or database component accounts for the difference.
+
+These endpoints exercise health/readiness and an empty Better Auth session;
+they do not read or write business records. The candidate Worker is public,
+has no customer hostname or Cron, and remains connected only to disposable
+Supabase data. No production route, scheduler, or schema was changed.
+
 ## Latest latency work and provider constraints — 11 October 2026
 
 The current source sends `BEGIN`, transaction-local RLS identity, and
@@ -104,14 +134,14 @@ schema-readiness responses prove the deployed Worker-to-Hyperdrive-to-Supabase
 path is connected; they do not prove sign-in, authenticated business
 workflows, a customer first install, or a runtime cutover.
 
-One small serial latency sample from this machine showed warm Cloudflare
+An earlier small serial sample from this machine showed warm Cloudflare
 readiness at about 0.33 s and its empty-session response at 0.34 s, compared
-with about 0.52 s and 0.52 s on the Netlify test deployment. The first request
-after each host was contacted was slower. These are four or five GET samples
-per endpoint, without a signed-in browser or controlled regional/load
-conditions; the session requests had no cookie, and the difference cannot be
-attributed to Hyperdrive alone. Treat them as directional observations, not
-p95s. The 100/200-employee hosted load gate remains open.
+with about 0.52 s and 0.52 s on the Netlify test deployment. The fresher
+matched sample at the top of this document supersedes those values. Both
+samples used anonymous GETs without controlled regional or load conditions;
+neither isolates Hyperdrive's contribution or represents signed-in workflows.
+Treat them as directional observations, not p95s. The 100/200-employee
+hosted load gate remains open.
 
 Zero Trust is not needed for a local Worker smoke test. The repository now has
 `cloudflare/wrangler.local.toml` and instructions in `cloudflare/README.md` to
@@ -165,12 +195,12 @@ deployment, use them to distinguish likely local-pool saturation from
 connection creation, then correlate with warm/cold samples and provider-side
 metrics before changing pool limits or hosting.
 
-## Current live telemetry after `c622961` (11 October 2026)
+## Live telemetry snapshot after `c622961` (11 October 2026)
 
-Netlify's authenticated dashboard now confirms `c622961` is published as
-deploy `6acb5d10ece4b700080a203a`. The production function remains in
+At the time of this snapshot, Netlify's authenticated dashboard confirmed
+`c622961` was published as deploy `6acb5d10ece4b700080a203a`. The production function was in
 `CMH (Ohio, US East)`; Supabase identifies the selected database as Seoul.
-The current function logs show `GET /api/auth/get-session` at 3.29 seconds
+The function logs then showed `GET /api/auth/get-session` at 3.29 seconds
 inside the handler, `/api/me` at 3.52 seconds, a warm `/api/notifications`
 request at 1.20 seconds, `/api/work-sessions` at 4.19 seconds, and a Work read
 at 5.23 seconds. The Work log counted 20 NOVA queries, with the largest
@@ -234,7 +264,7 @@ The run used only a disposable local database and removed its containers,
 volumes, network, and random credentials afterward. This is a reproducible
 query regression result, not a Netlify/Cloudflare timing or capacity guarantee.
 
-Netlify's project dashboard confirms that the production Function runs in
+Netlify's project dashboard confirmed that the production Function ran in
 `CMH (Ohio, US)`, while NOVA's Supabase database is in Seoul (`ap-northeast-2`).
 Post-deploy logs from 14:21–14:25 IST show the handler and database costs
 remain high: `GET api.work-context` took 5,568 ms inside NOVA (7,149 ms total
@@ -394,12 +424,12 @@ slow SQL statement or Netlify cold start is the sole cause. The logs contain
 no browser waterfall and are single-session samples, so they cannot be used as
 p50/p95 or as proof that Cloudflare will be faster.
 
-The signed-in Cloudflare account has no NOVA Worker or Hyperdrive configuration
-and no Access policy. Keep the existing Supabase database, Supabase Cron, and
-production origin fixed while testing through local Wrangler remote
-development. Begin with bounded read-only requests and compare repeated
-cold/warm distributions; do not enable a public preview or consider traffic
-promotion from this test alone.
+At the time of this earlier note, the signed-in Cloudflare account had no NOVA
+Worker, Hyperdrive configuration, or Access policy. The separate disposable
+candidate deployment and its live readiness/session probes are recorded above.
+Keep the existing Supabase database, Supabase Cron, and production origin fixed
+while testing. The candidate's public hostname is suitable only for disposable
+data; its bounded read-only checks do not justify traffic promotion.
 
 The Work Tasks UI rendered, but this browser inspection did not expose a
 network trace. Confirm that Work Tasks omits `/api/tasks` and collect its
