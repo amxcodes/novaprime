@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing immutable vMAJOR.MINOR.PATCH tag to validate and draft
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -11,6 +17,8 @@ permissions:
 jobs:
   verify:
     uses: ./.github/workflows/verify.yml
+    with:
+      source_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
     permissions:
       contents: read
 
@@ -23,6 +31,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -32,16 +41,23 @@ jobs:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - name: Validate the immutable release candidate
+        id: validate
         shell: bash
         env:
           GITHUB_SHA: ${{ github.sha }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
         run: |
           set -euo pipefail
-          tag="$GITHUB_REF_NAME"
+          tag="$RELEASE_TAG"
           if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "STABLE_RELEASE_TAG_INVALID"
+            exit 1
+          fi
+          release_commit="$(git rev-parse "$tag^{commit}")"
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$release_commit" != "$GITHUB_SHA" ]]; then
+            echo "STABLE_RELEASE_TAG_COMMIT_MISMATCH"
             exit 1
           fi
           version="${tag#v}"
@@ -51,21 +67,18 @@ jobs:
             echo "STABLE_RELEASE_VERSION_MISMATCH"
             exit 1
           fi
-          if [[ "$(git rev-parse "$tag^{commit}")" != "$GITHUB_SHA" ]]; then
-            echo "STABLE_RELEASE_TAG_COMMIT_MISMATCH"
-            exit 1
-          fi
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+          if ! git merge-base --is-ancestor "$release_commit" refs/remotes/origin/main; then
             echo "STABLE_RELEASE_COMMIT_NOT_ON_MAIN"
             exit 1
           fi
-          remote_tag_refs="$(git ls-remote origin "refs/tags/$tag")"
+          remote_tag_refs="$(git ls-remote --tags origin "refs/tags/${tag}*")"
           remote_tag_commit="$(printf '%s\n' "$remote_tag_refs" | awk -v ref="refs/tags/$tag" '$2 == ref { tag_commit = $1 } $2 == ref "^{}" { peeled_commit = $1 } END { print peeled_commit != "" ? peeled_commit : tag_commit }')"
-          if [[ "$remote_tag_commit" != "$GITHUB_SHA" ]]; then
+          if [[ "$remote_tag_commit" != "$release_commit" ]]; then
             echo "STABLE_RELEASE_REMOTE_TAG_CHANGED"
             exit 1
           fi
+          printf 'release_commit=%s\n' "$release_commit" >> "$GITHUB_OUTPUT"
           bun run update:manifest --check
           node --input-type=module -e '
             import { readFileSync, writeFileSync } from "node:fs";
@@ -80,7 +93,7 @@ jobs:
                 ? `Minimum supported starting version: ${manifest.minimumStartingVersion}`
                 : "Starting-version compatibility must be reviewed in the release notes.",
               "",
-              `Verified source commit: ${process.env.GITHUB_SHA}`,
+              `Verified source commit: ${process.env.RELEASE_COMMIT}`,
               "",
               "This draft was generated only after the tagged commit passed the full NOVA verification workflow. Review the impact and compatibility notes before publishing.",
             ].join("\n");
@@ -90,7 +103,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          RELEASE_COMMIT: ${{ steps.validate.outputs.release_commit }}
           RUNNER_TEMP: ${{ runner.temp }}
         run: >-
           gh release create "$RELEASE_TAG"

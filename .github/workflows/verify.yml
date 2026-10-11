@@ -7,6 +7,11 @@ on:
   pull_request:
   workflow_dispatch:
   workflow_call:
+    inputs:
+      source_ref:
+        description: Optional immutable tag/ref to verify when called by a release workflow
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -16,6 +21,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -120,6 +127,8 @@ jobs:
       COMPOSE_PROJECT_NAME: nova-ci-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: 1.3.14
