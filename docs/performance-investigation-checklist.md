@@ -32,10 +32,20 @@ or production route was created. Keep the candidate move gated until a no-card,
 verified owner-only boundary is available and the user approves any secret
 transfer.
 
-The Netlify production deployment remains on the preceding runtime code
-while this transaction-round-trip change is local. Do not report the local
-figures as a production fix; a fresh published deploy and authenticated,
-route-specific measurements are still required.
+Netlify published this runtime change as deploy
+`6acb52834f8e250008b6e15e` (`68d2631`) in 29 seconds. Its first live logs at
+2:41 PM IST show two warm `POST /api/work` requests at 2.23 seconds with 17
+queries and about 1 ms summed pool-acquisition time. At 2:41:34 PM,
+`GET /api/notifications` took 4.15 seconds and `GET /api/work-sessions` took
+4.24 seconds; each recorded about 3.0–3.1 seconds of summed pool-acquisition
+time across five or six acquisitions. A later warm work-session read took
+1.18 seconds with no acquisition wait. The app's API diagnostics show mostly
+sub-190 ms individual query maxima for these examples. These are a handful of
+live observations, not matched distributions or proof of a broad speedup.
+They confirm the one-round-trip change is deployed, but cold-instance
+connection acquisition and warm multi-query request latency still need work.
+The authenticated browser waterfall remains open because the app tab rendered
+the signed-out shell after reload.
 
 This checklist separates browser time, Netlify execution, database connection
 wait, PostgreSQL round trips, and query execution. It records evidence before
