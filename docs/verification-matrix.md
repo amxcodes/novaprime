@@ -247,6 +247,48 @@ database-region, or hosting-provider change was made. Netlify currently locks
 custom function regions for this project; use a measured same-region deployment
 or a deliberate database migration plan before changing infrastructure.
 
+The 11 October 2026 live profiler check narrows the cause. In Supabase Query
+Performance, the authenticated-actor resolver ran 3,017 times in the selected
+60-minute window: 5.92 seconds total database execution, 2 ms mean, and 132 ms
+maximum. The work-context client query ran 106 times in that window: 0.06
+seconds total, 1 ms mean, and 2 ms maximum. The 1:23 PM Netlify diagnostics for
+those Work Setup requests still showed 3.4–4.6 seconds per handler, including
+1.0–2.2 seconds summed client-observed NOVA query round trips and about 1.3
+seconds in auth pool acquisition/query measurements; module loading was 3 ms.
+The client-observed query duration includes network round trips, unlike
+`pg_stat_statements` server execution. Taken together, this points to database
+connection acquisition and network round trips as the dominant measured cost,
+rather than slow SQL or cold module loading. The Netlify–Seoul region mismatch
+is a likely contributor, but the aggregate windows are not tied to the same
+request IDs and do not isolate exact per-request network latency.
+The current Netlify region screen requires an upgrade to change the site's
+function region. Netlify's [function region documentation](https://docs.netlify.com/build/functions/configuration/)
+limits region customization to Pro and Enterprise, includes Tokyo (`nrt`),
+applies the selection to every function on the site, and requires a redeploy.
+For a customer willing to use that plan, an `nrt` redeploy is the smallest
+same-stack comparison for this Seoul database; it still needs a before/after
+measurement and is not enabled here.
+
+The other useful comparison is the same authenticated reads against the same
+Supabase database through a protected Cloudflare Worker + Hyperdrive candidate.
+Cloudflare's [Hyperdrive guide](https://developers.cloudflare.com/hyperdrive/get-started/)
+describes pooled connections avoiding seven setup round trips, and its
+[placement guide](https://developers.cloudflare.com/workers/configuration/placement/)
+recommends placement near the database when a request makes multiple sequential
+queries. For this Seoul-only experiment, `aws:ap-northeast-2` is the candidate
+placement hint; it must not become a hardcoded global default for customer
+projects. Keep the API Worker-first and static assets edge-served. Protect the
+candidate before binding database credentials: Cloudflare [version URLs](https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/)
+are public when enabled, and enabling `workers_dev` enables version URLs by
+default. The [Free Workers plan](https://developers.cloudflare.com/hyperdrive/platform/pricing/)
+currently limits Hyperdrive to 100,000 SQL statements per day and about 20
+origin connections, and [Workers limits](https://developers.cloudflare.com/workers/platform/limits/)
+include 100,000 requests per day and 10 ms CPU per invocation. A 100-employee
+customer profile therefore still needs an observed statement, request,
+connection, and CPU budget before Cloudflare Free can be called suitable. The
+production origin, database, and scheduler remain unchanged pending a protected,
+matched test.
+
 The permission-catalogue migration 0079's new column is present on the
 disposable target, but its migration-ledger row/checksum could not be read as
 `nova_app` (expected least privilege), and the available management token could
@@ -351,7 +393,7 @@ history; use newer evidence above when results differ.
 | Scheduler ownership | **The selected Supabase scheduler and lease-backed run succeeded before the latest application deploy.** One active named Cron row was observed; its 07:00 UTC run on 11 October succeeded after migration `0080`, and the matching Net HTTP callback returned 200 with no error. The `0080` migration tests overlap, expiration, renewal, stale-owner fencing and execute-only app-role checks. | Extend inventory to duplicate triggers outside this project and exercise missed runs, retries, secret rotation and recovery on each live supported profile. The current inventory cannot prove every trigger account-wide. |
 | Database moves | **Separately gated by design; no transfer was attempted.** Runtime plans preserve database identity. | Treat database copy/cutover as its own future project with write freeze/drain, verified backup/restore, object/data/sequence/RLS/auth comparison and rehearsed recovery. Payroll execution remains future work; retain its schema/permission base. |
 | User-facing quality | **The signed-in Super Admin Work experience is now split into six areas:** My work, Tasks, Reviews, Requests, Reviewer management, and Work context; live smoke rendered their empty/setup states. Existing attendance setup guidance remains. No records were changed. Restricted-role journeys, phone/tablet layouts, keyboard and screen-reader review remain open. | Complete representative employee, reviewer, and restricted-role journeys plus narrow/tablet, keyboard, and screen-reader review. Payroll execution remains future implementation; keep only its current permission/schema foundation. |
-| Speed and capacity | **200×10 local burst passes, but hosted latency is still high and variable.** Current live samples range from about 1.35–1.5 s on selected warm reads to 3.4–5.4 s on other Work, leave, availability, office, and notification reads. Fresh Work Setup logs show 3.4–4.6 s handlers with 3 ms module-load time, roughly 1.0–1.1 s summed NOVA pool acquisition, 1.0–2.2 s summed NOVA queries, and about 1.3 s across auth acquisition and queries. Earlier cold/bursty samples reached roughly 3 s summed acquisition on each pool. Query/acquisition totals overlap and are not end-to-end parts to add. These samples do not prove a single cause, Cloudflare improvement, p50/p95, or a speed fix. The browser route smokes render, but full request waterfalls and repeated matched distributions are still missing. With 25 concurrent local requests, p95s were 225 ms work-context, 121 ms create/self-assign, 150 ms timer start, 75 ms timer stop, and 633 ms assignment reads; these in-process PostgreSQL figures do not represent hosted network latency or SLA. The older 24-hour mixed Netlify window through 11:12 IST showed 647 invocations, zero errors, average 3.24 s, p50 2.93 s, p95 5.63 s and p99 5.67 s; this predates `3d55c06`. Earlier Work reads after `dd4f891` measured 5.79 s and 5.70 s. | Capture browser waterfalls and repeated route distributions, measure pool/query contribution, run the same tests through a protected Cloudflare + Hyperdrive candidate against the same database, and collect sustained 100/200-employee capacity and pool headroom. Keep the speed gate open until a matched result exists. |
+| Speed and capacity | **200×10 local burst passes, but hosted latency is still high and variable.** Current live samples range from about 1.35–1.5 s on selected warm reads to 3.4–5.4 s on other Work, leave, availability, office, and notification reads. Fresh Work Setup logs show 3.4–4.6 s handlers with 3 ms module-load time, roughly 1.0–1.1 s summed NOVA pool acquisition, 1.0–2.2 s summed client-observed NOVA query round trips, and about 1.3 s across auth acquisition and query measurements. Supabase `pg_stat_statements` shows the hot actor resolver at 2 ms mean / 132 ms max and the work-context client query at 1 ms mean / 2 ms max, indicating database execution itself is cheap in the observed window; application query timing includes network round trips. Earlier cold/bursty samples reached roughly 3 s summed acquisition on each pool. Query/acquisition totals overlap and are not end-to-end parts to add. These samples do not prove a single cause, Cloudflare improvement, p50/p95, or a speed fix. The browser route smokes render, but full request waterfalls and repeated matched distributions are still missing. With 25 concurrent local requests, p95s were 225 ms work-context, 121 ms create/self-assign, 150 ms timer start, 75 ms timer stop, and 633 ms assignment reads; these in-process PostgreSQL figures do not represent hosted network latency or SLA. The older 24-hour mixed Netlify window through 11:12 IST showed 647 invocations, zero errors, average 3.24 s, p50 2.93 s, p95 5.63 s and p99 5.67 s; this predates `3d55c06`. Earlier Work reads after `dd4f891` measured 5.79 s and 5.70 s. | Capture browser waterfalls and repeated route distributions. Compare the same authenticated reads against the same database through a protected Cloudflare + Hyperdrive candidate; if the Netlify account moves to Pro/Enterprise, also compare a Tokyo (`nrt`) function deployment. Then collect sustained 100/200-employee capacity and pool headroom. Keep the speed gate open until matched results exist. |
 
 ## Not verified / release gates
 
