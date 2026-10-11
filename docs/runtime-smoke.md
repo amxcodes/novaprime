@@ -1,6 +1,53 @@
 # NOVA runtime smoke runbook
 
-## Latest 100-employee workload after transaction setup reduction — 2026-10-11
+## Current Netlify and isolated Cloudflare pages — 11 October 2026
+
+Both hosted builds are on source commit
+`9a97dc9896411c7acfbc9b29f9e876e0173ec2b6`: Netlify production deploy
+`6acba663d3655400084dc33b` and Cloudflare candidate version
+`9130324d-3b33-4bc3-b85c-ebf601e5f649`. The Cloudflare Worker is Ready with
+100% of its own candidate traffic, uses Hyperdrive to reach disposable
+Supabase data, has no customer domain or Cron, and leaves Supabase as scheduler.
+
+In the signed-in Super Admin browser session, My Day and Work rendered on both
+hosts after the initial shell finished loading. On this disposable organisation,
+Work correctly showed no assignments, sessions, or timeline events. My Day
+correctly showed no assignments, events, or requests and displayed
+“Attendance setup needed” because there is no active office assignment. No
+business records or settings were changed. The independent My Day panel loads
+resolve on both runtimes; this check does not cover every role, write action,
+accessibility/responsive journey, or authenticated latency distribution.
+
+The same-source anonymous readiness timing sample is recorded in the
+[performance investigation](performance-investigation-checklist.md). Its
+results do not certify user-facing route speed or hosted 100/200-person capacity.
+
+## Latest WSL PostgreSQL 17 fresh install and 100-employee run — 11 October 2026
+
+The QA harness ran from the current checkout through the user's Debian WSL2
+Docker engine. It created a fresh PostgreSQL 17 database with hostname-checked
+TLS, applied all 80 migrations, passed restricted `nova_app` preflight, and
+completed 2,433 authenticated lifecycle assertions plus attendance, WFH, leave,
+and geofence checks. The full dump/restore verified all 80 migration checksums,
+65 table row counts, 59 RLS policies, auth/session identity, tenant isolation,
+encrypted provider-secret decryption, and the restricted-role boundary. The
+updater rehearsal upgraded an old `0072` ledger through `0080`; a second plan
+found no pending migration. The harness removed only its uniquely named
+containers, volumes, network, database, and generated credentials.
+
+The request-scoped direct PostgreSQL workload used 100 employees, 10 tasks per
+employee, and up to 25 concurrent requests. Its p50/p95/p99 values were: work
+context 449.0/478.0/494.2 ms; task create/self-assign 354.7/423.1/488.4 ms;
+timer start 322.8/348.8/371.7 ms; timer stop 242.6/270.2/280.9 ms; assignment
+reads 274.1/296.3/305.7 ms. Every measured wave reported zero database
+diagnostic failures. Assignment-read `EXPLAIN ANALYZE` executed in 8.5 ms.
+
+This proves the current source's isolated fresh PostgreSQL setup, migration,
+restore, updater, and 100-employee request-scoped workload paths under WSL. It
+does not include Hyperdrive, a hosted network, Netlify invocation overhead, a
+sustained soak, or establish hosted 100/200-employee capacity.
+
+## Earlier 100-employee workload after transaction setup reduction — historical (2026-10-11)
 
 The current source was tested on an isolated PostgreSQL 17 database with 100
 employees, 10 tasks per employee and at most 25 concurrent requests. It passed

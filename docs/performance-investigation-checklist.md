@@ -2,6 +2,37 @@
 
 Date: 2026-10-11
 
+## Matched readiness sample on the current source — 11 October 2026
+
+Both hosts were confirmed on source commit
+`9a97dc9896411c7acfbc9b29f9e876e0173ec2b6`: Netlify production deploy
+`6acba663d3655400084dc33b` and isolated Cloudflare candidate version
+`9130324d-3b33-4bc3-b85c-ebf601e5f649` (Ready, 100% of that candidate
+Worker's traffic). The candidate remains public on `workers.dev`, uses only the
+disposable Supabase project through restricted-role Hyperdrive, has no custom
+domain or Cloudflare Cron, and leaves Supabase as the scheduler.
+
+From one client, one warm-up per host was excluded; ten follow-up
+`GET /api/ready` requests per host were then issued serially in alternating
+host order. All 20 returned HTTP 200. Netlify total response p50 / largest
+observed was 524.1 / 565.6 ms; Cloudflare was 319.2 / 402.4 ms. The
+`Server-Timing: nova-app` p50 / largest observed was 170.7 / 170.9 ms for
+Netlify and 43.5 / 125.0 ms for Cloudflare. This sample suggests lower
+application-path time on the isolated Worker for this readiness query, but it
+does not isolate the database, connection setup, or provider contribution. It
+is a small serial anonymous readiness sample; it is not signed-in API/page
+latency, a cold-start distribution, a sustained load test, or a 100/200-person
+capacity guarantee.
+
+The signed-in Super Admin also opened My Day and Work on both the current
+Netlify deployment and current isolated Worker. Both pages rendered their
+content. Work showed no assignments, sessions, or timeline events; My Day
+showed no assignments/events/requests and the expected attendance setup state
+because the disposable organisation has no active office assignment. No
+business records or settings were changed. This proves those pages resolve on
+the deployed source; it does not yet provide authenticated request percentiles
+or a browser waterfall.
+
 ## Earlier anonymous Cloudflare Hyperdrive smoke and paired readiness sample — 11 October 2026
 
 At this earlier anonymous probe, Cloudflare listed `nova-runtime-candidate`
@@ -139,37 +170,21 @@ database route, and Supabase Cron were not changed. Because the candidate is
 public, its endpoint is only suitable for disposable data and NOVA's normal
 authentication; it is not an Access-protected production-move candidate.
 
-### Latest exact-source Cloudflare candidate check — 11 October 2026
+### Earlier exact-source Cloudflare candidate check — superseded by `9a97dc9`
 
-After the earlier anonymous smoke, the candidate was redeployed from the exact
-`main` source revision `6498e15e4ce0ea6628de23b33bc9ef16d9075c6c`. Cloudflare's
-deployment record shows version `185d9929-c3ee-448f-b710-01079699d3a5`, Ready,
-with 100% of this candidate Worker's traffic assigned to it. That is not
-production NOVA traffic: the Worker remains an isolated, public
-`workers.dev` candidate connected only to the disposable Supabase project.
-It still has no custom domain and no Cloudflare Cron; `NOVA_BACKGROUND_SCHEDULER`
-remains `supabase`, so scheduler ownership did not move.
+This earlier check used source `6498e15e4ce0ea6628de23b33bc9ef16d9075c6c`
+and Cloudflare version `185d9929-c3ee-448f-b710-01079699d3a5`. At that point
+the My Day and Work panels stayed in loading states. A later fix and the
+current-source retest above resolved that symptom; do not use this older route
+result as the current candidate status.
 
-Using the signed-in test Super Admin session, the People and access page loaded
-the protected role catalogue and one authorized directory record, and the
-Organisation page loaded office/department totals and the current attendance
-policy from the database. No business records or settings were changed. My Day
-and Work were then opened through in-app navigation; their main panels stayed in
-loading states rather than resolving to content or an error. That is an open
-route-level failure, so this run does **not** certify authenticated workflow
-readiness or a completed runtime move. Cloudflare's Issues panel asks to enable
-issue detection and it was left unchanged; therefore there is no correlated
-Worker exception trace for those stuck panels.
+People/access and Organisation also loaded in that earlier run. Cloudflare's
+Issues panel asked to enable issue detection and it was left unchanged.
 
-A read-only Wrangler tail from the exact deployed version recorded
-`GET /api/attendance/today` as HTTP 409 and `GET /api/leave/mine` as HTTP 200;
-the captured executions completed without Worker exceptions or application
-log entries. The 409 is consistent with this disposable organisation having no
-office configured, but it does not explain why the My Day panels stayed in
-their loading states. No response bodies or personal request headers were
-retained. The Work loader still has no correlated request-level cause, so it
-needs a browser request waterfall or temporarily enabled, appropriately scoped
-diagnostics before a root cause can be stated.
+A read-only Wrangler tail from the earlier version recorded the attendance
+setup response and successful leave reads without Worker exceptions. It did
+not explain the then-stuck panels. No response bodies or personal request
+headers were retained.
 
 The Hyperdrive dashboard's last-24-hours snapshot after this smoke showed 203
 queries, 908.02 kB returned, 11 ms query latency, 3 ms connection latency, and
@@ -178,9 +193,10 @@ transactions, and three as uncacheable; cached bytes were zero. The pool showed
 six open connections, zero waiting clients, and a ceiling of 20. Cloudflare's
 deployment snapshot showed 0% Worker error rate and 16.05 ms median CPU. These
 are aggregate, low-volume dashboard observations, not per-route attribution,
-latency percentiles, or evidence of 100/200-user capacity. The earlier paired
-`/api/ready` timings predate this exact-source deployment; repeat them alongside
-authenticated browser timings after resolving the My Day and Work loading issue.
+latency percentiles, or evidence of 100/200-user capacity. The current-source
+readiness comparison and rendered My Day/Work pages are recorded at the top of
+this document; authenticated API percentiles and a browser waterfall remain
+open.
 
 On the earlier candidate version, remote checks returned `/api/health` 200,
 `/api/ready` 200 with `scheduler=supabase`, and `/api/auth/get-session` 200
@@ -696,6 +712,12 @@ hosting change.
   context; they do not retain SQL or query parameters.
 - [x] Commit and publish this instrumentation, then confirm slow requests emit
   one aggregate record each (deploy `6ac6178f`, commit `056fb6a`).
+- [x] Take a matched same-source readiness sample after deploy `9a97dc9`:
+  ten serial `/api/ready` requests per host after one warm-up, all HTTP 200.
+  Netlify p50/max was 524.1/565.6 ms total and 170.7/170.9 ms `nova-app`;
+  isolated Cloudflare was 319.2/402.4 ms total and 43.5/125.0 ms `nova-app`.
+  This is anonymous readiness evidence only; it does not close signed-in route,
+  page-waterfall, cold-start, or hosted-capacity checks.
 - [ ] After a fresh user sign-in, collect at least ten warm requests per route
   group and repeat after an idle interval for cold-start samples. Include
   session, permission grants, People directory, organisation, roles,
