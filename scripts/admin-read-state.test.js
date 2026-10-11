@@ -96,7 +96,7 @@ test("Work plans independent reads from effective feature grants and self applic
     assignments: false, sessions: false, timeline: false, reviews: false,
     reviewerRequests: false, handoverRequests: false, workContext: false,
     workContextView: false, taskDetail: false, reviewerManagement: false,
-    tasks: false, taskCollection: false, taskCatalog: false, attendance: false,
+    taskCollection: false, taskCatalog: false, attendance: false,
   };
   expect(planWorkReads(undefined)).toEqual(none);
   expect(planWorkReads({ grants: [], readError: "REQUEST_FAILED" })).toEqual(none);
@@ -107,13 +107,13 @@ test("Work plans independent reads from effective feature grants and self applic
   ] })).toEqual({ ...none, workContext: true, attendance: true });
   expect(planWorkReads({ actorPersonId: "p1", grants: [
     { permissionKey: "tasks.create", scope: "client", clientId: "client-1" },
-  ] })).toMatchObject({ workContext: true, workContextView: false, tasks: false, taskCollection: false, assignments: false });
+  ] })).toMatchObject({ workContext: true, workContextView: false, taskCollection: false, assignments: false });
   expect(planWorkReads({ actorPersonId: "p1", grants: [
     { permissionKey: "workstreams.view", scope: "client_workstream", clientWorkstreamId: "stream-1", clientId: "client-1" },
-  ] })).toMatchObject({ workContext: true, workContextView: true, tasks: false, taskCollection: false, assignments: false });
+  ] })).toMatchObject({ workContext: true, workContextView: true, taskCollection: false, assignments: false });
   expect(planWorkReads({ actorPersonId: "p1", grants: [
     { permissionKey: "clients.view", scope: "client", clientId: "client-1" },
-  ] })).toMatchObject({ workContext: true, workContextView: true, tasks: false, taskCollection: false, assignments: false });
+  ] })).toMatchObject({ workContext: true, workContextView: true, taskCollection: false, assignments: false });
   expect(planWorkReads({ actorPersonId: "p1", grants: [
     { permissionKey: "groups.view", scope: "office", officeId: "office-1" },
   ] })).toMatchObject({ workContext: false, workContextView: false });
@@ -123,24 +123,24 @@ test("Work plans independent reads from effective feature grants and self applic
     assignments: false, sessions: false, timeline: false, reviews: false,
     reviewerRequests: false, handoverRequests: false, workContext: false,
     workContextView: false, taskDetail: false, reviewerManagement: false,
-    tasks: false, taskCollection: false, taskCatalog: false, attendance: false,
+    taskCollection: false, taskCatalog: false, attendance: false,
   });
   expect(planWorkReads({ actorPersonId: "p1", grants: [
     { permissionKey: "workstreams.billing_policy.manage", scope: "group", groupId: "group-1" },
   ] })).toMatchObject({ workContext: false, workContextView: false });
   expect(planWorkReads({ actorPersonId: "p1", grants: [
     { permissionKey: "tasks.start", scope: "assigned_work" },
-  ] })).toMatchObject({ assignments: true, sessions: true, taskCollection: false, tasks: false, workContext: false });
+  ] })).toMatchObject({ assignments: true, sessions: true, taskCollection: false, workContext: false });
   expect(planWorkReads({ actorPersonId: "reviewer-1", grants: [
     { permissionKey: "tasks.review", scope: "client_workstream", clientId: "client-1", clientWorkstreamId: "stream-1" },
-  ] })).toMatchObject({ reviews: true, taskDetail: false, taskCollection: false, tasks: false });
+  ] })).toMatchObject({ reviews: true, taskDetail: false, taskCollection: false });
   expect(planWorkReads({ actorPersonId: "p1", grants: [
     { permissionKey: "tasks.reviewer_manage", scope: "organisation" },
-  ] })).toMatchObject({ reviewerRequests: false, workContext: false, tasks: false });
+  ] })).toMatchObject({ reviewerRequests: false, workContext: false });
   expect(planWorkReads({ actorPersonId: "p1", grants: [
     { permissionKey: "tasks.view", scope: "assigned_work" },
     { permissionKey: "tasks.create", scope: "organisation" },
-  ] })).toMatchObject({ tasks: false, taskCollection: false });
+  ] })).toMatchObject({ taskDetail: true, taskCollection: false });
   expect(planWorkReads({ actorPersonId: "p1", grants: [
     { permissionKey: "tasks.view", scope: "assigned_work" },
     { permissionKey: "tasks.start", scope: "assigned_work" },
@@ -152,16 +152,16 @@ test("Work plans independent reads from effective feature grants and self applic
   ] })).toEqual({
     assignments: true, sessions: true, timeline: true, reviews: true,
     reviewerRequests: true, handoverRequests: true, workContext: false, workContextView: false,
-    taskDetail: true, reviewerManagement: false, tasks: false, taskCollection: false, taskCatalog: false, attendance: true,
+    taskDetail: true, reviewerManagement: false, taskCollection: false, taskCatalog: false, attendance: true,
   });
   expect(planWorkReads({ actorPersonId: "p1", grants: [
     { permissionKey: "tasks.view", scope: "client", clientId: "client-1" },
-  ] })).toMatchObject({ taskDetail: true, taskCollection: true, tasks: false, assignments: true });
+  ] })).toMatchObject({ taskDetail: true, taskCollection: true, assignments: true });
   expect(planWorkReads({ actorPersonId: "p1", grants: [
     { permissionKey: "tasks.create", scope: "organisation" },
     { permissionKey: "tasks.view", scope: "organisation" },
     { permissionKey: "tasks.catalog.propose", scope: "organisation" },
-  ] })).toMatchObject({ workContext: true, tasks: true, taskCatalog: true, assignments: true });
+  ] })).toMatchObject({ workContext: true, taskDetail: true, taskCollection: true, taskCatalog: true, assignments: true });
 });
 
 test("Work setup plans only organization catalog and supported billing-policy scopes", () => {
@@ -543,7 +543,6 @@ test("client-scoped membership managers can discover only the existing client co
   expect(planWorkReads(membershipManager)).toMatchObject({
     workContext: true,
     workContextView: true,
-    tasks: false,
     taskCollection: false,
   });
   expect(canShowWorkNavigation(membershipManager)).toBe(true);
