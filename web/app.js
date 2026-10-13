@@ -534,7 +534,8 @@ function isCurrentPageRequest(lifetime) {
 }
 
 function pageApi(path, lifetime, options = {}) {
-  const readOnlyBatch = path === "/api/work/page-read" && options.method === "POST" && options.readOnly === true;
+  const readOnlyBatch = (path === "/api/work/page-read" || path === "/api/my-day/page-read") &&
+    options.method === "POST" && options.readOnly === true;
   const request = requestOptions(readOnlyBatch ? "POST" : "GET",
     readOnlyBatch ? options.body : undefined,
     readOnlyBatch ? options.headers : undefined);
@@ -553,7 +554,8 @@ function pageApi(path, lifetime, options = {}) {
 async function api(path, options) {
   const request = options || requestOptions("GET");
   const method = String(request.method || "GET").toUpperCase();
-  const isBoundedRead = method === "GET" || (method === "POST" && path === "/api/work/page-read");
+  const isBoundedRead = method === "GET" ||
+    (method === "POST" && (path === "/api/work/page-read" || path === "/api/my-day/page-read"));
   let response;
   let payload;
   if (isBoundedRead) {

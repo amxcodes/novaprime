@@ -86,8 +86,8 @@ test("the route mounts each independent island in the feature-owned slot", () =>
   assert.match(app, /await mountMyDayPageRoute\(\{/);
   assert.match(app, /findModuleTarget: \(id\) => app\.querySelector\(`\[data-my-day-slot="\$\{id\}"\]`\)/);
   assert.match(route, /mountReactIsland\(pageRoot, MyDayPage,/);
-  assert.match(route, /requestRoute\.renderLeaveRequestPanel\(moduleTarget\("leave"\)\)/);
-  assert.match(route, /requestRoute\.renderWfhRequestPanel\(moduleTarget\("wfh"\)\)/);
+  assert.match(route, /if \(leaveTarget\) requestRoute\.renderLeaveRequestPanel\(leaveTarget, pageReadApi\)/);
+  assert.match(route, /if \(wfhTarget\) requestRoute\.renderWfhRequestPanel\(wfhTarget, pageReadApi\)/);
   assert.match(route, /mountReactIsland\(attendanceTarget,/);
   assert.match(route, /mountReactIsland\(assignmentsTarget,/);
   assert.match(route, /mountReactIsland\(timelineTarget,/);

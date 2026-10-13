@@ -61,17 +61,24 @@ function harness(options: {
       component,
       props: props as Record<string, any>,
     }),
-    pageApi: async (path) => {
+    pageApi: async (path, _lifetime, options) => {
       reads.push(path);
-      if (options.pageApi) return options.pageApi(path);
-      if (path === "/api/attendance/today") return { availability: { businessDate: "2026-10-05" }, attendance: null };
-      if (path === "/api/work/timeline") return {
-        date: "2026-10-05", events: [], exceptions: [],
-        attendanceSummary: { durationMinutes: 0, requiredMinutes: 480, requirementSatisfied: false },
-        attendancePolicy: null,
-      };
-      if (path === "/api/work/assignments/mine?limit=4&status=all") return { assignments: [], hasMore: false, limit: 4 };
-      throw new Error(`Unexpected read: ${path}`);
+      if (path === "/api/my-day/page-read") {
+        const paths = (options?.body as { reads: string[] }).reads;
+        const items = await Promise.all(paths.map(async (readPath) => {
+          try {
+            return { path: readPath, status: 200, body: await readSingle(readPath) };
+          } catch (error) {
+            return {
+              path: readPath,
+              status: Number((error as { httpStatus?: number }).httpStatus) || 500,
+              body: { error: String((error as { code?: string }).code || "INTERNAL_ERROR") },
+            };
+          }
+        }));
+        return { reads: items };
+      }
+      return readSingle(path);
     },
     api: async (path, requestOptions) => { commands.push({ path, options: requestOptions }); return {}; },
     requestOptions: (method, body) => ({ method, body: body === undefined ? undefined : JSON.stringify(body) }),
@@ -91,6 +98,19 @@ function harness(options: {
     loadAttendanceReadRoute: () => import("./my-day-attendance-route.js"),
     loadTimelineRoute: () => import("./my-day-timeline-route.js"),
   });
+
+  async function readSingle(path: string) {
+      if (options.pageApi) return options.pageApi(path);
+      if (path === "/api/attendance/today") return { availability: { businessDate: "2026-10-05" }, attendance: null };
+      if (path === "/api/attendance/action-context") return { availability: { businessDate: "2026-10-05" }, attendance: null };
+      if (path === "/api/work/timeline") return {
+        date: "2026-10-05", events: [], exceptions: [],
+        attendanceSummary: { durationMinutes: 0, requiredMinutes: 480, requirementSatisfied: false },
+        attendancePolicy: null,
+      };
+      if (path === "/api/work/assignments/mine?limit=4&status=all") return { assignments: [], hasMore: false, limit: 4 };
+      throw new Error(`Unexpected read: ${path}`);
+  }
 
   return {
     routePromise, pageRoot, targets, mounted, reads, commands, localErrors, lifetime,
@@ -124,11 +144,7 @@ describe("My Day page route", () => {
     expect(state.targets.timeline?.children).toHaveLength(1);
     // The assignment section retains its own successful UI and read even when
     // the shared attendance/timeline bundle fails to load.
-    expect(state.reads).toEqual([
-      "/api/work/assignments/mine?limit=4&status=all",
-      "/api/attendance/today",
-      "/api/work/timeline",
-    ]);
+    expect(state.reads).toEqual(["/api/my-day/page-read", "/api/work/timeline"]);
     expect(state.mounted).toHaveLength(3);
   });
 
@@ -137,11 +153,7 @@ describe("My Day page route", () => {
     const state = harness({ loader: () => new Promise((resolve) => { finish = resolve; }) });
 
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(state.reads).toEqual([
-      "/api/work/assignments/mine?limit=4&status=all",
-      "/api/attendance/today",
-      "/api/work/timeline",
-    ]);
+    expect(state.reads).toEqual(["/api/my-day/page-read", "/api/work/timeline"]);
 
     finish({ AttendancePulse, WorkdayTimeline });
     await state.routePromise;
@@ -152,11 +164,7 @@ describe("My Day page route", () => {
     await state.routePromise;
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(state.reads).toEqual([
-      "/api/work/assignments/mine?limit=4&status=all",
-      "/api/attendance/today",
-      "/api/work/timeline",
-    ]);
+    expect(state.reads).toEqual(["/api/my-day/page-read", "/api/work/timeline"]);
     const attendance = state.mounted.filter(({ component }) => component === AttendancePulse).at(-1);
     expect(attendance?.props.read.status).toBe("ready");
     expect(attendance?.props.capabilities).toEqual({ checkIn: true, checkOut: false, changeMode: false });
@@ -233,6 +241,6 @@ describe("My Day page route", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(state.mounted).toHaveLength(1);
-    expect(state.reads).toContain("/api/work/assignments/mine?limit=4&status=all");
+    expect(state.reads).toContain("/api/my-day/page-read");
   });
 });

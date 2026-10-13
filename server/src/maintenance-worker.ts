@@ -108,7 +108,8 @@ export async function withBackgroundTickLease<T>(
   };
   const checkpoint = async (): Promise<void> => {
     if (leaseFailure) throw leaseFailure;
-    if (nowMilliseconds() >= renewAtMilliseconds) await renew();
+    if (renewal) await renewal;
+    else if (nowMilliseconds() >= renewAtMilliseconds) await renew();
     if (leaseFailure) throw leaseFailure;
   };
 

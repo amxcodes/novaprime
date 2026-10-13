@@ -69,6 +69,22 @@ test("records only allowlisted Work subread timings", () => {
   expect(JSON.stringify(diagnostic)).not.toContain("private");
 });
 
+test("records allowlisted My Day batch timings and timeline phases", () => {
+  const diagnostic = slowRequestDiagnostic(request({
+    method: "POST",
+    pathname: "/api/my-day/page-read",
+    durationMs: 1_800,
+    serverTiming: "nova-my-day-attendance;dur=340.4, nova-my-day-assignments;dur=410, nova-my-day-timeline-data;dur=55, nova-my-day-private;dur=9999",
+  }));
+
+  expect(diagnostic).toMatchObject({
+    route: "api.my-day",
+    my_day_read_ms: { attendance: 340, assignments: 410, "timeline-data": 55 },
+    timeline_phase_ms: { data: 55 },
+  });
+  expect(JSON.stringify(diagnostic)).not.toContain("private");
+});
+
 test("records safe timeline phase timings and ignores arbitrary server timing names", () => {
   const direct = slowRequestDiagnostic(request({
     pathname: "/api/work/timeline",

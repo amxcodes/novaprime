@@ -135,6 +135,6 @@ test("the My Day page adapter composes existing read and action adapters without
   assert.match(actionRoute, /"check-out": \{ path: "\/api\/attendance\/check-out" \}/);
   assert.match(actionRoute, /"change-to-wfh": \{ path: "\/api\/attendance\/change-mode", body: \{ mode: "wfh" \} \}/);
   assert.match(actionRoute, /"change-to-office": \{ path: "\/api\/attendance\/change-mode", body: \{ mode: "office" \} \}/);
-  assert.match(route, /readOrError\(pageApi\("\/api\/work\/assignments\/mine\?limit=4&status=all"/);
-  assert.match(route, /readOrError\(pageApi\(path, lifetime\), \{ events: \[\], exceptions: \[\] \}\)/);
+  assert.match(route, /readOrError\(pageReadApi\("\/api\/work\/assignments\/mine\?limit=4&status=all"/);
+  assert.match(route, /readApi: \(path: string\) => readOrError\(pageReadApi\(path, lifetime\), \{ events: \[\], exceptions: \[\] \}\)/);
 });

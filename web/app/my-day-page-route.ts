@@ -18,6 +18,10 @@ type Lifetime = unknown;
 type WorkspacePreferences = Parameters<typeof planMyDayPage>[0]["workspace"];
 type ReadPlan = ReturnType<typeof planMyDayReads>;
 type ReadIssue = { message?: string } | undefined;
+type MyDayRead = { path: string; status: number; body: unknown };
+type PageReadOptions = { method: "POST"; body: unknown; readOnly: true };
+type PageApi = (path: string, lifetime: Lifetime, options?: PageReadOptions) => Promise<any>;
+type MyDayPageApi = (path: string, lifetime?: Lifetime) => Promise<any>;
 
 interface MyDayReadServices {
   visible: boolean;
@@ -41,12 +45,12 @@ interface HostServices {
   findModuleTarget: (id: "attendance" | "assignments" | "timeline" | "leave" | "wfh") => Element | null;
   MyDayPage: ComponentType<MyDayPageProps>;
   requestRoute: {
-    renderLeaveRequestPanel: (target: Element | null) => void;
-    renderWfhRequestPanel: (target: Element | null) => void;
+    renderLeaveRequestPanel: (target: Element | null, readApi?: MyDayPageApi) => void;
+    renderWfhRequestPanel: (target: Element | null, readApi?: MyDayPageApi) => void;
   };
   isCurrentPageRequest: (lifetime: Lifetime) => boolean;
   mountReactIsland: typeof mountReactIsland;
-  pageApi: (path: string, lifetime: Lifetime) => Promise<unknown>;
+  pageApi: PageApi;
   api: (path: string, options: RequestInit) => Promise<unknown>;
   requestOptions: (method: string, body?: unknown) => RequestInit;
   isCurrentCommand: (context: unknown) => boolean;
@@ -97,8 +101,69 @@ export async function mountMyDayPageRoute(services: HostServices): Promise<void>
   const attendanceTarget = plannedModuleTarget("attendance");
   const assignmentsTarget = plannedModuleTarget("assignments");
   const timelineTarget = plannedModuleTarget("timeline");
-  if (plannedModuleTarget("leave")) requestRoute.renderLeaveRequestPanel(moduleTarget("leave"));
-  if (plannedModuleTarget("wfh")) requestRoute.renderWfhRequestPanel(moduleTarget("wfh"));
+  const leaveTarget = plannedModuleTarget("leave");
+  const wfhTarget = plannedModuleTarget("wfh");
+
+  const attendanceReadPath = attendanceTarget
+    ? readPlan.attendance
+      ? "/api/attendance/today"
+      : readPlan.attendanceActionContext ? "/api/attendance/action-context" : null
+    : null;
+  const assignmentReadPath = assignmentsTarget ? "/api/work/assignments/mine?limit=4&status=all" : null;
+  const leaveReadPath = leaveTarget ? "/api/leave/mine" : null;
+  const wfhReadPath = wfhTarget ? "/api/availability/wfh/mine" : null;
+  // Keep the timeline as an independent read so a slow projection cannot hold
+  // attendance and assignment cards in their loading state. The two compact
+  // groups each share one auth/session lookup without coupling core and request
+  // panels to each other's data latency.
+  const readGroups = [
+    [attendanceReadPath, assignmentReadPath],
+    [leaveReadPath, wfhReadPath],
+  ].map((group) => group.filter((path): path is string => path !== null));
+  const consumedBatchReads = new Set<string>();
+  const batchReadsByPath = new Map<string, Promise<Map<string, MyDayRead>>>();
+  for (const paths of readGroups) {
+    if (paths.length < 2) continue;
+    const batch = pageApi("/api/my-day/page-read", lifetime, {
+      method: "POST",
+      body: { reads: paths },
+      readOnly: true,
+    }).then((result) => {
+      if (!Array.isArray(result?.reads) || result.reads.length !== paths.length) {
+        throw Object.assign(new Error("Invalid My Day page read response"), { code: "REQUEST_FAILED" });
+      }
+      const reads = result.reads as MyDayRead[];
+      if (reads.some((read) => !read || typeof read.path !== "string" || !Number.isInteger(read.status))) {
+        throw Object.assign(new Error("Invalid My Day page read response"), { code: "REQUEST_FAILED" });
+      }
+      const resultByPath = new Map(reads.map((read) => [read.path, read]));
+      if (paths.some((path) => !resultByPath.has(path))) {
+        throw Object.assign(new Error("Incomplete My Day page read response"), { code: "REQUEST_FAILED" });
+      }
+      return resultByPath;
+    });
+    paths.forEach((path) => batchReadsByPath.set(path, batch));
+  }
+  const pageReadApi: MyDayPageApi = (path, requestLifetime = lifetime) => {
+    const batchReads = batchReadsByPath.get(path);
+    if (!batchReads || consumedBatchReads.has(path)) {
+      return pageApi(path, requestLifetime);
+    }
+    consumedBatchReads.add(path);
+    return batchReads.then((reads) => {
+      const read = reads.get(path);
+      if (!read) throw Object.assign(new Error("Missing My Day page read"), { code: "REQUEST_FAILED" });
+      if (read.status >= 200 && read.status < 300) return read.body;
+      const errorCode = read.body && typeof read.body === "object" && "error" in read.body
+        ? String(read.body.error)
+        : "REQUEST_FAILED";
+      const error = Object.assign(new Error(errorCode), { code: errorCode, httpStatus: read.status });
+      throw error;
+    });
+  };
+
+  if (leaveTarget) requestRoute.renderLeaveRequestPanel(leaveTarget, pageReadApi);
+  if (wfhTarget) requestRoute.renderWfhRequestPanel(wfhTarget, pageReadApi);
 
   const attendanceCapabilities = {
     checkIn: todayFeatures.checkIn === true,
@@ -144,14 +209,14 @@ export async function mountMyDayPageRoute(services: HostServices): Promise<void>
       ? (attendanceRouteUi.readMyDayAttendance as unknown as AttendanceReadRoute)({
         visible: myDayPlan.reads.attendance,
         readPlan,
-        readApi: (path: string) => pageApi(path, lifetime),
+        readApi: (path: string) => pageReadApi(path, lifetime),
         isCurrent: () => isCurrentPageRequest(lifetime),
         getReadIssue: adminReadIssue,
       })
       : null,
   );
   const assignmentPromise = myDayPlan.reads.assignments && assignmentsTarget
-    ? readOrError(pageApi("/api/work/assignments/mine?limit=4&status=all", lifetime), { assignments: [], hasMore: false })
+    ? readOrError(pageReadApi("/api/work/assignments/mine?limit=4&status=all", lifetime), { assignments: [], hasMore: false })
     : Promise.resolve(undefined);
   void attendancePromise.catch(() => undefined);
   void assignmentPromise.catch(() => undefined);
@@ -160,7 +225,7 @@ export async function mountMyDayPageRoute(services: HostServices): Promise<void>
     const route = (timelineRouteUi.createMyDayTimelineRoute as unknown as TimelineRouteFactory)({
       visible: myDayPlan.reads.timeline,
       readPlan,
-      readApi: (path: string) => readOrError(pageApi(path, lifetime), { events: [], exceptions: [] }),
+      readApi: (path: string) => readOrError(pageReadApi(path, lifetime), { events: [], exceptions: [] }),
       isCurrent: () => isCurrentPageRequest(lifetime) && timelineTarget.isConnected,
       getReadIssue: adminReadIssue,
       onChange: mountTimeline,
@@ -178,8 +243,8 @@ export async function mountMyDayPageRoute(services: HostServices): Promise<void>
     }
   };
 
-  // Feature bundles and data reads settle independently. A slow timeline or
-  // assignments endpoint must not keep the other My Day sections in loading.
+  // Feature bundles, the primary read batch, and the standalone timeline read
+  // settle independently so a slow timeline cannot block attendance or work.
   const mountAttendanceFeature = async () => {
     try {
       attendanceComponents = await attendanceComponentsPromise;

@@ -1276,3 +1276,28 @@ function diagnostics before judging the fix. Then compare the exact same source
 and database against the isolated Cloudflare Hyperdrive candidate. Existing
 local 100/200-employee tests establish data-shape behavior only; they do not
 replace hosted concurrency or capacity measurements.
+
+## My Day request batching and lease checkpoint follow-up — 13 October 2026
+
+The production baseline was subsequently verified at `33f1826` on Netlify.
+The next source change adds a bounded `POST /api/my-day/page-read` dispatcher
+for only the read routes My Day already uses. When those modules are visible
+and authorized, attendance plus assignments share one request, and leave plus
+WFH share another; the timeline remains independent so its latency cannot hold
+the main cards or request panels in loading. Every delegated route continues
+to run its own server-side authentication and permission checks. The read plan
+is allowlisted, capped at five paths and 16 KiB, and records only safe,
+allowlisted per-read timing fields.
+
+The same review exposed a scheduler race: a checkpoint could pass while a
+heartbeat renewal was still in flight, allowing one more maintenance step even
+when that renewal lost its lease. Checkpoints now await an active renewal, and
+the regression test controls the in-flight failure instead of relying on a
+short wall-clock delay.
+
+Validation before deployment: the complete repository suite passed (826 Bun
+tests and 576 UI component tests), along with server, web, operator, and
+Cloudflare typechecks. The change contains no database migration. It is not
+counted as live until the resulting `main` SHA is visible in Netlify; after
+publication, repeat the signed-in My Day timing and correlate the page-read
+timings with the same-window Netlify function diagnostics.

@@ -61,6 +61,17 @@ test("routes Work read batches through the bounded read-only dispatcher", async 
   expect(await response.json()).toEqual({ error: "INVALID_WORK_READ_PLAN" });
 });
 
+test("routes My Day reads through its own bounded read-only dispatcher", async () => {
+  const response = await handleRequest(new Request("http://nova.test/api/my-day/page-read", {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: "http://nova.test" },
+    body: JSON.stringify({ reads: ["/api/people"] }),
+  }));
+
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({ error: "INVALID_MY_DAY_READ_PLAN" });
+});
+
 test("directs stale per-definition billing clients to the canonical policy route", async () => {
   const response = await handleRequest(new Request(
     "http://nova.test/api/workstreams/client/00000000-0000-4000-8000-000000000001/task-billing-rules/00000000-0000-4000-8000-000000000002",

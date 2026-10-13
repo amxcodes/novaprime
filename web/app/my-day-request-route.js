@@ -67,7 +67,7 @@ export function createMyDayRequestRoute(host) {
     };
   }
 
-  function renderWfhRequestPanel(target) {
+  function renderWfhRequestPanel(target, readApi = pageApi) {
     const panel = preparePanel(target, "Loading your WFH request panel…");
     if (!panel) return;
     const { isCurrentPanel, lifetime } = panel;
@@ -101,7 +101,7 @@ export function createMyDayRequestRoute(host) {
       read = { status: "loading" };
       mount();
       try {
-        const result = await pageApi("/api/availability/wfh/mine", lifetime);
+        const result = await readApi("/api/availability/wfh/mine", lifetime);
         if (!isCurrentPanel() || generation !== readGeneration) return;
         read = { status: "ready", requests: result.requests.map((request) => ({
           id: request.id,
@@ -128,7 +128,7 @@ export function createMyDayRequestRoute(host) {
     ));
   }
 
-  function renderLeaveRequestPanel(target) {
+  function renderLeaveRequestPanel(target, readApi = pageApi) {
     const panel = preparePanel(target, "Loading your leave request panel…");
     if (!panel) return;
     const { isCurrentPanel, lifetime } = panel;
@@ -172,7 +172,7 @@ export function createMyDayRequestRoute(host) {
       read = { status: "loading" };
       mount();
       try {
-        const result = await pageApi("/api/leave/mine", lifetime);
+        const result = await readApi("/api/leave/mine", lifetime);
         if (!isCurrentPanel()) return;
         read = { status: "ready", requests: result.requests.map((leave) => ({
           id: leave.id,

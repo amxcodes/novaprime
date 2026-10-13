@@ -161,11 +161,11 @@ test("My Day page adapter keeps the authorized read plan and transport while ret
   assert.match(route, /myDayPlan\.mounts\[id\] && myDayPlan\.reads\[id\]/);
   assert.match(route, /visible: myDayPlan\.reads\.timeline/);
   assert.match(route, /import\("\.\/my-day-timeline-route\.js"\)/);
-  assert.match(route, /readApi: \(path: string\) => readOrError\(pageApi\(path, lifetime\), \{ events: \[\], exceptions: \[\] \}\)/);
+  assert.match(route, /readApi: \(path: string\) => readOrError\(pageReadApi\(path, lifetime\), \{ events: \[\], exceptions: \[\] \}\)/);
   assert.match(route, /isCurrent: \(\) => isCurrentPageRequest\(lifetime\) && timelineTarget\.isConnected/);
   assert.match(route, /mountReactIsland\(timelineTarget, attendanceComponents\.WorkdayTimeline/);
   assert.match(route, /createMyDayTimelineRoute as unknown as TimelineRouteFactory\)\(/);
-  assert.match(route, /readOrError\(pageApi\("\/api\/work\/assignments\/mine\?limit=4&status=all"/);
+  assert.match(route, /readOrError\(pageReadApi\("\/api\/work\/assignments\/mine\?limit=4&status=all"/);
   assert.match(route, /readMyDayAttendance as unknown as AttendanceReadRoute\)\(/);
   assert.doesNotMatch(route, /readOrError\(pageApi\("\/api\/work\/timeline"/);
   assert.doesNotMatch(route, /timelineResult/);

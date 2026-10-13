@@ -195,11 +195,26 @@ test("a failed lease renewal fences later maintenance steps and still releases",
 });
 
 test("a heartbeat that loses its lease prevents the next tick step", async () => {
-  const lease = fakeLeaseStore({ renew: async () => false });
+  let notifyRenewalStarted!: () => void;
+  const renewalStarted = new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("BACKGROUND_TICK_HEARTBEAT_NOT_STARTED")), 1_000);
+    notifyRenewalStarted = () => {
+      clearTimeout(timeout);
+      resolve();
+    };
+  });
+  let finishRenewal!: (renewed: boolean) => void;
+  const renewalResult = new Promise<boolean>((resolve) => { finishRenewal = resolve; });
+  const lease = fakeLeaseStore({ renew: () => {
+    notifyRenewalStarted();
+    return renewalResult;
+  } });
   let laterStepRan = false;
   await expect(withBackgroundTickLease(lease.store, async (checkpoint) => {
-    await new Promise((resolve) => setTimeout(resolve, 15));
-    await checkpoint();
+    await renewalStarted;
+    const checkpointResult = checkpoint();
+    finishRenewal(false);
+    await checkpointResult;
     laterStepRan = true;
   }, { heartbeatMilliseconds: 2, leaseSeconds: 60 })).rejects.toThrow("BACKGROUND_TICK_LEASE_LOST");
 

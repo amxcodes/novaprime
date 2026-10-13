@@ -163,6 +163,7 @@ import {
 import { stateChangingRequestError } from "./request-security.js";
 import { requestFailureStatus } from "./request-failure.js";
 import { readWorkPage } from "./work-page-read.js";
+import { readMyDayPage } from "./my-day-page-read.js";
 import { readPublicOrigin, updatePublicOrigin } from "./commands/public-origin.js";
 import { readPersonalUiPreferences, updatePersonalUiPreferences } from "./commands/ui-preferences.js";
 import { deletePersonalTaskView, readPersonalTaskViews, writePersonalTaskView } from "./commands/task-views.js";
@@ -277,6 +278,9 @@ async function dispatchRequest(
 
   if (request.method === "POST" && commandPath === "/work/page-read") {
     return readWorkPage(request, (readRequest) => dispatchRequest(readRequest, requestTiming));
+  }
+  if (request.method === "POST" && commandPath === "/my-day/page-read") {
+    return readMyDayPage(request, (readRequest) => dispatchRequest(readRequest, requestTiming));
   }
 
   if (request.method === "GET" && commandPath === "/ready") {

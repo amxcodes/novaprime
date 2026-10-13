@@ -3,7 +3,7 @@ import type { DatabaseDiagnostics } from "../../server/src/database-diagnostics.
 const safeApiGroups = new Set([
   "attendance", "audit-events", "auth", "auth-handoffs", "availability",
   "clients", "email-connections", "health", "historical-exceptions",
-  "internal", "invitations", "leave", "me", "notification-preferences",
+  "internal", "invitations", "leave", "me", "my-day", "notification-preferences",
   "notifications", "offices",
   "organisation", "organisation-departments", "people", "permissions",
   "ready", "reviews", "roles", "setup", "task-assignments", "task-catalog",
@@ -15,6 +15,10 @@ const safeWorkReadNames = new Set([
   "handover-requests", "visible-tasks",
   "task-catalog", "attendance", "reviewer-management",
   "timeline-access", "timeline-data",
+]);
+const safeMyDayReadNames = new Set([
+  "attendance", "attendance-action-context", "assignments", "timeline",
+  "leave", "wfh", "timeline-access", "timeline-data",
 ]);
 
 const safeTimelinePhases = new Set(["access", "data"]);
@@ -31,12 +35,17 @@ export type SlowRequestInput = Readonly<{
   databaseDiagnostics?: DatabaseDiagnostics;
 }>;
 
-function safeWorkReadTimings(serverTiming: string | undefined): Record<string, number> | undefined {
+function safePageReadTimings(
+  serverTiming: string | undefined,
+  prefix: "nova-work" | "nova-my-day",
+  allowedNames: ReadonlySet<string>,
+): Record<string, number> | undefined {
   if (!serverTiming) return undefined;
   const timings: Record<string, number> = {};
+  const pattern = new RegExp(`^\\s*${prefix}-([a-z-]+)\\s*;\\s*dur=([\\d.]+)\\s*$`, "i");
   for (const entry of serverTiming.split(",")) {
-    const match = /^\s*nova-work-([a-z-]+)\s*;\s*dur=([\d.]+)\s*$/i.exec(entry);
-    if (!match || !safeWorkReadNames.has(match[1])) continue;
+    const match = pattern.exec(entry);
+    if (!match || !allowedNames.has(match[1])) continue;
     const duration = Number(match[2]);
     if (Number.isFinite(duration) && duration >= 0 && duration <= 60_000) {
       timings[match[1]] = Math.round(duration);
@@ -45,11 +54,19 @@ function safeWorkReadTimings(serverTiming: string | undefined): Record<string, n
   return Object.keys(timings).length ? timings : undefined;
 }
 
+function safeWorkReadTimings(serverTiming: string | undefined): Record<string, number> | undefined {
+  return safePageReadTimings(serverTiming, "nova-work", safeWorkReadNames);
+}
+
+function safeMyDayReadTimings(serverTiming: string | undefined): Record<string, number> | undefined {
+  return safePageReadTimings(serverTiming, "nova-my-day", safeMyDayReadNames);
+}
+
 function safeTimelinePhaseTimings(serverTiming: string | undefined): Record<string, number> | undefined {
   if (!serverTiming) return undefined;
   const timings: Record<string, number> = {};
   for (const entry of serverTiming.split(",")) {
-    const match = /^\s*nova-timeline-(access|data)\s*;\s*dur=([\d.]+)\s*$/i.exec(entry);
+    const match = /^\s*nova-(?:work-|my-day-)?timeline-(access|data)\s*;\s*dur=([\d.]+)\s*$/i.exec(entry);
     if (!match || !safeTimelinePhases.has(match[1])) continue;
     const duration = Number(match[2]);
     if (Number.isFinite(duration) && duration >= 0 && duration <= 60_000) {
@@ -81,6 +98,7 @@ export function slowRequestDiagnostic(input: SlowRequestInput) {
     : "OTHER";
   const database = input.databaseDiagnostics;
   const workReadTimings = safeWorkReadTimings(input.serverTiming);
+  const myDayReadTimings = safeMyDayReadTimings(input.serverTiming);
   const timelinePhaseTimings = safeTimelinePhaseTimings(input.serverTiming);
   return {
     event: "NOVA_REQUEST_DIAGNOSTIC",
@@ -94,6 +112,7 @@ export function slowRequestDiagnostic(input: SlowRequestInput) {
       ? {}
       : { auth_module_load_ms: Math.round(input.authModuleLoadMs) }),
     ...(workReadTimings ? { work_read_ms: workReadTimings } : {}),
+    ...(myDayReadTimings ? { my_day_read_ms: myDayReadTimings } : {}),
     ...(timelinePhaseTimings ? { timeline_phase_ms: timelinePhaseTimings } : {}),
     ...(database ? {
       nova_db_pool_acquire_ms: Math.round(database.nova.poolAcquireMs),
