@@ -2,6 +2,7 @@
 
 - **Status:** decision record and implementation roadmap
 - **Review basis (live check captured 2026-10-13):** Netlify published docs commit `26785bbefc1dd4ea6a4df45b6f73fd441bf47e99` as deploy `6acbd2ae3484ca00084163b4`, over application source `b51edc9`. The isolated Cloudflare candidate is Ready at version `c8ad983a-27ad-43ee-bd18-79088a17d5ca`, deployed from repository commit `58572f5a47bef0f664e04258f42a72fe73ade61c`; its application paths match Netlify's source. A signed-in Super Admin loaded My Day, Work, People, Organisation settings, and People and access through Hyperdrive to disposable Supabase data, without changing records or settings. The candidate has a public `workers.dev` URL, no customer domain or Cron, and leaves Supabase as scheduler owner. Stable tags `v0.1.3`–`v0.1.5` are published; a full-history `v0.1.3` clone finds `v0.1.5`. A dashboard token audit confirmed the QA project ref and exposed the 403 cause: root `.env` holds a PAT whose bound projects were deleted, while `.env.qa-supabase` has the correct QA ref but no token. A separate account token is scoped to the QA project, but its permissions are broad and its secret is not configured locally. The runner currently cannot resolve the Management API hostname, so the corrected credential still needs a direct read-only verification. No database write was performed. Current-source local PostgreSQL tests include 200 employees; hosted first install, safe production promotion/rollback, and hosted 100/200-user capacity remain open. See the [performance checklist](performance-investigation-checklist.md).
+- **Credential clarification (later recheck, 2026-10-13):** The user-shared `ghl` token appears active, unexpired, and scoped to the correct project `owfgvojdaxafayutbcuf`; the dashboard shows broad write permissions. Root `.env` contains a different, obsolete token and a database URL for `hrlvvietbqvkdovulzcie`. `.env.qa-supabase` has the correct target database URL but no management token. No CLI request was made with the `ghl` token. The latest API attempt used the root token and did not return an HTTP response because the local runner could not resolve `api.supabase.com`; the `ghl` token's API acceptance remains unverified. The earlier 403 came from the obsolete root token and does not prove the `ghl` token is rejected. No secrets were copied or database writes performed.
 - **Historical matched hosted speed evidence (application source `9a97dc9`):** Ten serial database-backed `/api/ready` requests per host returned 200 after one excluded warm-up. Netlify p50 / largest observed total was 524.1 / 565.6 ms (`nova-app` 170.7 / 170.9 ms); Cloudflare was 319.2 / 402.4 ms (`nova-app` 43.5 / 125.0 ms). This small anonymous readiness sample did not isolate provider/database causes and is not an authenticated route distribution or capacity test. It is obsolete for comparing current hosting because it predates the current Netlify application source `b51edc9` and the Cloudflare candidate whose application paths now match that source. The 13 October samples are current but uneven and too small to establish a provider winner; see the [performance checklist](performance-investigation-checklist.md).
 - **Repository delivery rule:** work on `main`; push only to `origin/main`.
 - **Most recent verified deployment (2026-10-13):** Netlify deploy
@@ -141,11 +142,12 @@ now finds `v0.1.5` with `bun run nova:update --check`. A source-only rehearsal
 cloned `v0.1.3`, added a synthetic customer commit, and prepared a pinned
 `v0.1.5` candidate with exactly those two parents; the note remained intact and
 the source checkout stayed clean. The initial `--plan` stopped at HTTP 403 on
-the legacy `database/query` ledger read. The local root token is bound only to
-deleted projects; the correct QA ref is confirmed, and a different account
-token has access to it but is not configured locally. Local DNS prevented a
-fresh read-only request; no SQL was written. Use a narrowly scoped token with
-project settings read and database read, then verify planning before database
+the legacy `database/query` ledger read using the obsolete root token, whose
+project access had been removed. The correct QA ref is confirmed, and a
+different active account token is scoped to it but is not configured locally.
+No CLI request was made with that active token. The latest local API attempt
+still used the root token and stopped at DNS before HTTP; no SQL was written.
+Use a narrowly scoped token with project settings read and database read, then verify planning before database
 apply, candidate build, push, and hosted verification. Older pre-updater clone
 bootstrap, database target refusal, migration failure/retry, declined push,
 and hosted failure/recovery still need end-to-end rehearsal. Do not describe
@@ -207,9 +209,11 @@ before the CLI can change remote services or Nginx.
   verify `v0.1.4` at `50b4b6e`, whose minimum supported starting version is
   `0.1.3`, and no-schema-change `v0.1.5` at `4a85727`.
   All three tags passed full verification and are published. A full-history
-  customer clone now discovers `v0.1.5`; database planning is blocked by a
-  Management API 403 on the read-only ledger endpoint until token project
-  access and `database_read` scope are verified.
+  customer clone now discovers `v0.1.5`; database planning remains unverified.
+  The earlier Management API 403 used the obsolete root PAT. A target-scoped
+  account token appears active in the dashboard, but it is not configured in
+  QA and no CLI request used it; local DNS blocked the latest root-token
+  attempt before HTTP. Verify its read-only project access before proceeding.
 - Rehearse a later stable release against disposable Supabase and direct
   PostgreSQL targets, including fork commits/conflicts, wrong database,
   migration failure/retry, backup recovery, denied Git push, and host build
