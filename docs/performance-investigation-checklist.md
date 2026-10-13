@@ -1,6 +1,75 @@
 # NOVA API and page performance investigation
 
-Date: 2026-10-12
+Date: 2026-10-13
+
+## Current source-matched candidate checks — 13 October 2026
+
+Wrangler's read-only deployment inventory now shows Cloudflare candidate version
+`c8ad983a-27ad-43ee-bd18-79088a17d5ca` serving 100% of the candidate Worker,
+created on 13 October. It was deployed from repository `main` at
+`58572f5a47bef0f664e04258f42a72fe73ade61c`; the `web`, `server`, `netlify`,
+and `cloudflare` application paths at that commit have no diff from Netlify's
+current app source commit `b51edc9`. The candidate remains public on
+`workers.dev`, connects only to the disposable Supabase project through the
+restricted-role Hyperdrive binding, has no custom domain or Cloudflare Cron,
+and leaves Supabase as scheduler owner. The Wrangler version has no Git tag,
+so the source match is supported by the deploy command and repository state,
+not an immutable provider-side commit tag.
+
+The same signed-in Super Admin opened the candidate's My Day, Work, People,
+Organisation settings, and People and access screens. People returned the one
+test account; People and access showed only the protected Super Admin role and
+the same person. Empty assignments and the attendance setup message are expected
+for this disposable organisation. Route changes briefly showed the public
+loading shell before the signed-in content appeared. These checks were reads;
+no business record or setting was changed. They do not exercise a custom or
+restricted role, invitation, or write flow.
+
+Small anonymous GET samples from the same client returned HTTP 200 throughout.
+After discarding one warm-up request per candidate route, ten serial samples on
+Cloudflare measured total response p50 / p95 / maximum of 410 / 602 / 602 ms
+for `/api/health`, 392 / 955 / 955 ms for `/api/ready`, and 739 / 1,192 /
+1,192 ms for `/api/auth/get-session`. A separate Netlify sample measured
+706 / 788 / 788 ms for `/api/health` across ten requests, then 677 / 2,413 /
+2,413 ms for `/api/ready` and 895 / 1,072 / 1,072 ms for
+`/api/auth/get-session` across four requests each. The host samples were not
+interleaved, the counts differ, and all requests were anonymous; treat them as
+directional only. They show both runtimes can serve the tested endpoints, but
+do not show that moving the API removes latency. The 2.4 s Netlify readiness
+outlier and overlapping auth results need a larger, interleaved sample plus
+authenticated route waterfalls.
+
+The Cloudflare dashboard still failed twice while loading its
+`cf-AuthOnlyProviders` module, so the older aggregate below was not refreshed
+after the new candidate version was deployed. Do not attribute it to version
+`c8ad983a`.
+
+## Older accessible Cloudflare metrics and live Supabase checks — 13 October 2026
+
+The last accessible Cloudflare dashboard's 24-hour view for the public isolated candidate
+showed 288 Worker invocations and zero Worker errors. The same view recorded
+85 static asset 4xx responses; these still need URL/status attribution. Worker
+request duration was about 857 ms p50, 1.05 s p90, and 2.70 s p99. The
+candidate's Hyperdrive configuration is named
+`nova-runtime-candidate-owfg-test` and points to the disposable Supabase
+project. Its dashboard showed about 3,000 queries, 11.13 ms query latency,
+2.6 ms connection latency, and three database/Hyperdrive errors. The dashboard
+reported 12.63 open connections and one waiting client against the 20-connection
+pool ceiling.
+
+These aggregates came from the previous candidate version and are not route-
+correlated. They do not prove database time is the only remaining cost; the
+three database errors and asset 4xx responses are unattributed. The dashboard
+failure is a Cloudflare control-plane page error, not evidence that the Worker
+is unavailable. The newer endpoint samples and source-matched read-page checks
+are recorded above; the old aggregates remain historical and were not refreshed
+after the new version deployed.
+
+On 13 October, the signed-in Supabase dashboard also confirmed one active
+`nova-background-tick` Cron job on a five-minute schedule. Its five latest runs
+were all successful, and the five latest `net._http_response` rows were HTTP
+200 without timeout. This shows the existing scheduler is healthy for the
+selected project; it does not measure the app's page/API latency.
 
 ## Matched readiness sample on the current source — 11 October 2026
 

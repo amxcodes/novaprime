@@ -1,29 +1,65 @@
 # NOVA verification matrix
 
-## Live baseline and release refresh — 2026-10-11
+## Live baseline and release refresh — 2026-10-13
 
 At the latest live check, Netlify published docs commit `26785bbefc1dd4ea6a4df45b6f73fd441bf47e99`
 as deploy `6acbd2ae3484ca00084163b4`, over application source `b51edc9`.
-Cloudflare's separate public candidate remains Ready as version `9130324d` from
-older application source `9a97dc9896411c7acfbc9b29f9e876e0173ec2b6`. It uses
-the disposable database through Hyperdrive as restricted `nova_app`, has
-query caching disabled and a 20-connection soft ceiling, and has no customer
-hostname or Cron. A signed-in Super Admin loaded My Day, People, Work, and
-Admin through this candidate; empty setup data was expected and no business
-records were created or changed. The matched anonymous readiness sample and
-its limitations are in the [performance investigation](performance-investigation-checklist.md).
-This is selected runtime evidence, not a production cutover or customer
-install.
+Cloudflare's separate public candidate is now Ready at version
+`c8ad983a-27ad-43ee-bd18-79088a17d5ca`, deployed from repository `main` at
+`58572f5a47bef0f664e04258f42a72fe73ade61c`. Its application paths match
+Netlify's `b51edc9`; the Cloudflare version has no provider-side Git tag. The
+candidate uses the disposable database through restricted-role Hyperdrive,
+has no customer hostname or Cron, and leaves Supabase as scheduler owner. A
+signed-in Super Admin loaded My Day, Work, People, Organisation settings, and
+People and access; no business records or settings were changed. Its
+single-person directory and empty workflow states are expected for the test
+organisation. Endpoint samples and their limits are in the
+[performance investigation](performance-investigation-checklist.md). This is
+selected runtime evidence, not a production cutover or customer install.
 
 Tags `v0.1.3`, `v0.1.4`, and `v0.1.5` passed exact-tag verification and their
 stable GitHub releases are published. A full-history customer clone at
 `v0.1.3` discovers `v0.1.5` with `bun run nova:update --check`. Database
-planning remains blocked: the root `.env` token was retried against the exact
-QA project ref from `.env.qa-supabase`, and Supabase returned HTTP 403 from the
-read-only query endpoint. The root `.env` itself points to a different project;
-the QA env has the right ref but no token. No SQL was written. The token needs
+planning remains blocked: the root `.env` contains a Supabase access token but
+its `NOVA_SUPABASE_PROJECT_REF` points to `hrlvietbqvkdovulzcie`, not the QA
+project. Retrying that token against the exact QA project ref from
+`.env.qa-supabase` returned HTTP 403 from the read-only query endpoint. The QA
+env has the right project ref but no token. No SQL was written. The token needs
 access to the disposable project and database read permission before the
 updater plan can be verified.
+
+On 13 October, a read-only Supabase SQL Editor check of the exact disposable
+project found 80 migration-ledger rows through
+`0080_background_tick_single_flight.sql`. Seventy-five historical rows have a
+NULL `sha256`, which is intentional: migration `0076` adds the nullable column
+and leaves trusted baseline rows unhashed. The five recorded hashes for
+`0076`–`0080` match the repository files exactly. No schema or data was changed.
+The updater's Management API plan remains unverified because the PAT-based
+read-only endpoint previously returned 403; checking the ledger in the SQL
+Editor does not prove the updater CLI can read or migrate this project.
+
+The same read-only check found one active `nova-background-tick` job (`*/5 * *
+* *`). Its latest five `cron.job_run_details` rows were all `succeeded`, and
+the five latest `net._http_response` records were HTTP 200 with
+`timed_out = false`; their timestamps align with those runs, with the newest
+pair at 06:10 UTC on 13 October.
+This verifies the selected Supabase scheduler only, not external triggers.
+
+Cloudflare's last accessible 24-hour dashboard snapshot predates candidate
+version `c8ad983a`. It showed 288 Worker invocations and zero Worker errors,
+but 85 asset 4xx responses. Its Hyperdrive configuration
+`nova-runtime-candidate-owfg-test` showed about 3,000 queries,
+11.13 ms displayed query latency, 2.6 ms connection latency, and three
+database/Hyperdrive errors; the dashboard reported 12.63 open connections and
+one waiting client against the 20-connection pool ceiling. Worker request
+percentiles were about 857 ms p50, 1.05 s p90, and 2.70 s p99. These are
+low-volume aggregates, not route-specific benchmarks, and must not be
+attributed to the current version. A 13 October dashboard refresh failed twice
+while loading Cloudflare's dynamically imported `cf-AuthOnlyProviders` UI
+module; that control-plane page error does not prove the Worker is unavailable.
+Current source-matched endpoint and browser checks are recorded above, but the
+new version's dashboard metrics and the older asset/database errors still need
+attribution.
 
 An earlier Netlify function log sample after deploy `6acb5d10ece4b700080a203a`
 showed a warm Notifications request at 1.20 seconds with no pool-acquisition
@@ -484,21 +520,21 @@ browser gate remains partial.
   editing. Employee-originated task creation, timer/submission/review, correction
   creation, handover and broad Work/HR browser journeys remain unverified.
 
-## Current readiness status — 2026-10-11 (latest evidence)
+## Current readiness status — 2026-10-13 (latest evidence)
 
 This table is the current summary. Older date-stamped results below are kept as
 history; use newer evidence above when results differ.
 
 | Gate | Current result | What's still needed |
 | --- | --- | --- |
-| Actual deployed baseline | **The reviewed Netlify production deploy served docs commit `67cc738` as deploy `6acbb03be89cc000083d01f7`, over app source `9a97dc9`.** Health/readiness checks returned 200; signed-in Super Admin My Day and Work rendered. The disposable Supabase project remains checksum-verified through `0080`. One active named Cron job ran successfully at 15:55 UTC on 11 October after app source `9a97dc9`; its paired `net._http_response` returned 200 without timeout or error. | Collect authenticated browser waterfalls and repeated route distributions, and hosted first-install evidence. Route checks cover selected pages and one Super Admin. |
-| Customer releases and updates | **Stable releases `v0.1.3`, `v0.1.4`, and `v0.1.5` are published.** `v0.1.3` at `a957cd4` is the updater-bearing baseline with 80 migration hashes. `v0.1.4` at `50b4b6e` has no SQL changes and requires a `0.1.3` starting version; `v0.1.5` at `4a85727` also has no SQL changes. All exact-tag verification workflows passed. A full-history `v0.1.3` clone discovers `v0.1.5`; a source-only rehearsal preserves a committed customer customization. The actual plan is blocked because the available token receives 403 from Supabase's read-only ledger endpoint; no SQL was submitted. | Verify exact-project access and `database_read`, then run the actual CLI from a clean customer clone through database planning and the remaining candidate, migration, push, backup/restore, and failure-recovery cases. Exercise older-clone baseline merge, real conflict review, wrong-project refusal, migration failure/retry, declined push, and host-build failure after schema change. |
+| Actual deployed baseline | **Netlify deploy `6acbd2ae3484ca00084163b4` serves app source `b51edc9`; Cloudflare candidate version `c8ad983a` was deployed from `main` at `58572f5`, whose app paths match that Netlify source.** Both currently return health/readiness 200. Signed-in Super Admin reads worked through the candidate. The last accessible Cloudflare dashboard snapshot predates this version and reported 85 asset 4xx and three Hyperdrive/database errors with no route attribution. | Refresh candidate-version observability and attribute the older asset/database errors. Capture interleaved authenticated route timings on both hosts at the same source. Hosted first-install and customer-hostname evidence remain open. |
+| Customer releases and updates | **Stable releases `v0.1.3`, `v0.1.4`, and `v0.1.5` are published and exact-tag verification passed.** A full-history `v0.1.3` clone discovers `v0.1.5`; source-only rehearsal preserves a committed customization. The 13 October read-only SQL Editor check confirmed 80 live ledger rows through `0080`; 75 historical NULL hashes are intentional under migration `0076`, and recorded `0076`–`0080` hashes match local SQL files. The updater CLI plan remains unverified because the available PAT returned 403; no updater SQL was submitted. | Obtain a correctly scoped project token and run the real CLI from a clean customer clone through plan/apply, candidate deploy, push, backup/restore, and failure recovery. Exercise old-clone baseline merge, migration conflict, wrong-project refusal, retry, declined push, and host-build failure after schema change. |
 | Advertised first installs | **Local Docker/PostgreSQL lifecycle and archive restore pass in prior evidence; hosted first installs remain unproven.** The local PostgreSQL 17 install applied all 80 migrations, passed protected maintenance and authenticated workflow suites, and restored counts, RLS, sequence, auth/session, encryption, and role boundaries. The published Netlify + Supabase site and Cloudflare candidate are test infrastructure, not clean-customer installs. Cloudflare now has a disposable Hyperdrive and separate public candidate Worker; no customer provisioning flow was exercised. | Complete clean, isolated Netlify + Supabase and Cloudflare + Supabase first installs. Prove internet-facing Docker only after public exposure, firewall, and TLS checks are ready. |
-| Same-database runtime move | **Cloudflare Hyperdrive and selected signed-in routes are proven on an isolated disposable target; a runtime move is not.** Candidate version `9130324d` runs application source `9a97dc9`; a Super Admin loaded My Day, Work, People, and People and access through it, with no business records changed. | The Worker is public and must stay on disposable data; it has no customer hostname or Cron, and no traffic was moved. Route smoke is not a complete workflow, role, latency, or capacity test. Implement and rehearse journaled promotion and rollback before calling a runtime move complete. Keep this separate from any database migration. |
+| Same-database runtime move | **Cloudflare Hyperdrive and selected signed-in routes are proven on an isolated disposable target; a runtime move is not.** Candidate version `c8ad983a` uses application paths matching Netlify's `b51edc9`; a Super Admin loaded My Day, Work, People, Organisation settings, and People and access, with no business records changed. | The Worker is public and must stay on disposable data; it has no customer hostname or Cron, and no traffic was moved. Route smoke is not a complete workflow, role, latency, or capacity test. Implement and rehearse journaled promotion and rollback before calling a runtime move complete. Keep this separate from any database migration. |
 | Scheduler ownership | **The selected Supabase scheduler and lease-backed run succeeded after application source `9a97dc9` was live.** One active named Cron row was observed; its 15:55 UTC run on 11 October succeeded, and the matching Net HTTP callback returned 200 without timeout or error. The `0080` migration tests overlap, expiration, renewal, stale-owner fencing and execute-only app-role checks. | Extend inventory to duplicate triggers outside this project and exercise missed runs, retries, secret rotation and recovery on each live supported profile. The current inventory cannot prove every trigger account-wide. |
 | Database moves | **Separately gated by design; no transfer was attempted.** Runtime plans preserve database identity. | Treat database copy/cutover as its own future project with write freeze/drain, verified backup/restore, object/data/sequence/RLS/auth comparison and rehearsed recovery. Payroll execution remains future work; retain its schema/permission base. |
 | User-facing quality | **The signed-in Super Admin Work experience is now split into six areas:** My work, Tasks, Reviews, Requests, Reviewer management, and Work context; live smoke rendered their empty/setup states. Existing attendance setup guidance remains. No records were changed. Restricted-role journeys, phone/tablet layouts, keyboard and screen-reader review remain open. | Complete representative employee, reviewer, and restricted-role journeys plus narrow/tablet, keyboard, and screen-reader review. Payroll execution remains future implementation; keep only its current permission/schema foundation. |
-| Speed and capacity | **Local 100×10 and 200×10 PostgreSQL workloads pass; hosted latency and capacity remain open.** The latest 100-person run passed with the shared Node pool and two-query timeline permission read: timeline p95 122 ms, access/data p95 20/34 ms, assignments 68 ms, and task create/self-assign 169 ms. The earlier 200-person run measured 124 ms for the prior three-query timeline path. One earlier 100-person run reported 2.45 s p95, so local variance remains unresolved. Fresh Netlify logs on `38e3df9` showed multi-second authenticated APIs, cold auth-pool acquisition near 1 s, and database query round trips near 170 ms. The current Netlify deployment returns health/readiness 200; a warm, anonymous ten-request readiness sample on 2026-10-12 measured p50 529.4 ms and p95/max 543 ms. This is not a signed-in route result. Cloudflare's current candidate remains older source `9a97dc9` and its dashboard metrics mix routes/versions. Details are in [`performance-investigation-checklist.md`](performance-investigation-checklist.md) and [`runtime-smoke.md`](runtime-smoke.md). | Capture authenticated browser waterfalls and repeated route distributions on both hosts at the same source, resolve the local outlier, then run sustained hosted 100/200-employee capacity tests and record database CPU/connection headroom. Keep the speed gate open until controlled results exist. |
+| Speed and capacity | **Local 100×10 and 200×10 PostgreSQL workloads pass; hosted latency and capacity remain open.** The latest 100-person run passed with the shared Node pool and two-query timeline permission read: timeline p95 122 ms, access/data p95 20/34 ms, assignments 68 ms, and task create/self-assign 169 ms. The earlier 200-person run measured 124 ms for the prior three-query timeline path. One earlier 100-person run reported 2.45 s p95, so local variance remains unresolved. Fresh Netlify logs on `38e3df9` showed multi-second authenticated APIs, cold auth-pool acquisition near 1 s, and database query round trips near 170 ms. On 13 October, anonymous same-client probes returned 200 on both current hosts: Cloudflare candidate (10 samples) p50/p95 was 410/602 ms for health, 392/955 ms for readiness, and 739/1,192 ms for session lookup; Netlify measured 706/788 ms for health (10 samples), 677/2,413 ms for readiness (4), and 895/1,072 ms for session lookup (4). Samples were collected separately and are too small and uneven to establish a provider win; the 2.4 s Netlify readiness result warrants a larger matched run. These are not authenticated route percentiles. Details are in [`performance-investigation-checklist.md`](performance-investigation-checklist.md) and [`runtime-smoke.md`](runtime-smoke.md). | Capture interleaved authenticated browser waterfalls and repeated route distributions on both hosts at the same source, resolve the local outlier, then run sustained hosted 100/200-employee capacity tests and record database CPU/connection headroom. Keep the speed gate open until controlled results exist. |
 
 ## Not verified / release gates
 
@@ -506,8 +542,8 @@ history; use newer evidence above when results differ.
 | --- | --- |
 | Workspace preview freshness | The existing localhost API at `127.0.0.1:39131` returned healthy status but served `app.js` and `styles.css` whose hashes do not match the current workspace, so it is an older image and is not valid evidence for current UI behavior. The workspace deployment guide was instead opened from a temporary loopback-only static preview; no existing container was changed. | Current-source UI behavior is verified by the rendered-flow smoke and workspace preview. Rebuild/redeploy the local API image before using that older localhost instance for any further UI review. |
 | Local QA cleanup | On 2026-09-25, WSL showed 16 prior repository-owned `postgres-qa` containers and 17 UUID-scoped QA volumes; the QA-only service now disables auto-restart and successful cleanup verifies the current run's exact labels. On 2026-10-12, the first bootstrap test omitted an explicit Compose project identity; Compose selected the legacy project name `docker`, reused its container names, and the cleanup removed that project's containers and project-owned volumes. The inventory afterward showed no active containers or `docker_nova_postgres_data`; separately named NOVA QA/browser volumes remained. Whether the removed default-project volume held local data needed by the operator cannot be determined from the remaining inventory, so treat that local database as potentially lost. This was a local test-environment incident; the hosted Supabase project and production deployment were not targeted. Fresh guided setup now persists a unique per-checkout project name, while Compose's fallback stays `docker` to preserve existing installations. The successful rerun used a guarded unique project, removed only its own resources, and verified pre-existing volumes stayed present. |
-| Provider deployment | The reviewed Netlify deploy served docs commit `67cc738` over app source `9a97dc9`; the Cloudflare candidate is Ready at version `9130324d` on that app source and has passed selected signed-in Super Admin reads through Hyperdrive to disposable Supabase. The selected Supabase Cron also completed a successful post-deploy tick with a matching HTTP 200 callback and no timeout/error. No Vercel or customer VPS deployment was run. Cloudflare Wrangler typecheck/dry-run, local `workerd` protected-tick smoke, and Netlify/Cloudflare wrapper contract tests pass. No runtime route was promoted; clean hosted first install remains unverified. Native Windows PostgreSQL is also untested. |
-| Scheduler | The protected endpoint now requires a supported `NOVA_BACKGROUND_SCHEDULER` selection and rejects a mismatched built-in provider. Cloudflare has an explicit `crons=[]` profile for Supabase Cron; Supabase install/disable commands target NOVA's named job and Vault values. Still verify one active production trigger in each live provider, same-provider duplicates, missed/overlapping ticks, secret rotation, retries and run history. |
+| Provider deployment | Netlify deploy `6acbd2ae3484ca00084163b4` serves app source `b51edc9`. Cloudflare candidate version `c8ad983a` was deployed from `main` `58572f5` and uses app paths matching Netlify's source on the disposable Hyperdrive target; selected signed-in Super Admin reads passed. The selected Supabase Cron is active and has recent successful runs/callbacks. No Vercel or customer VPS deployment was run. Cloudflare Wrangler typecheck/dry-run, local `workerd` protected-tick smoke, and adapter contract tests pass. No runtime route was promoted; clean hosted first install remains unverified. Native Windows PostgreSQL is also untested. |
+| Scheduler | **The target Supabase project has one active NOVA Cron job, `nova-background-tick`, every five minutes.** The latest five runs succeeded and their latest five HTTP callbacks returned 200 without timeouts on 13 October. Cloudflare candidate has no Cron; Supabase remains the scheduler owner. | Check for triggers outside the selected project and exercise duplicate-trigger detection, missed runs, retry behavior, secret rotation and recovery on each advertised hosting profile. |
 | Load and concurrency | Fresh isolated WSL/Docker PostgreSQL 17 QA applied all 80 migrations and passed restore, RLS, role-boundary, and lifecycle checks at 100×10 and 200×10 employees/tasks, including direct and request-scoped database profiles. Current local p95 results and exact run limits are recorded in [`runtime-smoke.md`](runtime-smoke.md). These are one-shot local bursts, not hosted or sustained multi-office capacity proof. |
 | Timezone and location | Fixture 0062 passed: 23-hour/25-hour office days, a stable-offset office, exact one-microsecond attendance/session closure, repeated-tick idempotency, and original-boundary closure after office transfer while records are open. Fixture 0069 checks office-local business dates for four timezones against one statement instant. API checks reject missing, low-accuracy, malformed and outside-radius location evidence without changing state. DST gap/repeated wall-time policy, overnight sessions, browser permission-denial UX and spoof-recovery paths still need deterministic tests. Browser GPS is a signal, not proof of physical presence. |
 | Email and notifications | Fixture 0063 passed: duplicate staging, app-role denial of direct outbox reads, expired-lease recovery, new lease-token ownership, stale/replayed worker rejection and one-time completion. The local authenticated lifecycle simulates Gmail OAuth state/PKCE, configured-origin redirect, send-only scope, token exchange, encrypted refresh-token storage, metadata secrecy, expiry/replay rejection, missing-send-scope denial and failed reconnect preserving existing credentials. Unit tests mock Google token refresh and Gmail HTTPS send, decode the composed MIME payload, and verify sanitized API failure behavior. The HTTPS runtime advertises Gmail API + Resend and exercises Gmail setup while rejecting SMTP before persistence. No real Google consent or live SMTP/Gmail/Resend message was sent; provider outages, rate limits, actual credential rotation and end-to-end mail-sink delivery remain unverified. In-app notification persistence is independently covered. |
