@@ -1220,3 +1220,59 @@ and p95/max was 543 ms. This includes the full client-to-Netlify-to-database
 path for readiness. It is not a signed-in route/page timing, does not isolate
 the provider or database contribution, and is not comparable to the older
 Cloudflare candidate because that Worker still runs source `9a97dc9`.
+
+## Production source gap and authenticated page timings — 13 October 2026
+
+The Netlify project is linked to `amxcodes/novaprime`, uses `main` as its
+production branch, and has builds enabled. The production deployment detail
+currently identifies commit `3d55c065` from 11 October. At the time of this
+check, `origin/main` was `6fe9fb4`, with later server, auth-pool, page-read,
+deployment, and diagnostic changes. The live timings below therefore describe
+the older published source. Do not call the newer performance work live until
+Netlify publishes a deployment whose source SHA matches the pushed `main` SHA.
+
+From one authenticated Super Admin browser tab, I opened each route once and
+waited until its page heading was visible and accessible loading text had
+cleared. These are client-to-data-settle samples from a warm browser session,
+not percentiles or a cold-session benchmark:
+
+| Page | Data-settled time |
+| --- | ---: |
+| My Day | 11.5 s |
+| People | 4.4 s |
+| Work | 8.5 s |
+| Admin | 7.7 s |
+
+All four pages reached their content without a browser console error. This
+confirms that the current published app remains slow for a signed-in operator;
+it does not identify a single slow route or prove a provider-only cause. The
+Netlify diagnostics visible at 11:35–11:48 that day are from a different time
+window and have no request IDs linking them to these browser visits.
+
+Those separate function logs show small module startup costs (4–13 ms, with a
+9 ms Better Auth module load), while handlers range from about 1.2 s to 3.4 s.
+For example, `auth.get-session` took 3.0 s, with 9 NOVA queries totaling 3.1 s;
+`api.me` took 1.4–3.1 s and ran 5–13 NOVA queries; notifications took 1.16–1.19
+s with four NOVA queries totaling 0.66–0.68 s. Some requests accumulated
+roughly 3.0 s of database pool acquisition time across multiple acquisitions,
+and individual database round trips reached about 0.66 s. These subtotals can
+overlap and must not be added as if they were sequential. The diagnostics show
+idle/capacity slots available and zero waiters, so this sample does not show a
+saturated pool. A GET `/api/attendance/today` returning 409 is the expected
+`OFFICE_ASSIGNMENT_REQUIRED` business response for this test user, not a
+server failure.
+
+The evidence still points to database round trips and connection acquisition
+as major contributors, with the known Ohio Netlify to Seoul Supabase distance
+as a credible factor. It does not isolate geography from query count, runtime
+connection behavior, or the old page request fan-out. The current `main`
+source has newer request batching and shared-pool work, but that cannot improve
+the live site until a matching Netlify deploy is verified. The latest GitHub
+`checks` job also failed on two updater Git-fixture tests sharing a cleanup
+list; those repository tests are now explicitly serialized and passed the
+forced-concurrency regression run. After publishing the corrected `main`,
+repeat the four authenticated timings and correlate them with same-window
+function diagnostics before judging the fix. Then compare the exact same source
+and database against the isolated Cloudflare Hyperdrive candidate. Existing
+local 100/200-employee tests establish data-shape behavior only; they do not
+replace hosted concurrency or capacity measurements.

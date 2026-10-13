@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "bun:test";
 import { findPreparedUpdateWorktree, githubRepositoryIdentity, inspectGitCheckout, prepareUpdateWorktree, pushUpdateBranch, validateGitHubPushUrl } from "./git.ts";
 
+// These cases share a cleanup registry, so keep repository fixtures isolated when Bun runs tests concurrently.
+const repositoryTest = it.serial;
 const temporaryRoots: string[] = [];
 
 async function makeRepository(): Promise<{
@@ -49,7 +51,7 @@ afterEach(async () => {
 });
 
 describe("safe Git update worktrees", () => {
-  it("prepares a release candidate while leaving the operator checkout unchanged", async () => {
+  repositoryTest("prepares a release candidate while leaving the operator checkout unchanged", async () => {
     const { root, tempRoot, baseline, target } = await makeRepository();
     const prepared = await prepareUpdateWorktree(root, { targetCommit: target, releaseTag: "v0.2.0", expectedHead: baseline, worktreeParent: tempRoot });
 
@@ -73,7 +75,7 @@ describe("safe Git update worktrees", () => {
     });
   }, 60_000);
 
-  it("uses an exact durable path and resumes a clean pre-merge crash state", async () => {
+  repositoryTest("uses an exact durable path and resumes a clean pre-merge crash state", async () => {
     const { root, tempRoot, baseline, target } = await makeRepository();
     const candidatePath = join(tempRoot, "durable-candidate");
     await mkdir(candidatePath);
@@ -90,7 +92,7 @@ describe("safe Git update worktrees", () => {
     expect(run(candidatePath, ["rev-parse", "HEAD"]).trim()).toBe(target);
   }, 60_000);
 
-  it("stops before creating a candidate when tracked or untracked work exists", async () => {
+  repositoryTest("stops before creating a candidate when tracked or untracked work exists", async () => {
     const { root } = await makeRepository();
     await writeFile(join(root, "local-notes.txt"), "operator work\n");
     await expect(prepareUpdateWorktree(root, { targetCommit: "a".repeat(40), releaseTag: "v0.2.0" }))
@@ -105,7 +107,7 @@ describe("safe Git update worktrees", () => {
     expect((await readFile(join(root, "README.md"), "utf8")).trim()).toBe("tracked operator edit");
   }, 60_000);
 
-  it("keeps a conflicted candidate for review and leaves the operator branch untouched", async () => {
+  repositoryTest("keeps a conflicted candidate for review and leaves the operator branch untouched", async () => {
     const { root, tempRoot, baseline } = await makeRepository();
     run(root, ["switch", "-c", "customer-work"]);
     await writeFile(join(root, "README.md"), "customer\n");
@@ -128,7 +130,7 @@ describe("safe Git update worktrees", () => {
     expect(run(root, ["rev-parse", "operator"]).trim()).not.toBe(baseline);
   }, 60_000);
 
-  it("accepts only the exact two-parent merge for a divergent customer base", async () => {
+  repositoryTest("accepts only the exact two-parent merge for a divergent customer base", async () => {
     const { root, tempRoot, target } = await makeRepository();
     run(root, ["switch", "-c", "customer-work", "operator"]);
     await writeFile(join(root, "customer.txt"), "customer change\n");
@@ -152,7 +154,7 @@ describe("safe Git update worktrees", () => {
     })).resolves.toMatchObject({ originalHead, targetCommit: target, headCommit: parentLine[0] });
   }, 60_000);
 
-  it("requires explicit adoption when a completed merge HEAD was not journaled", async () => {
+  repositoryTest("requires explicit adoption when a completed merge HEAD was not journaled", async () => {
     const { root, tempRoot, target } = await makeRepository();
     run(root, ["switch", "-c", "customer-work", "operator"]);
     await writeFile(join(root, "customer.txt"), "customer change\n");
@@ -177,7 +179,7 @@ describe("safe Git update worktrees", () => {
     })).resolves.toMatchObject({ originalHead, targetCommit: target });
   }, 60_000);
 
-  it("rejects a non-GitHub destination even when it is the configured push remote", async () => {
+  repositoryTest("rejects a non-GitHub destination even when it is the configured push remote", async () => {
     const { root, tempRoot, baseline, target, remote } = await makeRepository();
     const prepared = await prepareUpdateWorktree(root, { targetCommit: target, releaseTag: "v0.2.0", expectedHead: baseline, worktreeParent: tempRoot });
     await expect(pushUpdateBranch({
@@ -196,7 +198,7 @@ describe("safe Git update worktrees", () => {
     expect(run(root, ["rev-parse", "HEAD"]).trim()).toBe(baseline);
   }, 60_000);
 
-  it("rechecks the exact candidate HEAD immediately before a GitHub push", async () => {
+  repositoryTest("rechecks the exact candidate HEAD immediately before a GitHub push", async () => {
     const { root, tempRoot, baseline, target } = await makeRepository();
     const prepared = await prepareUpdateWorktree(root, { targetCommit: target, releaseTag: "v0.2.0", expectedHead: baseline, worktreeParent: tempRoot });
     run(root, ["remote", "set-url", "--push", "origin", "ssh://git@github.com/customer/nova.git"]);
@@ -239,7 +241,7 @@ describe("safe Git update worktrees", () => {
     expect(githubRepositoryIdentity("file:///tmp/repo.git")).toBeUndefined();
   });
 
-  it("rejects a push URL that changed after the operator confirmed it", async () => {
+  repositoryTest("rejects a push URL that changed after the operator confirmed it", async () => {
     const { root, tempRoot, baseline, target } = await makeRepository();
     const prepared = await prepareUpdateWorktree(root, { targetCommit: target, releaseTag: "v0.2.0", expectedHead: baseline, worktreeParent: tempRoot });
     const confirmedPushUrl = "https://github.com/customer/nova.git";
@@ -259,7 +261,7 @@ describe("safe Git update worktrees", () => {
     })).rejects.toMatchObject({ code: "PUSH_DESTINATION_CHANGED" });
   }, 60_000);
 
-  it("refuses a push to the canonical NOVA repository in every supported URL form", async () => {
+  repositoryTest("refuses a push to the canonical NOVA repository in every supported URL form", async () => {
     const { root, tempRoot, baseline, target } = await makeRepository();
     const prepared = await prepareUpdateWorktree(root, { targetCommit: target, releaseTag: "v0.2.0", expectedHead: baseline, worktreeParent: tempRoot });
     const confirmedPushUrl = "git@github.com:amxcodes/novaprime.git";
@@ -279,7 +281,7 @@ describe("safe Git update worktrees", () => {
     })).rejects.toMatchObject({ code: "PUSH_DESTINATION_CANONICAL" });
   }, 60_000);
 
-  it("refuses a push after the source checkout head changes", async () => {
+  repositoryTest("refuses a push after the source checkout head changes", async () => {
     const { root, tempRoot, baseline, target } = await makeRepository();
     const prepared = await prepareUpdateWorktree(root, { targetCommit: target, releaseTag: "v0.2.0", expectedHead: baseline, worktreeParent: tempRoot });
     const confirmedPushUrl = "https://github.com/customer/nova.git";
@@ -300,7 +302,7 @@ describe("safe Git update worktrees", () => {
     })).rejects.toMatchObject({ code: "SOURCE_CHECKOUT_CHANGED" });
   }, 60_000);
 
-  it("rejects extra candidate commits and incorrect recorded base or expected HEAD", async () => {
+  repositoryTest("rejects extra candidate commits and incorrect recorded base or expected HEAD", async () => {
     const { root, tempRoot, baseline, target } = await makeRepository();
     const prepared = await prepareUpdateWorktree(root, { targetCommit: target, releaseTag: "v0.2.0", expectedHead: baseline, worktreeParent: tempRoot });
     run(root, ["switch", "-c", "other-base", "operator"]);
