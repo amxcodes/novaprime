@@ -17,6 +17,24 @@ protected background-tick contract remain portable.
 | Cloudflare + Supabase Cloud | Cloudflare Worker + Hyperdrive | Supabase PostgreSQL | Supabase Cron |
 | Self-hosted Docker + PostgreSQL | Docker services behind Nginx on an always-on customer machine | PostgreSQL 17 in Compose by default | One Compose maintenance worker |
 
+### Choose runtime and database regions together
+
+Database-backed API requests travel between the runtime and PostgreSQL, so the
+customer should check both regions before creating production resources. The
+Netlify Functions default is `cmh` (Ohio). Choosing a different Functions
+region is a Pro/Enterprise feature; the documented self-serve Asia choices are
+`nrt` (Tokyo) and `sin` (Singapore), not Seoul. A Netlify Free deployment
+cannot move its Functions closer to an Asia-region Supabase database through a
+repository change. See [Netlify's Functions region guide](https://docs.netlify.com/build/functions/configuration/).
+
+If Netlify's available region is far from the selected database, compare the
+same source and database through the Cloudflare Worker + Hyperdrive profile
+before selecting a production runtime. Hyperdrive pools database connections,
+but the customer must still measure representative authenticated pages and
+database headroom for their own region, workload, and plan. Keep the database
+and scheduler fixed during this comparison; a runtime test does not require a
+database move.
+
 The managed profiles can use the same Supabase project. Moving the UI/API
 runtime from Netlify to Cloudflare does not copy the database or change the
 Cron provider. The Cron job stores its callback origin in Supabase Vault: if
