@@ -85,6 +85,10 @@ export interface ProviderResource {
   release?: string;
   origin?: string;
   databaseVersion?: string;
+  /** Provider-reported region for the selected API runtime. Never inferred from the user. */
+  runtimeRegion?: string;
+  /** Provider-reported region for the selected database project. */
+  databaseRegion?: string;
   databaseFingerprint?: string;
   schemaReady?: boolean;
   migrationLedgerPresent?: boolean;

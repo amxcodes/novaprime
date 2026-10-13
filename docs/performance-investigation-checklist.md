@@ -5,9 +5,10 @@ Date: 2026-10-13
 ## Latest matched-source recheck — 13 October 2026
 
 Netlify production and the isolated Cloudflare Hyperdrive candidate now serve
-the same application paths from source `924203a`. The documentation commit
-`fd1ea95` was published by Netlify deploy `6ace0b9a04767f9de0383b61`; the
-candidate Worker version is `5a07233d-904a-49a4-8024-8576da874b40`. The Worker
+the same application paths from source `924203a`. Netlify deploy
+`6ace120684d75ce8c8a95ba8` publishes documentation commit `05cf3ed`; the
+candidate Worker version is `5a07233d-904a-49a4-8024-8576da874b40`, uploaded
+from documentation commit `fd1ea95`. The Worker
 is public on `workers.dev`, has no customer hostname or Cron, and connects
 only to disposable Supabase data. Supabase remains the only scheduler owner;
 no production route or database state changed.

@@ -16,6 +16,13 @@ export function firstString(...values: unknown[]): string | undefined {
   return values.find((value): value is string => typeof value === "string" && value.length > 0);
 }
 
+/** Retain only a bounded provider region identifier, never descriptive provider text. */
+export function safeRegionCode(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const region = value.trim().toLowerCase();
+  return /^(?:[a-z]{3}|[a-z0-9]+(?:-[a-z0-9]+){1,4})$/.test(region) ? region : undefined;
+}
+
 export function safeHttpsOrigin(value: string | undefined): string | undefined {
   if (!value) return undefined;
   try {

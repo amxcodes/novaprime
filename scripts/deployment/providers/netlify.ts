@@ -1,5 +1,5 @@
 import type { DomainRouteInventory, ProviderFetcher, ProviderResource, RuntimeBindingInventory, SchedulerTriggerInventory } from "./types.ts";
-import { asObject, firstString, getProviderJson, providerFailure, safeHostname, safeHttpsOrigin, safeProviderId, safeReleaseSha, safeSchedulerSelector } from "./shared.ts";
+import { asObject, firstString, getProviderJson, providerFailure, safeHostname, safeHttpsOrigin, safeProviderId, safeRegionCode, safeReleaseSha, safeSchedulerSelector } from "./shared.ts";
 
 const maxEnvironmentVariables = 500;
 
@@ -148,6 +148,7 @@ export async function inspectNetlify(
     })();
     return {
       provider: "netlify", state: "identified", target: id, runtime: "netlify",
+      ...(safeRegionCode(site.functions_region) ? { runtimeRegion: safeRegionCode(site.functions_region) } : {}),
       ...(revision ? { revision } : {}),
       ...(safeReleaseSha(firstString(latestProduction?.commit_sha, latestProduction?.commit_ref, latestProduction?.commit))
         ? { release: safeReleaseSha(firstString(latestProduction?.commit_sha, latestProduction?.commit_ref, latestProduction?.commit)) } : {}),

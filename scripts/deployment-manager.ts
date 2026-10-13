@@ -259,6 +259,8 @@ function reportStatus(
         : undefined;
       const summary = [provider.provider, provider.state, provider.target, provider.revision ? `revision ${provider.revision}` : undefined,
         provider.runtimeId ? `runtime ${provider.runtimeId}` : undefined,
+        provider.runtimeRegion ? `Functions region ${provider.runtimeRegion}` : undefined,
+        provider.databaseRegion ? `database region ${provider.databaseRegion}` : undefined,
         provider.release ? `release ${provider.release.slice(0, 12)}` : undefined, provider.configuredScheduler
         ? `configured scheduler ${provider.configuredScheduler}` : undefined, scheduler, provider.schedulerInventory?.detail,
         runtimeBindings, provider.runtimeBindings?.detail, domains, provider.domainRoutes?.detail, cloudflareRouting,

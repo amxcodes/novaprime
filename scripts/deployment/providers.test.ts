@@ -7,11 +7,11 @@ test("provider discovery requests only explicit target resources and returns met
     const url = String(input);
     const token = new Headers(init?.headers).get("authorization") ?? "";
     requests.push({ url, token });
-    if (url.endsWith("/sites/site-id")) return Response.json({ id: "site-id", ssl_url: "https://nova.example" });
+    if (url.endsWith("/sites/site-id")) return Response.json({ id: "site-id", ssl_url: "https://nova.example", functions_region: "CMH" });
     if (url.includes("/sites/site-id/deploys")) return Response.json([{
       state: "ready", context: "production", published: true, commit_ref: "a".repeat(40), function_schedules: [],
     }]);
-    if (url.endsWith("/projects/abcdefghijklmnopqrst")) return Response.json({ id: "id", database: { version: "17.4" } });
+    if (url.endsWith("/projects/abcdefghijklmnopqrst")) return Response.json({ id: "id", region: "ap-northeast-2", database: { version: "17.4" } });
     if (url.endsWith("/projects/abcdefghijklmnopqrst/health")) return Response.json([{ status: "HEALTHY" }]);
     throw new Error("unexpected read");
   };
@@ -21,8 +21,8 @@ test("provider discovery requests only explicit target resources and returns met
     SUPABASE_ACCESS_TOKEN: "supabase-secret-must-not-leak",
     NOVA_SUPABASE_PROJECT_REF: "abcdefghijklmnopqrst",
   }, fetcher);
-  expect(resources).toContainEqual(expect.objectContaining({ provider: "netlify", state: "identified", target: "site-id", origin: "https://nova.example" }));
-  expect(resources).toContainEqual(expect.objectContaining({ provider: "supabase", state: "identified", target: "abcdefghijklmnopqrst", databaseVersion: "17.4" }));
+  expect(resources).toContainEqual(expect.objectContaining({ provider: "netlify", state: "identified", target: "site-id", origin: "https://nova.example", runtimeRegion: "cmh" }));
+  expect(resources).toContainEqual(expect.objectContaining({ provider: "supabase", state: "identified", target: "abcdefghijklmnopqrst", databaseVersion: "17.4", databaseRegion: "ap-northeast-2" }));
   expect(resources.find(({ provider }) => provider === "cloudflare")?.state).toBe("not-configured");
   expect(requests.length).toBe(4);
   expect(JSON.stringify(resources)).not.toContain("secret-must-not-leak");
@@ -212,7 +212,7 @@ test("Netlify inventory records production binding metadata and hostnames but ne
     const url = String(input);
     if (url.endsWith("/sites/site-id")) return Response.json({
       id: "site-id", account_id: "team-id", ssl_url: "https://nova.example.test", url: "nova-site.netlify.app",
-      custom_domain: "nova.example.test", domain_aliases: ["www.nova.example.test"],
+      custom_domain: "nova.example.test", domain_aliases: ["www.nova.example.test"], functions_region: "https://private-value.example.test/",
     });
     if (url.includes("/sites/site-id/deploys")) return Response.json([{
       state: "ready", context: "production", published: true, commit_sha: "a".repeat(40), function_schedules: [],
@@ -242,6 +242,7 @@ test("Netlify inventory records production binding metadata and hostnames but ne
       { name: "NOVA_BACKGROUND_SCHEDULER", contexts: ["production"], scopes: ["functions"], secret: false },
     ],
   });
+  expect(netlify).not.toHaveProperty("runtimeRegion");
   expect(netlify.domainRoutes).toEqual({
     state: "verified", completeness: "selected-runtime", domains: [
       { hostname: "nova-site.netlify.app", source: "provider-default" },

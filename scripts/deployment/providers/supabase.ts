@@ -1,6 +1,6 @@
 import { inspectSupabaseCronInventory } from "../supabase-scheduler-inventory.ts";
 import type { ProviderFetcher, ProviderResource, SchedulerTriggerInventory } from "./types.ts";
-import { asObject, firstString, getProviderJson, providerFailure } from "./shared.ts";
+import { asObject, firstString, getProviderJson, providerFailure, safeRegionCode } from "./shared.ts";
 
 export async function inspectSupabase(
   environment: Readonly<Record<string, string>>,
@@ -38,6 +38,7 @@ export async function inspectSupabase(
     const database = asObject(project.database);
     return {
       provider: "supabase", state: "identified", target: projectRef, runtime: "postgresql",
+      ...(safeRegionCode(project.region) ? { databaseRegion: safeRegionCode(project.region) } : {}),
       ...(firstString(database?.version, database?.postgres_engine) ? { databaseVersion: firstString(database?.version, database?.postgres_engine) } : {}),
       ...databaseInventory,
       detail: statuses.length ? `SERVICE_HEALTH_${statuses.join(",").toUpperCase()}` : "PROJECT_IDENTIFIED_HEALTH_UNKNOWN",

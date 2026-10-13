@@ -20,6 +20,7 @@ const remote: ProviderResource[] = [{
   state: "identified",
   target: "site-1",
   runtime: "netlify",
+  runtimeRegion: "cmh",
   release: "a".repeat(40),
   schedulerInventory: {
     scope: "target-runtime",
@@ -77,6 +78,23 @@ test("plan verification ignores descriptive provider detail but detects changed 
 test("plan verification detects a new provider deployment revision", () => {
   expect(verifyDeploymentPlanSnapshot(plan, local, [{ ...remote[0]!, revision: "deploy-2" }]).issues)
     .toEqual(["REMOTE_INVENTORY_CHANGED"]);
+});
+
+test("plan verification detects a changed Netlify Functions region", () => {
+  expect(verifyDeploymentPlanSnapshot(plan, local, [{ ...remote[0]!, runtimeRegion: "nrt" }]).issues)
+    .toEqual(["REMOTE_INVENTORY_CHANGED"]);
+});
+
+test("plan verification detects a changed Supabase database region", () => {
+  const boundPlan = { preview: { ...plan.preview, providerInventory: [{
+    provider: "supabase" as const,
+    state: "identified" as const,
+    target: "abcdefghijklmnopqrst",
+    databaseRegion: "ap-northeast-2",
+  }] } } as StoredDeploymentPlan;
+  expect(verifyDeploymentPlanSnapshot(boundPlan, local, [{
+    provider: "supabase", state: "identified", target: "abcdefghijklmnopqrst", databaseRegion: "us-east-1",
+  }]).issues).toEqual(["REMOTE_INVENTORY_CHANGED"]);
 });
 
 test("plan verification detects a changed immutable runtime version id", () => {

@@ -109,6 +109,31 @@ test("status passes the selected env file to local deployment inspection", async
   expect(selectedEnvironmentFile).toBe(resolve(import.meta.dir, "..", ".env.example"));
 });
 
+test("remote status displays provider-reported runtime and database regions", async () => {
+  const output: string[] = [];
+  const code = await runDeploymentManager(["status", "--remote"], {
+    environment: {
+      NETLIFY_SITE_ID: "site-123",
+      NETLIFY_AUTH_TOKEN: "netlify-test-token",
+      NOVA_SUPABASE_PROJECT_REF: "abcdefghijklmnopqrst",
+      SUPABASE_ACCESS_TOKEN: "supabase-test-token",
+    },
+    write: (line) => output.push(line),
+    interactive: false,
+    inspectDeployment: async () => deploymentInventory(),
+    discoverProviders: async () => [
+      { provider: "netlify", state: "identified", target: "site-123", runtimeRegion: "nrt" },
+      { provider: "supabase", state: "identified", target: "abcdefghijklmnopqrst", databaseRegion: "ap-northeast-2" },
+    ],
+  });
+
+  expect(code).toBe(0);
+  expect(output.join("\n")).toContain("Functions region nrt");
+  expect(output.join("\n")).toContain("database region ap-northeast-2");
+  expect(output.join("\n")).not.toContain("netlify-test-token");
+  expect(output.join("\n")).not.toContain("supabase-test-token");
+});
+
 test("remote status prompts only for configured targets and keeps entered tokens in memory", async () => {
   const output: string[] = [];
   const prompts: string[] = [];

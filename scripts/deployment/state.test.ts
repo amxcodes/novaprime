@@ -90,6 +90,7 @@ test("plans persist outside the checkout with a random ID and private file mode"
       provider: "supabase" as const,
       state: "identified" as const,
       target: "abcdefghijklmnopqrst",
+      databaseRegion: "ap-northeast-2",
       schedulerInventory: {
         scope: "database-project" as const,
         state: "verified" as const,
@@ -108,6 +109,7 @@ test("plans persist outside the checkout with a random ID and private file mode"
       provider: "netlify" as const,
       state: "identified" as const,
       target: "site-id",
+      runtimeRegion: "cmh",
       runtimeBindings: {
         state: "verified" as const,
         completeness: "selected-runtime" as const,
@@ -124,6 +126,8 @@ test("plans persist outside the checkout with a random ID and private file mode"
   expect(await loadDeploymentPlan(repo, stored.id)).toEqual(stored);
   expect(stored.preview.providerInventory?.find(({ provider }) => provider === "netlify")?.runtimeBindings)
     .toMatchObject({ buildSchedulerAvailable: true, configuredBuildScheduler: "supabase" });
+  expect(stored.preview.providerInventory?.find(({ provider }) => provider === "netlify")?.runtimeRegion).toBe("cmh");
+  expect(stored.preview.providerInventory?.find(({ provider }) => provider === "supabase")?.databaseRegion).toBe("ap-northeast-2");
   const root = stateRoot();
   const hashDirs = await readdir(root);
   expect(hashDirs).toHaveLength(1);
@@ -135,6 +139,11 @@ test("plans persist outside the checkout with a random ID and private file mode"
   const editedPlan = JSON.parse(await readFile(persistedPath, "utf8")) as Record<string, unknown>;
   const persistedPreview = editedPlan.preview as { providerInventory: Array<Record<string, unknown>> };
   const netlify = persistedPreview.providerInventory.find(({ provider }) => provider === "netlify")!;
+  netlify.runtimeRegion = "us-east-2;unexpected";
+  await writeFile(persistedPath, JSON.stringify(editedPlan));
+  await expect(loadDeploymentPlan(repo, stored.id)).rejects.toThrow("DEPLOYMENT_PLAN_CORRUPT");
+  netlify.runtimeRegion = "cmh";
+  await writeFile(persistedPath, JSON.stringify(editedPlan));
   const netlifyBindings = netlify.runtimeBindings as Record<string, unknown>;
   netlifyBindings.configuredBuildScheduler = "untrusted-selector";
   await writeFile(persistedPath, JSON.stringify(editedPlan));

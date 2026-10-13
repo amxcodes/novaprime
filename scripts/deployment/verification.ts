@@ -15,6 +15,8 @@ function providerSnapshot(resources: readonly ProviderResource[]): unknown[] {
     release: resource.release ?? null,
     origin: resource.origin ?? null,
     databaseVersion: resource.databaseVersion ?? null,
+    runtimeRegion: resource.runtimeRegion ?? null,
+    databaseRegion: resource.databaseRegion ?? null,
     databaseFingerprint: resource.databaseFingerprint ?? null,
     schemaReady: resource.schemaReady ?? null,
     migrationLedgerPresent: resource.migrationLedgerPresent ?? null,
