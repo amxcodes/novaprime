@@ -49,6 +49,36 @@ varies too much to name one cause from these traces. Capture repeated
 request-level timings alongside pool acquisition and query metrics; compare
 both warm and cold invocations.
 
+### Live region and database-pressure recheck — 13 October 2026
+
+The signed-in Netlify Functions page confirms the production `nova` function
+runs in `CMH` (Ohio, US East). The signed-in Supabase project dashboard confirms
+that the target database is in `ap-northeast-2` (Seoul). The database was
+Healthy at the check: CPU 3%, disk 14%, RAM 52%, and 19 of 60 connections;
+the last-hour overview showed 49 Postgres requests and no warnings or errors.
+This is a point-in-time health snapshot, not a load test, but it does not show
+database CPU or connection saturation as the cause of the slow requests.
+
+The current Netlify function logs contain authenticated API calls taking about
+1.2–5.2 seconds. Several requests report roughly 1–3 seconds in app-pool
+acquisition and 0.7–3.6 seconds in SQL round trips; one Work request reports 8
+app-pool acquisitions and 14 queries. Those accumulated measurements can overlap, so they
+must not be added as elapsed-time components. Together with Ohio-to-Seoul
+placement, the logs point to cross-region connection and query round trips as a
+major contributor, alongside the number of per-request database operations.
+This is a strong diagnosis, not proof that there is only one cause.
+
+Netlify documents custom Functions regions as a Pro/Enterprise feature; its
+self-serve choices include Tokyo and Singapore, not Seoul. The test site's
+region control is currently locked. Moving this deployment closer to the
+database therefore requires a paid Netlify region or the already-tested
+Cloudflare Worker + Hyperdrive path. That candidate is still isolated: it has
+no customer hostname and production traffic has not moved. Compare repeated,
+interleaved authenticated Work, My Day, People, and Admin timings at the same
+source before selecting a production route.
+
+Source: [Netlify Functions region configuration](https://docs.netlify.com/build/functions/configuration/).
+
 The Cloudflare dashboard still failed twice while loading its
 `cf-AuthOnlyProviders` module, so the older aggregate below was not refreshed
 after the new candidate version was deployed. Do not attribute it to version
