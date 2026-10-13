@@ -39,6 +39,16 @@ do not show that moving the API removes latency. The 2.4 s Netlify readiness
 outlier and overlapping auth results need a larger, interleaved sample plus
 authenticated route waterfalls.
 
+Three additional interleaved spot traces captured the `Server-Timing`
+application header. `/api/ready` returned 963 ms total / 245 ms app on Cloudflare
+and 2,142 ms / 1,204 ms on Netlify; another Cloudflare request was 661 ms /
+221 ms. `/api/auth/get-session` returned 1,704 ms / 990 ms and 1,079 ms /
+519 ms on Cloudflare, and 1,016 ms / 176 ms on Netlify. All returned 200.
+These are individual samples, not percentiles, and the application duration
+varies too much to name one cause from these traces. Capture repeated
+request-level timings alongside pool acquisition and query metrics; compare
+both warm and cold invocations.
+
 The Cloudflare dashboard still failed twice while loading its
 `cf-AuthOnlyProviders` module, so the older aggregate below was not refreshed
 after the new candidate version was deployed. Do not attribute it to version

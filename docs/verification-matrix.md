@@ -23,10 +23,12 @@ stable GitHub releases are published. A full-history customer clone at
 planning remains blocked: the root `.env` contains a Supabase access token but
 its `NOVA_SUPABASE_PROJECT_REF` points to `hrlvietbqvkdovulzcie`, not the QA
 project. Retrying that token against the exact QA project ref from
-`.env.qa-supabase` returned HTTP 403 from the read-only query endpoint. The QA
-env has the right project ref but no token. No SQL was written. The token needs
-access to the disposable project and database read permission before the
-updater plan can be verified.
+`.env.qa-supabase` returned HTTP 403 both for project metadata and for a
+read-only `SELECT 1` query. The QA env has the right project ref but no token.
+No SQL was written. The available token is not currently authorized for the
+target project/read API; its exact permission cause is unresolved. The updater
+plan remains unverified until target project access and database read permission
+are available.
 
 On 13 October, a read-only Supabase SQL Editor check of the exact disposable
 project found 80 migration-ledger rows through
