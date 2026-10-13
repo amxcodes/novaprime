@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "bun:test";
-import { parseArguments, runCheck, runGuided, type UpdateRuntimeOverrides } from "./update.ts";
+import { parseArguments, runCheck, runGuided, userSafeError, type UpdateRuntimeOverrides } from "./update.ts";
 import { prepareUpdateWorktree } from "./update/git.ts";
 import { newUpdateJournal, updateTargetFingerprint, type UpdateJournal } from "./update/state.ts";
 import type { MigrationPlan } from "./update/database.ts";
@@ -14,6 +14,25 @@ const temporaryRoots: string[] = [];
 const migrationFilename = "0002_update_fixture.sql";
 const migrationSource = "CREATE TABLE nova.update_fixture (id integer PRIMARY KEY);\n";
 const migrationHash = createHash("sha256").update(migrationSource).digest("hex");
+
+describe("updater error guidance", () => {
+  it("explains the minimum scope for Supabase ledger-read rejection", () => {
+    const message = userSafeError(new Error("SUPABASE_REQUEST_FAILED_403:database/query/read-only"));
+
+    expect(message).toContain("SUPABASE_READ_ONLY_LEDGER_ACCESS_DENIED_HTTP_403");
+    expect(message).toContain("Database Read (database_read)");
+    expect(message).toContain("Beta endpoint only reads the migration ledger");
+    expect(message).toContain("earlier migrations may already have completed");
+  });
+
+  it("separates read-only transport failure from migration progress", () => {
+    const message = userSafeError(new Error("SUPABASE_REQUEST_TRANSPORT_FAILED:database/query/read-only"));
+
+    expect(message).toContain("SUPABASE_READ_ONLY_LEDGER_UNREACHABLE");
+    expect(message).toContain("DNS, outbound HTTPS, proxy, and firewall");
+    expect(message).toContain("inspect the updater journal and database ledger before retrying");
+  });
+});
 
 function git(root: string, args: string[]): string {
   return execFileSync("git", ["-C", root, ...args], {

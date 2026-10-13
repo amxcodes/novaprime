@@ -147,8 +147,13 @@ project access had been removed. The correct QA ref is confirmed, and a
 different active account token is scoped to it but is not configured locally.
 No CLI request was made with that active token. The latest local API attempt
 still used the root token and stopped at DNS before HTTP; no SQL was written.
-Use a narrowly scoped token with project settings read and database read, then verify planning before database
-apply, candidate build, push, and hosted verification. Older pre-updater clone
+Use a narrowly scoped target-project token with Database Read (`database_read`)
+for the read-only plan; that endpoint is Beta and does not require Project
+Settings access. Verify it before a separate apply rehearsal, which needs
+Database Migrations Read-write and may need Database Read-write for checksum
+repair. See [the endpoint permission requirements](https://supabase.com/docs/reference/api/v1-read-only-query).
+Then verify planning before candidate build, push, and hosted verification.
+Older pre-updater clone
 bootstrap, database target refusal, migration failure/retry, declined push,
 and hosted failure/recovery still need end-to-end rehearsal. Do not describe
 the updater as generally available until those remaining cases pass. Maintainer

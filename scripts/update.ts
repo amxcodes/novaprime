@@ -187,9 +187,17 @@ function scrub(output: string): string {
     .slice(0, 8_000);
 }
 
-function userSafeError(error: unknown): string {
+export function userSafeError(error: unknown): string {
   if (error instanceof Error) {
     const message = scrub(error.message);
+    const supabaseLedgerAuthorizationFailure =
+      /^SUPABASE_REQUEST_FAILED_(401|403):database\/query\/read-only$/.exec(message);
+    if (supabaseLedgerAuthorizationFailure) {
+      return `SUPABASE_READ_ONLY_LEDGER_ACCESS_DENIED_HTTP_${supabaseLedgerAuthorizationFailure[1]}: Check the confirmed Supabase project ref, project-scoped token access, Database Read (database_read), and your account role. This Beta endpoint only reads the migration ledger. If this happened during an apply or resume, inspect the updater journal because earlier migrations may already have completed.`;
+    }
+    if (message === "SUPABASE_REQUEST_TRANSPORT_FAILED:database/query/read-only") {
+      return "SUPABASE_READ_ONLY_LEDGER_UNREACHABLE: Could not reach api.supabase.com for the read-only migration-ledger request. Check DNS, outbound HTTPS, proxy, and firewall settings. If this happened during an apply or resume, inspect the updater journal and database ledger before retrying; earlier migrations may already have completed.";
+    }
     const typedCode = (error as Error & { code?: unknown }).code;
     if (typeof typedCode === "string" && /^[A-Z0-9_:-]{1,120}$/.test(typedCode)) {
       return `${typedCode}${message && message !== typedCode ? `: ${message}` : ""}`;
