@@ -2,7 +2,52 @@
 
 Date: 2026-10-13
 
-## Current source-matched candidate checks — 13 October 2026
+## Latest matched-source recheck — 13 October 2026
+
+Netlify production and the isolated Cloudflare Hyperdrive candidate now serve
+the same application paths from source `924203a`. The documentation commit
+`fd1ea95` was published by Netlify deploy `6ace0b9a04767f9de0383b61`; the
+candidate Worker version is `5a07233d-904a-49a4-8024-8576da874b40`. The Worker
+is public on `workers.dev`, has no customer hostname or Cron, and connects
+only to disposable Supabase data. Supabase remains the only scheduler owner;
+no production route or database state changed.
+
+Five interleaved signed-in Work navigations per host were timed until the
+accessible “My assignments” content appeared. Cloudflare took 5.639, 6.733,
+5.664, 5.740, and 5.002 seconds (median 5.664 s). Netlify took 10.406, 9.762,
+7.905, 8.942, and 11.386 seconds (median 9.762 s). These are full browser
+navigation-to-content timings, not API timings. They point to a faster
+candidate in this small sample, but both paths remain slow and the sample
+does not isolate provider effects or include a browser waterfall.
+
+Ten paired serial anonymous `GET /api/ready` checks returned HTTP 200 on both
+hosts. After one warm-up per host, Cloudflare total durations were 566, 509,
+465, 318, 1,311, 373, 466, 479, 626, and 434 ms (p50 472.5 ms). Netlify
+durations were 1,035, 910, 903, 683, 4,025, 885, 640, 1,039, 1,025, and
+1,008 ms (p50 959 ms). One additional `Server-Timing` pair measured Cloudflare
+at 532 ms total / 113 ms in `nova-app`, and Netlify at 2,034 ms total / 1,168.5
+ms in `nova-app`. That single pair suggests the observed gap was largely
+inside handler execution, not only edge transport; it is not a distribution.
+
+Netlify's function diagnostics provide a plausible path to investigate:
+`api.work` handlers took about 2.2–2.36 seconds in two samples, with 4–5 NOVA
+database queries totaling 679–841 ms. Authentication pool acquisition took
+about 1.0 second and authentication queries another 0.5 second. A leave
+handler took 2.56 seconds with similar pool and query costs. These are
+function-log observations and were not correlated to the same browser
+navigation IDs, so treat them as evidence of serial database and pool
+overhead to investigate, not a complete attribution. The dashboard returned
+an error when queried for newer function-log entries.
+
+The next performance pass should capture a browser waterfall and correlated
+request IDs for each route, then separate authentication pool acquisition,
+database round trips, SQL execution, and client rendering. Repeat interleaved
+samples with more users and measure database connections/CPU before deciding
+whether runtime placement, query consolidation, or both explain the delay.
+These measurements are not a sustained load test, an SLA, or production
+capacity proof.
+
+## Earlier candidate checks — source `58572f5`; superseded by the latest recheck above
 
 Wrangler's read-only deployment inventory now shows Cloudflare candidate version
 `c8ad983a-27ad-43ee-bd18-79088a17d5ca` serving 100% of the candidate Worker,
