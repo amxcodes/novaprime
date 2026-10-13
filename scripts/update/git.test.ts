@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "bun:test";
 import { findPreparedUpdateWorktree, githubRepositoryIdentity, inspectGitCheckout, prepareUpdateWorktree, pushUpdateBranch, validateGitHubPushUrl } from "./git.ts";
 
-// These cases share a cleanup registry, so keep repository fixtures isolated when Bun runs tests concurrently.
+// The file-level cleanup hook drains this shared registry; keep every case
+// serialized so a non-fixture test cannot remove a repository mid-fixture.
 const repositoryTest = it.serial;
 const temporaryRoots: string[] = [];
 
@@ -216,7 +217,7 @@ describe("safe Git update worktrees", () => {
     })).rejects.toMatchObject({ code: "CANDIDATE_HEAD_MISMATCH" });
   }, 60_000);
 
-  it("accepts only GitHub HTTPS and SSH push URLs", () => {
+  repositoryTest("accepts only GitHub HTTPS and SSH push URLs", () => {
     expect(() => validateGitHubPushUrl("https://github.com/customer/nova.git")).not.toThrow();
     expect(() => validateGitHubPushUrl("ssh://git@github.com/customer/nova.git")).not.toThrow();
     expect(() => validateGitHubPushUrl("git@github.com:customer/nova.git")).not.toThrow();
@@ -234,7 +235,7 @@ describe("safe Git update worktrees", () => {
     }
   });
 
-  it("normalizes GitHub URL forms for canonical repository exclusion", () => {
+  repositoryTest("normalizes GitHub URL forms for canonical repository exclusion", () => {
     expect(githubRepositoryIdentity("https://github.com/amxcodes/novaprime.git")).toBe("amxcodes/novaprime");
     expect(githubRepositoryIdentity("ssh://git@github.com/Customer/NovaPrime.git")).toBe("customer/novaprime");
     expect(githubRepositoryIdentity("git@github.com:amxcodes/novaprime.git")).toBe("amxcodes/novaprime");
