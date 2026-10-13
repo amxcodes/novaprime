@@ -1297,7 +1297,42 @@ short wall-clock delay.
 
 Validation before deployment: the complete repository suite passed (826 Bun
 tests and 576 UI component tests), along with server, web, operator, and
-Cloudflare typechecks. The change contains no database migration. It is not
-counted as live until the resulting `main` SHA is visible in Netlify; after
-publication, repeat the signed-in My Day timing and correlate the page-read
-timings with the same-window Netlify function diagnostics.
+Cloudflare typechecks. The change contains no database migration. Netlify now
+publishes source `924203a` at deploy
+[`6ace0646658cfa6e983f268e`](https://app.netlify.com/projects/novaprimetest/deploys/6ace0646658cfa6e983f268e),
+and GitHub Actions run
+[`38382856125`](https://github.com/amxcodes/novaprime/actions/runs/38382856125)
+passed. The signed-in production My Day route renders its expected
+office-assignment and empty-work states, but no post-deploy timing is accepted
+yet: route-level timings still need repeatable capture correlated with
+same-window function diagnostics. Do not infer a whole-product speedup from
+deployment or the earlier request-count reduction.
+
+## Current-main local 200-employee workload — 13 October 2026
+
+The isolated `bun run qa:postgres` run used current source `924203a`, 200
+synthetic employees, 10 tasks per employee, at most 25 concurrent requests,
+and a fresh PostgreSQL 17 database. It applied all 80 migrations and passed
+the authenticated lifecycle, role/RLS checks, attendance/WFH/leave suite,
+restricted application-role preflight, full backup/restore, and updater
+rehearsal from migration 0072 through the current ledger. Every workload had
+zero diagnostic failures, and cleanup verified the run labels before removing
+its own database, containers, volumes, network, and temporary credentials.
+
+| Workload | Requests | p50 | p95 | p99 |
+| --- | ---: | ---: | ---: | ---: |
+| Work context | 200 | 164.4 ms | 268.5 ms | 293.6 ms |
+| Assignment read | 200 | 51.6 ms | 67.1 ms | 68.5 ms |
+| Timeline read | 200 | 81.7 ms | 116.0 ms | 119.5 ms |
+| Task create and self-assign | 2,000 | 65.9 ms | 99.0 ms | 111.5 ms |
+| Timer start | 2,000 | 74.3 ms | 114.8 ms | 159.8 ms |
+| Timer stop | 2,000 | 42.4 ms | 60.8 ms | 73.9 ms |
+
+At p95, the app-pool acquisition/query totals were 141.0/167.6 ms for work
+context, 30.2/30.6 ms for assignment reads, 55.6/59.9 ms for timeline reads,
+43.0/45.0 ms for task create, 53.9/56.9 ms for timer start, and 22.8/23.2 ms
+for timer stop. Assignment `EXPLAIN ANALYZE` reported 2.1 ms planning and
+4.7 ms execution. The results establish a current-source data-shape baseline on
+local PostgreSQL only. They do not include a hosted HTTP path or establish a
+sustained capacity limit. The hosted authenticated 100/200-employee gate and
+same-source Netlify/Cloudflare route comparison remain open.

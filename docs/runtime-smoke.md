@@ -698,6 +698,36 @@ synthetic database and volume from the earlier setup run were removed.
 For the full status and remaining per-module test matrix, see
 `docs/verification-matrix.md` and `docs/qa-and-completion-plan.md`.
 
+## Current-main 200 × 10 PostgreSQL run — 13 October 2026
+
+The run set `NOVA_QA_LOAD_EMPLOYEES=200`,
+`NOVA_QA_LOAD_TASKS_PER_EMPLOYEE=10`, and `NOVA_QA_LOAD_CONCURRENCY=25`;
+`bun run qa:postgres` passed on current `main` (`924203a`). The isolated run
+used a fresh PostgreSQL 17 database, applied all
+80 migrations, passed authenticated lifecycle and specialized attendance/WFH/
+leave checks, role/RLS and restricted-`nova_app` preflight, a full dump/restore,
+and the migration updater rehearsal from 0072 through the current ledger.
+Every measured workload reported zero diagnostic failures.
+
+| Workload | Requests | p50 | p95 | p99 |
+| --- | ---: | ---: | ---: | ---: |
+| Work context | 200 | 164.4 ms | 268.5 ms | 293.6 ms |
+| Assignment read | 200 | 51.6 ms | 67.1 ms | 68.5 ms |
+| Timeline read | 200 | 81.7 ms | 116.0 ms | 119.5 ms |
+| Task create and self-assign | 2,000 | 65.9 ms | 99.0 ms | 111.5 ms |
+| Timer start | 2,000 | 74.3 ms | 114.8 ms | 159.8 ms |
+| Timer stop | 2,000 | 42.4 ms | 60.8 ms | 73.9 ms |
+
+At p95, NOVA database pool acquisition/query totals were 141.0/167.6 ms for
+work context, 30.2/30.6 ms for assignment reads, and 55.6/59.9 ms for timeline
+reads. Task-create acquisition/query totals were 43.0/45.0 ms; timer-start
+53.9/56.9 ms; timer-stop 22.8/23.2 ms. PostgreSQL `EXPLAIN ANALYZE` for the
+assignment read reported 2.1 ms planning and 4.7 ms execution. The complete
+run removed only its labeled database, containers, volumes, network, and
+temporary credentials. This is current-source local evidence, not hosted
+latency, a sustained soak, or an SLA; hosted authenticated route distributions
+and 100/200-employee concurrency tests remain release gates.
+
 ## Email-disabled recovery check
 
 Deactivate the tested email connection as a Super Admin and verify that normal
