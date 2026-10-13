@@ -6,6 +6,7 @@ const environment = {
   DATABASE_URL: `postgresql://nova_app.${projectRef}:app-password@aws-0-us-east-1.pooler.supabase.com:6543/postgres`,
   MIGRATOR_DATABASE_URL: `postgresql://postgres:migrator-password@db.${projectRef}.supabase.co:5432/postgres`,
   NOVA_SUPABASE_PROJECT_REF: projectRef,
+  NOVA_PUBLIC_ORIGIN: "https://nova.example.com",
 };
 const migrations = [
   { filename: "0001_people_identity.sql", sha256: "a".repeat(64) },
@@ -15,11 +16,34 @@ const migrations = [
 function mockConnect(
   statements: string[],
   migrationRows: Array<{ filename: string; sha256: string | null }>,
-  options: { cronInstalled?: boolean; ledgerInstalled?: boolean; checksums?: boolean; cronRows?: unknown[] } = {},
+  options: {
+    cronInstalled?: boolean;
+    ledgerInstalled?: boolean;
+    checksums?: boolean;
+    cronRows?: unknown[];
+    deliveryRelations?: { cronHistoryAvailable: boolean; httpHistoryAvailable: boolean; vaultAvailable: boolean };
+    vaultEvidence?: { urlSecretPresent: boolean; jobSecretPresent: boolean; callbackMatchesOrigin: boolean };
+    recentEvidence?: {
+      recentRunCount: number;
+      recentRunSuccessCount: number;
+      latestRunFresh: boolean;
+      latestHttpStatusCode: number | null;
+      latestHttpTimedOut: boolean | null;
+      latestHttpErrorPresent: boolean | null;
+      httpResponseMatchesLatestRun: boolean;
+    };
+  } = {},
 ) {
   const client = {
     query: async (sql: string) => {
       statements.push(sql);
+      if (sql.includes("to_regclass('cron.job_run_details')")) return { rows: [options.deliveryRelations ?? { cronHistoryAvailable: true, httpHistoryAvailable: true, vaultAvailable: true }] };
+      if (sql.includes("FROM vault.decrypted_secrets")) return { rows: [options.vaultEvidence ?? { urlSecretPresent: true, jobSecretPresent: true, callbackMatchesOrigin: true }] };
+      if (sql.includes("FROM cron.job_run_details")) return { rows: [options.recentEvidence ?? {
+        recentRunCount: 5, recentRunSuccessCount: 5, latestRunFresh: true,
+        latestHttpStatusCode: 200, latestHttpTimedOut: false, latestHttpErrorPresent: false,
+        httpResponseMatchesLatestRun: true,
+      }] };
       if (sql.includes("to_regclass('cron.job')")) return { rows: [{ available: options.cronInstalled ?? true }] };
       if (sql.includes("FROM cron.job")) return { rows: options.cronRows ?? [
         { id: "12", name: "nova-background-tick", schedule: "*/5 * * * *", active: true },
@@ -55,6 +79,12 @@ test("Supabase Cron and migration inventory are database-pinned and read-only", 
       { id: "12", name: "nova-background-tick", schedule: "*/5 * * * *", active: true },
       { id: "13", name: "custom-nova-tick", schedule: "*/2 * * * *", active: false },
     ],
+    deliveryEvidence: {
+      state: "verified", recentRunCount: 5, recentRunSuccessCount: 5, latestRunFresh: true,
+      latestHttpStatusCode: 200, latestHttpTimedOut: false, latestHttpErrorPresent: false,
+      httpResponseMatchesLatestRun: true, callbackOriginMatchesConfigured: true,
+      detail: "SUPABASE_NOVA_CRON_DELIVERY_VERIFIED",
+    },
     migrationInventory: {
       state: "current", appliedCount: 2, migrationHead: migrations[1]!.filename,
       expectedHead: migrations[1]!.filename, checksumsVerified: true,
@@ -65,6 +95,39 @@ test("Supabase Cron and migration inventory are database-pinned and read-only", 
   expect(statements.some((sql) => /\b(?:INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b/i.test(sql))).toBe(false);
   expect(statements.at(-1)).toBe("COMMIT");
   expect(statements.find((sql) => sql.includes("FROM cron.job"))).not.toMatch(/SELECT[\s\S]+,\s*command\s+FROM/i);
+  expect(statements.find((sql) => sql.includes("FROM vault.decrypted_secrets"))).not.toMatch(/SELECT\s+decrypted_secret\s*(?:,|FROM)/i);
+  expect(statements.some((sql) => sql === "INSERT" || /\b(?:INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b/i.test(sql))).toBe(false);
+});
+
+test("Supabase Cron delivery fails closed on stale/failed ticks and callback mismatch", async () => {
+  const failures = [
+    { recentEvidence: { recentRunCount: 5, recentRunSuccessCount: 4, latestRunFresh: true, latestHttpStatusCode: 200, latestHttpTimedOut: false, latestHttpErrorPresent: false, httpResponseMatchesLatestRun: true }, detail: "SUPABASE_NOVA_CRON_RECENT_RUNS_NOT_HEALTHY" },
+    { recentEvidence: { recentRunCount: 5, recentRunSuccessCount: 5, latestRunFresh: false, latestHttpStatusCode: 200, latestHttpTimedOut: false, latestHttpErrorPresent: false, httpResponseMatchesLatestRun: true }, detail: "SUPABASE_NOVA_CRON_RECENT_RUNS_NOT_HEALTHY" },
+    { recentEvidence: { recentRunCount: 5, recentRunSuccessCount: 5, latestRunFresh: true, latestHttpStatusCode: 500, latestHttpTimedOut: false, latestHttpErrorPresent: true, httpResponseMatchesLatestRun: false }, detail: "SUPABASE_NOVA_CRON_HTTP_RESPONSE_NOT_CONFIRMED" },
+    { vaultEvidence: { urlSecretPresent: true, jobSecretPresent: true, callbackMatchesOrigin: false }, detail: "SUPABASE_NOVA_CRON_CALLBACK_ORIGIN_MISMATCH" },
+  ] as const;
+  for (const failure of failures) {
+    const result = await inspectSupabaseCronInventory(environment, {
+      ...mockConnect([], migrations, failure),
+      expectedMigrations: migrations,
+    });
+    expect(result.deliveryEvidence.state).toBe("unverified");
+    expect(result.deliveryEvidence.detail).toBe(failure.detail);
+  }
+});
+
+test("scheduler delivery requires an explicit HTTPS public origin and available Supabase history", async () => {
+  const missingOrigin = await inspectSupabaseCronInventory({ ...environment, NOVA_PUBLIC_ORIGIN: "http://localhost:3001" }, {
+    ...mockConnect([], migrations), expectedMigrations: migrations,
+  });
+  expect(missingOrigin.deliveryEvidence.state).toBe("unverified");
+  expect(missingOrigin.deliveryEvidence.detail).toBe("NOVA_PUBLIC_ORIGIN_MUST_BE_CONFIGURED_AS_HTTPS_ORIGIN");
+  const missingHistory = await inspectSupabaseCronInventory(environment, {
+    ...mockConnect([], migrations, { deliveryRelations: { cronHistoryAvailable: false, httpHistoryAvailable: true, vaultAvailable: true } }),
+    expectedMigrations: migrations,
+  });
+  expect(missingHistory.deliveryEvidence.state).toBe("unverified");
+  expect(missingHistory.deliveryEvidence.detail).toBe("SUPABASE_CRON_VAULT_OR_DELIVERY_HISTORY_UNAVAILABLE");
 });
 
 test("migration inventory distinguishes an updateable prefix, divergence, unknown newer rows, and missing checksums", async () => {
@@ -105,6 +168,12 @@ test("scheduler inventory refuses to inspect a migration URL for another databas
     state: "unavailable",
     completeness: "not-inspected",
     triggers: [],
+    deliveryEvidence: {
+      state: "unavailable", recentRunCount: 0, recentRunSuccessCount: 0, latestRunFresh: false,
+      latestHttpStatusCode: null, latestHttpTimedOut: null, latestHttpErrorPresent: null,
+      httpResponseMatchesLatestRun: false, callbackOriginMatchesConfigured: null,
+      detail: "MIGRATOR_DATABASE_TARGET_MISMATCH",
+    },
     migrationInventory: {
       state: "unavailable", appliedCount: null, migrationHead: null, expectedHead: null,
       checksumsVerified: false, detail: "MIGRATOR_DATABASE_TARGET_MISMATCH",
@@ -120,6 +189,12 @@ test("scheduler inventory requires the owner connection rather than widening app
     state: "target-required",
     completeness: "not-inspected",
     triggers: [],
+    deliveryEvidence: {
+      state: "unavailable", recentRunCount: 0, recentRunSuccessCount: 0, latestRunFresh: false,
+      latestHttpStatusCode: null, latestHttpTimedOut: null, latestHttpErrorPresent: null,
+      httpResponseMatchesLatestRun: false, callbackOriginMatchesConfigured: null,
+      detail: "SCHEDULER_INVENTORY_NOT_INSPECTED",
+    },
     migrationInventory: {
       state: "target-required", appliedCount: null, migrationHead: null, expectedHead: null,
       checksumsVerified: false, detail: "MIGRATOR_DATABASE_URL_REQUIRED_FOR_MIGRATION_INVENTORY",

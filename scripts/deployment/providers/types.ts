@@ -5,6 +5,18 @@ export interface SchedulerTriggerInventory {
   state: "verified" | "not-installed" | "target-required" | "unavailable";
   completeness: "resource-only" | "project-scoped" | "partial" | "not-inspected";
   triggers: Array<{ id: string; name: string; schedule: string | null; active: boolean | null }>;
+  deliveryEvidence?: {
+    state: "verified" | "unverified" | "not-installed" | "unavailable";
+    recentRunCount: number;
+    recentRunSuccessCount: number;
+    latestRunFresh: boolean;
+    latestHttpStatusCode: number | null;
+    latestHttpTimedOut: boolean | null;
+    latestHttpErrorPresent: boolean | null;
+    httpResponseMatchesLatestRun: boolean;
+    callbackOriginMatchesConfigured: boolean | null;
+    detail?: string;
+  };
   detail?: string;
 }
 

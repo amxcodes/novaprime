@@ -12,6 +12,7 @@ export async function inspectSupabase(
     state: cron.state,
     completeness: cron.completeness,
     triggers: cron.triggers.map(({ id, name, schedule, active }) => ({ id, name, schedule, active })),
+    deliveryEvidence: cron.deliveryEvidence,
     ...(cron.detail ? { detail: cron.detail } : {}),
   };
   const databaseInventory = { schedulerInventory, migrationInventory: cron.migrationInventory };

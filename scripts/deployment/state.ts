@@ -109,7 +109,7 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
           (provider.schedulerInventory === undefined || (() => {
             const scheduler = typeof provider.schedulerInventory === "object" && provider.schedulerInventory !== null && !Array.isArray(provider.schedulerInventory)
               ? provider.schedulerInventory as Record<string, unknown> : null;
-            return scheduler !== null && hasOnly(scheduler, ["scope", "state", "completeness", "triggers", "detail"]) &&
+            return scheduler !== null && hasOnly(scheduler, ["scope", "state", "completeness", "triggers", "deliveryEvidence", "detail"]) &&
               ["target-runtime", "database-project"].includes(String(scheduler.scope)) &&
               ["verified", "not-installed", "target-required", "unavailable"].includes(String(scheduler.state)) &&
               ["resource-only", "project-scoped", "partial", "not-inspected"].includes(String(scheduler.completeness)) &&
@@ -120,7 +120,23 @@ function validatePlan(value: unknown, repoRoot: string, expectedId: string): Sto
                   typeof trigger.id === "string" && typeof trigger.name === "string" &&
                   (trigger.schedule === null || typeof trigger.schedule === "string") &&
                   (trigger.active === null || typeof trigger.active === "boolean");
-              });
+              }) &&
+              (scheduler.deliveryEvidence === undefined || (() => {
+                const evidence = typeof scheduler.deliveryEvidence === "object" && scheduler.deliveryEvidence !== null && !Array.isArray(scheduler.deliveryEvidence)
+                  ? scheduler.deliveryEvidence as Record<string, unknown> : null;
+                return evidence !== null && hasOnly(evidence, ["state", "recentRunCount", "recentRunSuccessCount", "latestRunFresh", "latestHttpStatusCode", "latestHttpTimedOut", "latestHttpErrorPresent", "httpResponseMatchesLatestRun", "callbackOriginMatchesConfigured", "detail"]) &&
+                  ["verified", "unverified", "not-installed", "unavailable"].includes(String(evidence.state)) &&
+                  Number.isInteger(evidence.recentRunCount) && (evidence.recentRunCount as number) >= 0 && (evidence.recentRunCount as number) <= 5 &&
+                  Number.isInteger(evidence.recentRunSuccessCount) && (evidence.recentRunSuccessCount as number) >= 0 &&
+                  (evidence.recentRunSuccessCount as number) <= (evidence.recentRunCount as number) &&
+                  typeof evidence.latestRunFresh === "boolean" &&
+                  (evidence.latestHttpStatusCode === null || (Number.isInteger(evidence.latestHttpStatusCode) && (evidence.latestHttpStatusCode as number) >= 100 && (evidence.latestHttpStatusCode as number) <= 599)) &&
+                  (evidence.latestHttpTimedOut === null || typeof evidence.latestHttpTimedOut === "boolean") &&
+                  (evidence.latestHttpErrorPresent === null || typeof evidence.latestHttpErrorPresent === "boolean") &&
+                  typeof evidence.httpResponseMatchesLatestRun === "boolean" &&
+                  (evidence.callbackOriginMatchesConfigured === null || typeof evidence.callbackOriginMatchesConfigured === "boolean") &&
+                  (evidence.detail === undefined || typeof evidence.detail === "string");
+              })());
           })()) &&
           (provider.migrationInventory === undefined || (() => {
             const migration = typeof provider.migrationInventory === "object" && provider.migrationInventory !== null && !Array.isArray(provider.migrationInventory)

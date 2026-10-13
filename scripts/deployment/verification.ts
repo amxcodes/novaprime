@@ -26,6 +26,7 @@ function providerSnapshot(resources: readonly ProviderResource[]): unknown[] {
       completeness: resource.schedulerInventory.completeness,
       triggers: [...resource.schedulerInventory.triggers]
         .sort((left, right) => left.id.localeCompare(right.id)),
+      deliveryEvidence: resource.schedulerInventory.deliveryEvidence ?? null,
     } : null,
     migrationInventory: resource.migrationInventory ? {
       state: resource.migrationInventory.state,

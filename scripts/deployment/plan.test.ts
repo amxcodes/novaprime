@@ -572,6 +572,17 @@ test("a retained Supabase scheduler requires one canonical active job and reject
       state: "verified" as const,
       completeness: "project-scoped" as const,
       triggers: [{ id: "12", name: "nova-background-tick", schedule: "*/5 * * * *", active: true }],
+      deliveryEvidence: {
+        state: "verified" as const,
+        recentRunCount: 5,
+        recentRunSuccessCount: 5,
+        latestRunFresh: true,
+        latestHttpStatusCode: 200,
+        latestHttpTimedOut: false,
+        latestHttpErrorPresent: false,
+        httpResponseMatchesLatestRun: true,
+        callbackOriginMatchesConfigured: true,
+      },
     },
   };
   const providers = [
@@ -587,6 +598,18 @@ test("a retained Supabase scheduler requires one canonical active job and reject
   const request = { runtime: "cloudflare" as const, database: "keep" as const, scheduler: "keep" as const };
   const valid = buildDeploymentPreview(inventory, request, providers, true);
   expect(valid.blockers).not.toContain("SUPABASE_CRON_NOT_EXACTLY_ONE_EXPECTED_ACTIVE_TICK");
+  expect(valid.blockers).not.toContain("SUPABASE_CRON_DELIVERY_AND_STABLE_ORIGIN_NOT_VERIFIED");
+
+  for (const deliveryEvidence of [
+    undefined,
+    { ...supabase.schedulerInventory.deliveryEvidence, callbackOriginMatchesConfigured: false },
+    { ...supabase.schedulerInventory.deliveryEvidence, latestHttpTimedOut: true },
+  ]) {
+    const preview = buildDeploymentPreview(inventory, request, providers.map((provider) => provider.provider === "supabase"
+      ? { ...provider, schedulerInventory: { ...provider.schedulerInventory, deliveryEvidence } }
+      : provider), true);
+    expect(preview.blockers).toContain("SUPABASE_CRON_DELIVERY_AND_STABLE_ORIGIN_NOT_VERIFIED");
+  }
 
   const invalidInventories = [
     { ...supabase.schedulerInventory, triggers: [

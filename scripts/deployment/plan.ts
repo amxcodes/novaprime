@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { LocalDeploymentInventory, RuntimeAdapter, SchedulerAdapter } from "./inventory.ts";
-import type { ProviderResource } from "./providers.ts";
+import type { ProviderResource, SchedulerTriggerInventory } from "./providers.ts";
 import { safeHostname } from "./providers/shared.ts";
 
 export type DatabaseChange = "keep" | "provision-supabase" | "move";
@@ -101,6 +101,16 @@ function cloudflareRouteMayMatchHostname(pattern: string, hostname: string): boo
   catch { return true; }
 }
 
+function hasVerifiedSupabaseDeliveryEvidence(
+  evidence: SchedulerTriggerInventory["deliveryEvidence"],
+): boolean {
+  return evidence?.state === "verified" && evidence.recentRunCount === 5 && evidence.recentRunSuccessCount === 5 &&
+    evidence.latestRunFresh === true && evidence.latestHttpStatusCode !== null &&
+    evidence.latestHttpStatusCode >= 200 && evidence.latestHttpStatusCode < 300 &&
+    evidence.latestHttpTimedOut === false && evidence.latestHttpErrorPresent === false &&
+    evidence.httpResponseMatchesLatestRun === true && evidence.callbackOriginMatchesConfigured === true;
+}
+
 function schedulerScopeBlockers(
   providerInventory: readonly ProviderResource[],
   currentRuntime: RuntimeAdapter | null,
@@ -139,6 +149,11 @@ function schedulerScopeBlockers(
         (scheduler.triggers.length !== 1 || scheduler.triggers[0]?.name !== "nova-background-tick" ||
           scheduler.triggers[0]?.schedule !== "*/5 * * * *" || scheduler.triggers[0]?.active !== true)) {
       blockers.push("SUPABASE_CRON_NOT_EXACTLY_ONE_EXPECTED_ACTIVE_TICK");
+    }
+    if (providerName === "supabase" && currentScheduler === "supabase" &&
+        (request.runtime !== currentRuntime || changingScheduler) &&
+        !hasVerifiedSupabaseDeliveryEvidence(scheduler.deliveryEvidence)) {
+      blockers.push("SUPABASE_CRON_DELIVERY_AND_STABLE_ORIGIN_NOT_VERIFIED");
     }
     if (changingScheduler && selectedScheduler === providerName && currentScheduler !== providerName && activeCount > 0) {
       blockers.push(`TARGET_SCHEDULER_ALREADY_ACTIVE:${providerName}`);
